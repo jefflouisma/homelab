@@ -17,9 +17,17 @@ secrets/
 .env
 .env.*
 
+# ArgoCD deploy key files (generated during setup)
+argocd-deploy-key
+argocd-deploy-key.pub
+
+# GitHub App private key
+*.private-key.pem
+
 # Exception: Allow public keys (they're meant to be shared)
 !*.pub
-id_rsa*
+!id_rsa.pub
+id_rsa
 
 # Temporary files
 *.tmp

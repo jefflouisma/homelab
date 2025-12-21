@@ -1,5 +1,8 @@
 # ArgoCD "App of Apps" - Root Application
 # This application manages all other applications in the apps/ directory
+#
+# NOTE: Uses SSH URL for private repository access
+# Requires deploy key to be configured (see plan.md Step 4)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -8,11 +11,14 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/jefflouisma/homelab.git
+    # SSH URL for private repo (requires deploy key)
+    repoURL: git@github.com:jefflouisma/homelab.git
     targetRevision: HEAD
     path: apps
     directory:
       recurse: false
+      # Exclude the root app itself to prevent infinite loop
+      exclude: 'argocd-root.yaml'
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -20,4 +26,5 @@ spec:
     automated:
       prune: true
       selfHeal: true
-
+    syncOptions:
+      - CreateNamespace=true

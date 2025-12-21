@@ -1,0 +1,141 @@
+# CI/CD Pipeline for Homelab
+#
+# SECURITY CONFIGURATION:
+# - Only triggers on push to main (NOT on pull requests)
+# - Uses self-hosted ephemeral runners
+# - Secrets are stored in GitHub Secrets (not in repo)
+#
+# This prevents:
+# - Fork-based attacks (no PR triggers)
+# - Persistent runner compromise (ephemeral)
+# - Credential exposure (GitHub Secrets)
+
+name: CI/CD Pipeline
+
+# IMPORTANT: Only trigger on push to main - NEVER on pull_request
+# This prevents malicious code from forks running on your self-hosted runners
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - '.gitignore'
+  
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to cluster'
+        required: false
+        default: 'true'
+        type: boolean
+
+# Prevent concurrent deployments
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # These come from GitHub Secrets
+  NEXUS_URL: ${{ secrets.NEXUS_URL }}
+
+jobs:
+  # Job 1: Validate Kubernetes manifests
+  validate:
+    name: Validate Manifests
+    runs-on: [self-hosted, homelab]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.29.0'
+
+      - name: Validate YAML syntax
+        run: |
+          echo "Validating Kubernetes manifests..."
+          find apps/ infrastructure/ -name '*.yaml' -exec echo "Checking: {}" \; -exec kubectl apply --dry-run=client -f {} \;
+
+      - name: Lint with kubeval (optional)
+        continue-on-error: true
+        run: |
+          if command -v kubeval &> /dev/null; then
+            find apps/ infrastructure/ -name '*.yaml' | xargs kubeval --strict
+          else
+            echo "kubeval not installed, skipping..."
+          fi
+
+  # Job 2: Build container images (example for future apps)
+  build:
+    name: Build Images
+    runs-on: [self-hosted, homelab]
+    needs: validate
+    # Only run if there are Dockerfiles to build
+    # Uncomment when you have apps to build
+    if: false  # Disabled until you have apps to build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Nexus Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.NEXUS_URL }}
+          username: ${{ secrets.NEXUS_USERNAME }}
+          password: ${{ secrets.NEXUS_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./path/to/app
+          push: true
+          tags: |
+            ${{ secrets.NEXUS_URL }}/myapp:${{ github.sha }}
+            ${{ secrets.NEXUS_URL }}/myapp:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Job 3: Sync with ArgoCD (GitOps will auto-sync, but we can force it)
+  deploy:
+    name: Deploy via ArgoCD
+    runs-on: [self-hosted, homelab]
+    needs: validate
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true')
+    steps:
+      - name: Trigger ArgoCD Sync
+        run: |
+          echo "ArgoCD will automatically sync changes via GitOps..."
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          
+          # Optional: Force sync via ArgoCD CLI if installed
+          # argocd app sync root --prune
+
+      - name: Notify deployment
+        run: |
+          echo "✅ Deployment triggered for commit ${{ github.sha }}"
+          echo "Check ArgoCD UI for sync status"
+
+  # Job 4: Notify on completion
+  notify:
+    name: Notify
+    runs-on: [self-hosted, homelab]
+    needs: [validate, deploy]
+    if: always()
+    steps:
+      - name: Report status
+        run: |
+          if [ "${{ needs.validate.result }}" == "success" ] && [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "✅ Pipeline completed successfully!"
+          else
+            echo "❌ Pipeline failed!"
+            exit 1
+          fi
+
