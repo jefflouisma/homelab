@@ -12,16 +12,23 @@ echo "=== Pre-Kubernetes Bootstrap Started at $(date) ==="
 
 # --- 1. INSTALL REQUIRED PACKAGES ---
 echo "Installing required packages..."
-apt-get update && apt-get install -y curl git open-iscsi nfs-common
+apt-get update && apt-get install -y curl git open-iscsi nfs-common wget gnupg lsb-release
 
-# --- 2. CREATE DATA DIRECTORIES ---
+# --- 2. INSTALL TERRAFORM ---
+echo "Installing Terraform..."
+wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
+  | tee /etc/apt/sources.list.d/hashicorp.list >/dev/null
+apt-get update && apt-get install -y terraform
+
+# --- 3. CREATE DATA DIRECTORIES ---
 # Nexus runs as UID 200 (nexus user)
 echo "Creating data directories..."
 mkdir -p /mnt/data/nexus
 chown -R 200:200 /mnt/data/nexus
 chmod 755 /mnt/data/nexus
 
-# --- 3. INSTALL K3S ---
+# --- 4. INSTALL K3S ---
 # Disabling built-in components that Terraform will replace:
 # - Flannel (replaced by Cilium)
 # - Kube-Proxy (replaced by Cilium eBPF)
@@ -36,14 +43,14 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
   --disable traefik \
   --write-kubeconfig-mode 644" sh -
 
-# --- 4. WAIT FOR K3S API ---
+# --- 5. WAIT FOR K3S API ---
 echo "Waiting for K3s API to be ready..."
 until k3s kubectl get node &>/dev/null; do 
   sleep 5
 done
 echo "K3s API is ready."
 
-# --- 5. SETUP KUBECONFIG ---
+# --- 6. SETUP KUBECONFIG ---
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 mkdir -p /root/.kube
 rm -f /root/.kube/config 2>/dev/null || true
@@ -58,11 +65,11 @@ if [ -n "${SUDO_USER:-}" ]; then
   echo "Kubeconfig copied to $USER_HOME/.kube/config"
 fi
 
-# --- 6. INSTALL HELM ---
+# --- 7. INSTALL HELM ---
 echo "Installing Helm..."
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-# --- 7. VERIFY ---
+# --- 8. VERIFY ---
 echo ""
 echo "==========================================="
 echo "=== Pre-Kubernetes Setup Complete ==="

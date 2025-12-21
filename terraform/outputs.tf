@@ -18,6 +18,7 @@ output "metallb_ip_range" {
 output "deploy_key_configured" {
   description = "Whether the ArgoCD deploy key was configured"
   value       = var.argocd_deploy_key != "" ? "Yes" : "No - configure manually or re-run with -var='argocd_deploy_key=...'"
+  sensitive   = true
 }
 
 output "next_steps" {
