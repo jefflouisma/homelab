@@ -52,13 +52,9 @@ spec:
           cpu: "2000m"
           memory: "4Gi"
       
-      # Docker-in-Docker for container builds
-      dockerEnabled: true
-      dockerdWithinRunnerContainer: true
-      
-      # Security context
-      securityContext:
-        fsGroup: 1000
+      # Docker-in-Docker disabled (not needed for most CI tasks)
+      # Enable later if you need to build container images
+      dockerEnabled: false
 ---
 # Horizontal Runner Autoscaler
 # Scales runners based on workflow queue
