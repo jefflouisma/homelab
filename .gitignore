@@ -1,11 +1,18 @@
 # Terraform files
 terraform/.terraform/
-terraform/.terraform.lock.hcl
 terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
-*.tfvars
+terraform/terraform.tfvars
+terraform/.terraform.lock.hcl
 
-# Sensitive files (keep these secure, don't commit)
+# Sensitive files - NEVER commit these
 *.pem
+*.key
 argocd-deploy-key
+argocd-deploy-key.pub
 id_rsa
+id_rsa.pub
+g913-k8s-prod-arc*.pem
+
+# OS files
+.DS_Store

@@ -45,27 +45,39 @@ Production-grade Kubernetes cluster with eBPF security, observability, and autom
 ### Prerequisites
 
 1. **Hardware**: Server with Ubuntu 24.04 LTS support
-2. **USB Drive**: For Ubuntu autoinstall
-3. **Network**: Static IP range for MetalLB (default: `192.168.1.40-50`)
+2. **Network**: Static IP range for MetalLB (default: `192.168.1.40-50`)
+3. **Secrets**: Your `terraform.tfvars` file (stored securely outside the repo)
 
-### Setup Steps
+### Fresh Install Steps
 
-#### 1. Clone the Repository
+#### 1. Install Ubuntu Server
+- Install Ubuntu 24.04 Server (hostname: `g913-k8s-prod`, user: `admin-user`)
+- Enable SSH server during installation
+
+#### 2. Clone Repository & Copy Secrets
 
 ```bash
-git clone https://github.com/jefflouisma/homelab.git
-cd homelab
+# SSH to server
+ssh admin-user@<server-ip>
+
+# Clone repo
+git clone https://github.com/jefflouisma/homelab.git ~/homelab-ops
+cd ~/homelab-ops
+
+# Copy your terraform.tfvars from secure backup
+# (You stored this when first setting up - it contains all secrets)
+scp user@backup-location:terraform.tfvars terraform/terraform.tfvars
 ```
 
-#### 2. Run Pre-Kubernetes Script (on fresh Ubuntu)
+#### 3. Run Bootstrap Script
 
 ```bash
 sudo ./bootstrap/pre-kubernetes.sh
 ```
 
-This installs: OS packages, K3s, Helm CLI, and sets up kubeconfig.
+This installs: OS packages, Terraform, K3s, Helm CLI.
 
-#### 3. Run Terraform (installs cluster components)
+#### 4. Run Terraform
 
 ```bash
 cd terraform
@@ -73,21 +85,15 @@ terraform init
 terraform apply
 ```
 
-This installs: Cilium (CNI), MetalLB, ArgoCD, and triggers GitOps sync.
+This installs: Cilium (CNI), MetalLB, ArgoCD, and configures all secrets.
 
-#### 4. ArgoCD Takes Over
+#### 5. Done!
 
-ArgoCD automatically syncs the `apps/` directory, installing:
+ArgoCD automatically syncs and installs:
 - cert-manager
-- Actions Runner Controller
+- Actions Runner Controller (with GitHub App credentials)
 - Nexus
-- All future applications
-
-All configuration values are already set:
-- ✅ GitHub repo URL: `jefflouisma/homelab`
-- ✅ SSH public key configured
-- ✅ Password hash configured
-- ✅ MetalLB IP range: `192.168.1.40-50`
+- GitHub self-hosted runners
 
 #### 2. Verify Network Configuration
 
