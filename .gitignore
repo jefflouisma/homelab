@@ -19,6 +19,7 @@ secrets/
 
 # Exception: Allow public keys (they're meant to be shared)
 !*.pub
+id_rsa*
 
 # Temporary files
 *.tmp
