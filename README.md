@@ -224,3 +224,4 @@ See [LICENSE](LICENSE) file.
 
 
 
+<- Self-hosted runner registers with E2E Test v2 -->
