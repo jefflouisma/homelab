@@ -81,6 +81,9 @@ echo "Waiting for ArgoCD server..."
 sleep 10
 kubectl wait --for=condition=Ready pods -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
 
+# Expose ArgoCD via LoadBalancer
+kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+
 # --- 7. APPLY NAMESPACES ---
 kubectl apply -f https://raw.githubusercontent.com/jefflouisma/homelab/main/infrastructure/namespaces.yaml
 
