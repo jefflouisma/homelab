@@ -1,19 +1,13 @@
-# GitHub Actions Runner (Ephemeral)
+# GitHub Actions Runner
 # Uses Actions Runner Controller (ARC) for self-hosted runners
 # 
-# SECURITY: These runners are ephemeral - destroyed after each job
-# SAFETY: Only triggers on push to main (configured in workflow files)
+# SECURITY: 
+# - Only triggers on push to main (configured in workflow files)
+# - Runner stays persistent (ephemeral: false) for stability
 #
 # Prerequisites:
 # 1. ARC must be installed (done by install.sh)
 # 2. GitHub App or PAT credentials must be configured
-#
-# To configure credentials:
-#   kubectl create secret generic controller-manager \
-#     -n actions-runner-system \
-#     --from-literal=github_app_id=YOUR_APP_ID \
-#     --from-literal=github_app_installation_id=YOUR_INSTALL_ID \
-#     --from-literal=github_app_private_key="$(cat your-app.private-key.pem)"
 ---
 apiVersion: v1
 kind: Namespace
@@ -26,15 +20,15 @@ metadata:
   name: homelab-runner
   namespace: actions-runners
 spec:
-  # Start with 0 runners - scale up on demand
+  # Keep 1 runner always ready
   replicas: 1
   template:
     spec:
       # IMPORTANT: Replace with your GitHub username/repo
       repository: jefflouisma/homelab
       
-      # Ephemeral runners - destroyed after each job (security best practice)
-      ephemeral: true
+      # Non-ephemeral runner - stays alive between jobs (more stable)
+      ephemeral: false
       
       # Runner labels for workflow targeting
       labels:
@@ -46,41 +40,12 @@ spec:
       # Resource limits for the runner pod
       resources:
         requests:
-          cpu: "500m"
-          memory: "512Mi"
+          cpu: "250m"
+          memory: "256Mi"
         limits:
-          cpu: "2000m"
-          memory: "4Gi"
+          cpu: "1000m"
+          memory: "2Gi"
       
-      # Docker-in-Docker disabled (not needed for most CI tasks)
-      # Enable later if you need to build container images
+      # Docker disabled - not needed for most CI tasks
+      # Enable if you need to build container images
       dockerEnabled: false
----
-# Horizontal Runner Autoscaler
-# Scales runners based on workflow queue
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: HorizontalRunnerAutoscaler
-metadata:
-  name: homelab-runner-autoscaler
-  namespace: actions-runners
-spec:
-  scaleTargetRef:
-    kind: RunnerDeployment
-    name: homelab-runner
-  
-  # Scale from 0 to 3 runners based on demand
-  minReplicas: 0
-  maxReplicas: 3
-  
-  # Scale based on workflow job queue
-  metrics:
-    - type: TotalNumberOfQueuedAndInProgressWorkflowRuns
-      # Scale up when jobs are waiting
-      scaleUpThreshold: "1"
-      scaleDownThreshold: "0"
-      scaleUpFactor: "1"
-      scaleDownFactor: "1"
-  
-  # Scale down delay - wait before scaling down to avoid thrashing
-  scaleDownDelaySecondsAfterScaleOut: 300
-
