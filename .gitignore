@@ -8,3 +8,4 @@ terraform/terraform.tfstate.backup
 # Sensitive files (keep these secure, don't commit)
 *.pem
 argocd-deploy-key
+id_rsa
