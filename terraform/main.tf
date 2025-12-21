@@ -1,0 +1,253 @@
+# Terraform Configuration for Homelab Kubernetes Bootstrap
+# This installs foundational cluster components that ArgoCD depends on.
+
+terraform {
+  required_version = ">= 1.5.0"
+
+  required_providers {
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.12"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.25"
+    }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.10"
+    }
+  }
+
+  # Local backend - state stored on the server
+  # For DR: ensure this file is included in your backup strategy
+  backend "local" {
+    path = "terraform.tfstate"
+  }
+}
+
+provider "helm" {
+  kubernetes {
+    config_path = var.kubeconfig_path
+  }
+}
+
+provider "kubernetes" {
+  config_path = var.kubeconfig_path
+}
+
+# =============================================================================
+# CILIUM - CNI (Must be first - cluster can't network without it)
+# =============================================================================
+
+resource "helm_release" "cilium" {
+  name             = "cilium"
+  repository       = "https://helm.cilium.io/"
+  chart            = "cilium"
+  version          = "1.17.0"
+  namespace        = "kube-system"
+  create_namespace = false
+
+  set {
+    name  = "kubeProxyReplacement"
+    value = "true"
+  }
+  set {
+    name  = "k8sServiceHost"
+    value = "127.0.0.1"
+  }
+  set {
+    name  = "k8sServicePort"
+    value = "6443"
+  }
+  set {
+    name  = "hubble.enabled"
+    value = "true"
+  }
+  set {
+    name  = "hubble.relay.enabled"
+    value = "true"
+  }
+  set {
+    name  = "hubble.ui.enabled"
+    value = "true"
+  }
+
+  timeout = 600
+
+  # Wait for Cilium to be ready before proceeding
+  wait = true
+}
+
+# Give Cilium time to initialize networking
+resource "time_sleep" "wait_for_cilium" {
+  depends_on      = [helm_release.cilium]
+  create_duration = "30s"
+}
+
+# =============================================================================
+# METALLB - Load Balancer
+# =============================================================================
+
+resource "helm_release" "metallb" {
+  name             = "metallb"
+  repository       = "https://metallb.github.io/metallb"
+  chart            = "metallb"
+  namespace        = "metallb-system"
+  create_namespace = true
+
+  depends_on = [time_sleep.wait_for_cilium]
+
+  timeout = 300
+  wait    = true
+}
+
+# Wait for MetalLB CRDs to be established
+resource "time_sleep" "wait_for_metallb_crds" {
+  depends_on      = [helm_release.metallb]
+  create_duration = "15s"
+}
+
+# MetalLB IP Address Pool
+resource "kubernetes_manifest" "metallb_ip_pool" {
+  manifest = {
+    apiVersion = "metallb.io/v1beta1"
+    kind       = "IPAddressPool"
+    metadata = {
+      name      = "production-pool"
+      namespace = "metallb-system"
+    }
+    spec = {
+      addresses = var.metallb_ip_range
+    }
+  }
+
+  depends_on = [time_sleep.wait_for_metallb_crds]
+}
+
+# MetalLB L2 Advertisement
+resource "kubernetes_manifest" "metallb_l2_advertisement" {
+  manifest = {
+    apiVersion = "metallb.io/v1beta1"
+    kind       = "L2Advertisement"
+    metadata = {
+      name      = "production-l2"
+      namespace = "metallb-system"
+    }
+    spec = {
+      ipAddressPools = ["production-pool"]
+    }
+  }
+
+  depends_on = [kubernetes_manifest.metallb_ip_pool]
+}
+
+# =============================================================================
+# ARGOCD - GitOps Controller
+# =============================================================================
+
+resource "kubernetes_namespace" "argocd" {
+  metadata {
+    name = "argocd"
+  }
+
+  depends_on = [time_sleep.wait_for_cilium]
+}
+
+resource "kubernetes_namespace" "devops" {
+  metadata {
+    name = "devops"
+  }
+
+  depends_on = [time_sleep.wait_for_cilium]
+}
+
+resource "helm_release" "argocd" {
+  name       = "argocd"
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argo-cd"
+  version    = "5.55.0"
+  namespace  = kubernetes_namespace.argocd.metadata[0].name
+
+  # Expose via LoadBalancer (MetalLB will assign an IP)
+  set {
+    name  = "server.service.type"
+    value = "LoadBalancer"
+  }
+
+  # Disable TLS on ArgoCD server (optional, simplifies access)
+  set {
+    name  = "configs.params.server\\.insecure"
+    value = "true"
+  }
+
+  depends_on = [
+    helm_release.metallb,
+    kubernetes_manifest.metallb_l2_advertisement
+  ]
+
+  timeout = 600
+  wait    = true
+}
+
+# =============================================================================
+# ARGOCD REPOSITORY SECRET (for private repo access)
+# =============================================================================
+
+resource "kubernetes_secret" "argocd_repo" {
+  count = var.argocd_deploy_key != "" ? 1 : 0
+
+  metadata {
+    name      = "homelab-repo"
+    namespace = kubernetes_namespace.argocd.metadata[0].name
+    labels = {
+      "argocd.argoproj.io/secret-type" = "repository"
+    }
+  }
+
+  data = {
+    type          = "git"
+    url           = var.github_repo_ssh_url
+    sshPrivateKey = var.argocd_deploy_key
+  }
+
+  depends_on = [helm_release.argocd]
+}
+
+# =============================================================================
+# ARGOCD ROOT APPLICATION (triggers GitOps sync)
+# =============================================================================
+
+resource "kubernetes_manifest" "argocd_root_app" {
+  manifest = {
+    apiVersion = "argoproj.io/v1alpha1"
+    kind       = "Application"
+    metadata = {
+      name      = "root"
+      namespace = "argocd"
+    }
+    spec = {
+      project = "default"
+      source = {
+        repoURL        = var.github_repo_https_url
+        targetRevision = "HEAD"
+        path           = "apps"
+        directory = {
+          recurse = false
+        }
+      }
+      destination = {
+        server    = "https://kubernetes.default.svc"
+        namespace = "argocd"
+      }
+      syncPolicy = {
+        automated = {
+          prune    = true
+          selfHeal = true
+        }
+      }
+    }
+  }
+
+  depends_on = [helm_release.argocd]
+}

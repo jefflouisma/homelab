@@ -19,17 +19,25 @@ Production-grade Kubernetes cluster with eBPF security, observability, and autom
 ```
 .
 ├── bootstrap/
-│   └── install.sh          # First-boot installation script
+│   ├── install.sh            # Legacy: full bootstrap (deprecated)
+│   └── pre-kubernetes.sh     # NEW: minimal OS + K3s setup
+├── terraform/
+│   ├── main.tf               # Cilium, MetalLB, ArgoCD
+│   ├── variables.tf          # Configuration variables
+│   └── outputs.tf            # Post-apply instructions
 ├── infrastructure/
-│   ├── namespaces.yaml     # Kubernetes namespaces
-│   └── metallb-config.yaml # MetalLB IP pool configuration
+│   ├── namespaces.yaml       # Kubernetes namespaces
+│   └── metallb-config.yaml   # MetalLB IP pool (for reference)
 ├── apps/
-│   ├── argocd-root.yaml    # ArgoCD "App of Apps"
-│   └── nexus.yaml          # Nexus artifact repository
+│   ├── argocd-root.yaml      # ArgoCD "App of Apps"
+│   ├── cert-manager.yaml     # TLS certificate management
+│   ├── arc.yaml              # GitHub Actions Runner Controller
+│   ├── github-runner.yaml    # Runner ScaleSet configuration
+│   └── nexus.yaml            # Nexus artifact repository
 ├── autoinstall/
-│   ├── user-data           # Ubuntu autoinstall configuration
-│   └── meta-data           # Cloud-init metadata
-└── plan.md                 # Detailed implementation plan
+│   ├── user-data             # Ubuntu autoinstall configuration
+│   └── meta-data             # Cloud-init metadata
+└── plan.md                   # Detailed implementation plan
 ```
 
 ## Quick Start
@@ -48,6 +56,32 @@ Production-grade Kubernetes cluster with eBPF security, observability, and autom
 git clone https://github.com/jefflouisma/homelab.git
 cd homelab
 ```
+
+#### 2. Run Pre-Kubernetes Script (on fresh Ubuntu)
+
+```bash
+sudo ./bootstrap/pre-kubernetes.sh
+```
+
+This installs: OS packages, K3s, Helm CLI, and sets up kubeconfig.
+
+#### 3. Run Terraform (installs cluster components)
+
+```bash
+cd terraform
+terraform init
+terraform apply
+```
+
+This installs: Cilium (CNI), MetalLB, ArgoCD, and triggers GitOps sync.
+
+#### 4. ArgoCD Takes Over
+
+ArgoCD automatically syncs the `apps/` directory, installing:
+- cert-manager
+- Actions Runner Controller
+- Nexus
+- All future applications
 
 All configuration values are already set:
 - ✅ GitHub repo URL: `jefflouisma/homelab`

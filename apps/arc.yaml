@@ -1,0 +1,43 @@
+# ArgoCD Application for Actions Runner Controller (ARC)
+# Managed by ArgoCD, not Terraform
+#
+# NOTE: After this is deployed, you still need to create the authentication secret:
+#
+# For GitHub App (recommended):
+#   kubectl create secret generic controller-manager \
+#     -n actions-runner-system \
+#     --from-literal=github_app_id=YOUR_APP_ID \
+#     --from-literal=github_app_installation_id=YOUR_INSTALL_ID \
+#     --from-file=github_app_private_key=/path/to/app.private-key.pem
+#
+# For Personal Access Token:
+#   kubectl create secret generic controller-manager \
+#     -n actions-runner-system \
+#     --from-literal=github_token=YOUR_PAT
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: actions-runner-controller
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://actions-runner-controller.github.io/actions-runner-controller
+    chart: actions-runner-controller
+    targetRevision: 0.23.7
+    helm:
+      values: |
+        # Auth secret must be created manually (see notes above)
+        authSecret:
+          create: false
+          name: controller-manager
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: actions-runner-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
