@@ -115,7 +115,16 @@ fi
 # This connects the cluster back to YOUR repo
 kubectl apply -f "$REPO_DIR/apps/argocd-root.yaml"
 
-# --- 10. INSTALL ACTIONS RUNNER CONTROLLER (ARC) ---
+# --- 10. INSTALL CERT-MANAGER (ARC Dependency) ---
+echo "Installing cert-manager (required for ARC)..."
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+
+# Wait for cert-manager to be ready
+echo "Waiting for cert-manager..."
+sleep 15
+kubectl wait --for=condition=Ready pods -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=120s
+
+# --- 11. INSTALL ACTIONS RUNNER CONTROLLER (ARC) ---
 echo "Installing GitHub Actions Runner Controller..."
 
 # Add the ARC Helm repo
@@ -198,7 +207,7 @@ else
   echo "  kubectl apply -f $REPO_DIR/apps/github-runner.yaml"
 fi
 
-# --- 11. WAIT FOR NEXUS TO BE HEALTHY ---
+# --- 12. WAIT FOR NEXUS TO BE HEALTHY ---
 echo "Waiting for Nexus deployment..."
 sleep 30
 kubectl wait --for=condition=Available deployment/nexus -n devops --timeout=300s || echo "Nexus may still be starting up..."
