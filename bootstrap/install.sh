@@ -31,7 +31,9 @@ until k3s kubectl get node &>/dev/null; do sleep 5; done
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
 # Make kubectl available without k3s prefix
-ln -sf /etc/rancher/k3s/k3s.yaml /root/.kube/config 2>/dev/null || mkdir -p /root/.kube && cp /etc/rancher/k3s/k3s.yaml /root/.kube/config
+mkdir -p /root/.kube
+rm -f /root/.kube/config 2>/dev/null || true
+ln -sf /etc/rancher/k3s/k3s.yaml /root/.kube/config
 
 # --- 3. INSTALL HELM ---
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
