@@ -229,7 +229,7 @@ resource "kubernetes_manifest" "argocd_root_app" {
     spec = {
       project = "default"
       source = {
-        repoURL        = var.github_repo_https_url
+        repoURL        = var.github_repo_ssh_url
         targetRevision = "HEAD"
         path           = "apps"
         directory = {
