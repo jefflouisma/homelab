@@ -86,3 +86,4 @@ spec:
           persistentVolumeClaim:
             claimName: nexus-pvc
 
+# E2E Test 1766339583
