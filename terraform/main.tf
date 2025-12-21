@@ -13,6 +13,10 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.25"
     }
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = "~> 1.14"
+    }
     time = {
       source  = "hashicorp/time"
       version = "~> 0.10"
@@ -33,6 +37,10 @@ provider "helm" {
 }
 
 provider "kubernetes" {
+  config_path = var.kubeconfig_path
+}
+
+provider "kubectl" {
   config_path = var.kubeconfig_path
 }
 
@@ -102,44 +110,36 @@ resource "helm_release" "metallb" {
   wait    = true
 }
 
-# Wait for MetalLB CRDs to be established
-resource "time_sleep" "wait_for_metallb_crds" {
-  depends_on      = [helm_release.metallb]
-  create_duration = "15s"
-}
+# MetalLB IP Address Pool - using kubectl provider for apply-time CRD validation
+resource "kubectl_manifest" "metallb_ip_pool" {
+  yaml_body = <<-YAML
+    apiVersion: metallb.io/v1beta1
+    kind: IPAddressPool
+    metadata:
+      name: production-pool
+      namespace: metallb-system
+    spec:
+      addresses:
+        ${indent(8, yamlencode(var.metallb_ip_range))}
+  YAML
 
-# MetalLB IP Address Pool
-resource "kubernetes_manifest" "metallb_ip_pool" {
-  manifest = {
-    apiVersion = "metallb.io/v1beta1"
-    kind       = "IPAddressPool"
-    metadata = {
-      name      = "production-pool"
-      namespace = "metallb-system"
-    }
-    spec = {
-      addresses = var.metallb_ip_range
-    }
-  }
-
-  depends_on = [time_sleep.wait_for_metallb_crds]
+  depends_on = [helm_release.metallb]
 }
 
 # MetalLB L2 Advertisement
-resource "kubernetes_manifest" "metallb_l2_advertisement" {
-  manifest = {
-    apiVersion = "metallb.io/v1beta1"
-    kind       = "L2Advertisement"
-    metadata = {
-      name      = "production-l2"
-      namespace = "metallb-system"
-    }
-    spec = {
-      ipAddressPools = ["production-pool"]
-    }
-  }
+resource "kubectl_manifest" "metallb_l2_advertisement" {
+  yaml_body = <<-YAML
+    apiVersion: metallb.io/v1beta1
+    kind: L2Advertisement
+    metadata:
+      name: production-l2
+      namespace: metallb-system
+    spec:
+      ipAddressPools:
+        - production-pool
+  YAML
 
-  depends_on = [kubernetes_manifest.metallb_ip_pool]
+  depends_on = [kubectl_manifest.metallb_ip_pool]
 }
 
 # =============================================================================
@@ -181,10 +181,7 @@ resource "helm_release" "argocd" {
     value = "true"
   }
 
-  depends_on = [
-    helm_release.metallb,
-    kubernetes_manifest.metallb_l2_advertisement
-  ]
+  depends_on = [kubectl_manifest.metallb_l2_advertisement]
 
   timeout = 600
   wait    = true
@@ -218,36 +215,30 @@ resource "kubernetes_secret" "argocd_repo" {
 # ARGOCD ROOT APPLICATION (triggers GitOps sync)
 # =============================================================================
 
-resource "kubernetes_manifest" "argocd_root_app" {
-  manifest = {
-    apiVersion = "argoproj.io/v1alpha1"
-    kind       = "Application"
-    metadata = {
-      name      = "root"
-      namespace = "argocd"
-    }
-    spec = {
-      project = "default"
-      source = {
-        repoURL        = var.github_repo_ssh_url
-        targetRevision = "HEAD"
-        path           = "apps"
-        directory = {
-          recurse = false
-        }
-      }
-      destination = {
-        server    = "https://kubernetes.default.svc"
-        namespace = "argocd"
-      }
-      syncPolicy = {
-        automated = {
-          prune    = true
-          selfHeal = true
-        }
-      }
-    }
-  }
+# ArgoCD Root Application - using kubectl provider for apply-time CRD validation
+resource "kubectl_manifest" "argocd_root_app" {
+  yaml_body = <<-YAML
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: root
+      namespace: argocd
+    spec:
+      project: default
+      source:
+        repoURL: ${var.github_repo_ssh_url}
+        targetRevision: HEAD
+        path: apps
+        directory:
+          recurse: false
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+  YAML
 
   depends_on = [helm_release.argocd]
 }
