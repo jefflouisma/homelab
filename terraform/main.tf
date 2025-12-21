@@ -80,6 +80,11 @@ resource "helm_release" "cilium" {
     name  = "hubble.ui.enabled"
     value = "true"
   }
+  # Single-node cluster: only need 1 operator replica
+  set {
+    name  = "operator.replicas"
+    value = "1"
+  }
 
   timeout = 600
 
