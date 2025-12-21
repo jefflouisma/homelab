@@ -1,0 +1,4 @@
+# This file is required by cloud-init but can be empty
+# The instance-id is used to determine if this is a new instance
+instance-id: g913-k8s-prod
+

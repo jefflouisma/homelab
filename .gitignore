@@ -1,0 +1,30 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Secrets - NEVER commit these
+*.key
+*.pem
+*.crt
+secrets/
+.env
+.env.*
+
+# Exception: Allow public keys (they're meant to be shared)
+!*.pub
+
+# Temporary files
+*.tmp
+*.log
+
+# Local overrides
+*.local.yaml
+*.local.yml
+

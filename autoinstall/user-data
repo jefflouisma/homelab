@@ -1,0 +1,40 @@
+#cloud-config
+autoinstall:
+  version: 1
+  identity:
+    hostname: g913-k8s-prod
+    username: admin-user
+    password: "$6$pxsJ45EKlo6eAS9n$mOSz4ddb13uLZILARA0Ba8Q.GG7sDY7sxVB74L2el2LIcPjSHqQeiXk2VJJo4D/O8mLIeT9GPgzCtX0lQsAz1."
+  ssh:
+    install-server: true
+    allow-pw: false
+    authorized-keys:
+      - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDgvSzqGpOgL+duV9ZQ91HMYz42AngZnZPaP9fH56+1M1qFQ/ab+1QRdnKdtzRKNzcudVxQcP9OWrcwMhopUZuGT1/uixh02a/j7fk+oSiFb7BZh7Ktl7j4G4P6oDCZ0tH3IW5uQlSTOT6aYuRWa6GWUOMl3tnuP/MNZ9E3XGFWUmgsMUypVXeNf/vdXPHBon9CELUbj6Mn/IzAjrC6aWAm2ZQKlL57BsSBQxa8TtA0LryTZPacjbgKMDjb+bjgx7ab7FrsiSTgEa40DBYR9OiWBxzcD1en0GspTWcM7th1taLbAP4T9q9r+UVcNP8d8+HsIXihF0Lxpkx6+l/nsLH0Vfi1zejicysii8oua5RjN/uGzxoHZ4tKWELW0/aUdPOINVnOKwmMxMHPxkKii8vkphRqEMeE2GVDF0OZxtj+nCFFgXFACE71SrlhJSyo3rwc0NZoOtm70UBquVjQn0DF2p/M/KCjBbXNRxgbo+44UWkdL0OTTLhbhoylOJmBQ5r9559alZ3xBKdE5hnpqrSWIvqs86vfMTIiSlnxmHA6bOgif8zBuyQVGRMBP1o/W+bmTz3fanmwt64oeafCet+1/ieDDzi9x2FITBVI6/wZChtrBwvXZZTCCbExIv23i6tx1LynGZLQfvNot3JX1qn9pCbPwZTpC2t8TuTAEHouBw== jefflouisma@me.com"
+  storage:
+    layout:
+      name: direct # Wipes the 2TB SSD automatically
+  late-commands:
+    # Clone the repo to the target system
+    - curtin in-target -- git clone https://github.com/jefflouisma/homelab.git /opt/homelab-ops
+    - curtin in-target -- chmod +x /opt/homelab-ops/bootstrap/install.sh
+    # Create systemd service for first-boot execution
+    - |
+      cat <<EOF > /target/etc/systemd/system/homelab-bootstrap.service
+      [Unit]
+      Description=Homelab Bootstrap (First Boot)
+      After=network-online.target
+      Wants=network-online.target
+      ConditionPathExists=!/opt/homelab-bootstrap-done
+
+      [Service]
+      Type=oneshot
+      ExecStart=/opt/homelab-ops/bootstrap/install.sh
+      ExecStartPost=/usr/bin/touch /opt/homelab-bootstrap-done
+      RemainAfterExit=yes
+      StandardOutput=journal+console
+      StandardError=journal+console
+
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+    - curtin in-target -- systemctl enable homelab-bootstrap.service

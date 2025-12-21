@@ -1,0 +1,23 @@
+# ArgoCD "App of Apps" - Root Application
+# This application manages all other applications in the apps/ directory
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jefflouisma/homelab.git
+    targetRevision: HEAD
+    path: apps
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
