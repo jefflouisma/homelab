@@ -13,12 +13,16 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: actions-runners
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 ---
 apiVersion: actions.summerwind.dev/v1alpha1
 kind: RunnerDeployment
 metadata:
   name: homelab-runner
   namespace: actions-runners
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   # Keep 1 runner always ready
   replicas: 1
