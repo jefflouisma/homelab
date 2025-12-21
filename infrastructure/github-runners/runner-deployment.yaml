@@ -1,0 +1,42 @@
+# GitHub Actions Runners
+# Resources deployed by ArgoCD after ARC controller is installed
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: actions-runners
+---
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: RunnerDeployment
+metadata:
+  name: homelab-runner
+  namespace: actions-runners
+spec:
+  # Keep 1 runner always ready
+  replicas: 1
+  template:
+    spec:
+      # GitHub repository to register runner with
+      repository: jefflouisma/homelab
+      
+      # Non-ephemeral runner - stays alive between jobs
+      ephemeral: false
+      
+      # Runner labels for workflow targeting
+      labels:
+        - self-hosted
+        - linux
+        - homelab
+        - x64
+      
+      # Resource limits for the runner pod
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "256Mi"
+        limits:
+          cpu: "1000m"
+          memory: "2Gi"
+      
+      # Docker disabled - not needed for most CI tasks
+      dockerEnabled: false

@@ -1,55 +1,30 @@
-# GitHub Actions Runner
-# Uses Actions Runner Controller (ARC) for self-hosted runners
-# 
-# SECURITY: 
-# - Only triggers on push to main (configured in workflow files)
-# - Runner stays persistent (ephemeral: false) for stability
-#
-# Prerequisites:
-# 1. ARC must be installed (done by install.sh)
-# 2. GitHub App or PAT credentials must be configured
----
-apiVersion: v1
-kind: Namespace
+# GitHub Runners ArgoCD Application
+# This Application depends on ARC being installed first
+# Sync-wave ensures it runs after ARC Application creates the CRDs
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: actions-runners
+  name: github-runners
+  namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
----
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: homelab-runner
-  namespace: actions-runners
-  annotations:
+    # Run after ARC controller is healthy (wave 2, ARC is wave -1)
     argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
-  # Keep 1 runner always ready
-  replicas: 1
-  template:
-    spec:
-      # IMPORTANT: Replace with your GitHub username/repo
-      repository: jefflouisma/homelab
-      
-      # Non-ephemeral runner - stays alive between jobs (more stable)
-      ephemeral: false
-      
-      # Runner labels for workflow targeting
-      labels:
-        - self-hosted
-        - linux
-        - homelab
-        - x64
-      
-      # Resource limits for the runner pod
-      resources:
-        requests:
-          cpu: "250m"
-          memory: "256Mi"
-        limits:
-          cpu: "1000m"
-          memory: "2Gi"
-      
-      # Docker disabled - not needed for most CI tasks
-      # Enable if you need to build container images
-      dockerEnabled: false
+  project: default
+  source:
+    repoURL: git@github.com:jefflouisma/homelab.git
+    targetRevision: HEAD
+    path: infrastructure/github-runners
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: actions-runners
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # Skip validation since CRD may not exist until ARC is installed
+      - SkipDryRunOnMissingResource=true
