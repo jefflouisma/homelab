@@ -30,3 +30,22 @@ variable "argocd_deploy_key" {
   default     = ""
   sensitive   = true
 }
+
+variable "github_app_id" {
+  description = "GitHub App ID for Actions Runner Controller"
+  type        = string
+  default     = ""
+}
+
+variable "github_app_installation_id" {
+  description = "GitHub App Installation ID for Actions Runner Controller"
+  type        = string
+  default     = ""
+}
+
+variable "github_app_private_key" {
+  description = "GitHub App private key (PEM format) for Actions Runner Controller"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

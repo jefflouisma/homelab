@@ -251,3 +251,34 @@ resource "kubernetes_manifest" "argocd_root_app" {
 
   depends_on = [helm_release.argocd]
 }
+
+# =============================================================================
+# ACTIONS RUNNER CONTROLLER - GitHub App Secret
+# =============================================================================
+
+resource "kubernetes_namespace" "actions_runner_system" {
+  count = var.github_app_id != "" ? 1 : 0
+
+  metadata {
+    name = "actions-runner-system"
+  }
+
+  depends_on = [time_sleep.wait_for_cilium]
+}
+
+resource "kubernetes_secret" "arc_controller_manager" {
+  count = var.github_app_id != "" ? 1 : 0
+
+  metadata {
+    name      = "controller-manager"
+    namespace = kubernetes_namespace.actions_runner_system[0].metadata[0].name
+  }
+
+  data = {
+    github_app_id              = var.github_app_id
+    github_app_installation_id = var.github_app_installation_id
+    github_app_private_key     = var.github_app_private_key
+  }
+
+  depends_on = [kubernetes_namespace.actions_runner_system]
+}
