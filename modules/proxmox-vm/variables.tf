@@ -103,3 +103,15 @@ variable "start_on_boot" {
   type        = bool
   default     = true
 }
+
+variable "install_k3s" {
+  description = "Install K3s via cloud-init"
+  type        = bool
+  default     = false
+}
+
+variable "k3s_version" {
+  description = "K3s version to install (empty for latest)"
+  type        = string
+  default     = ""
+}

@@ -52,4 +52,7 @@ module "prod_k3s" {
   gateway    = "192.168.1.1"
   username   = "ubuntu"
   ssh_keys   = var.ssh_public_keys
+
+  # Install K3s via cloud-init (following terraform/ patterns)
+  install_k3s = true
 }

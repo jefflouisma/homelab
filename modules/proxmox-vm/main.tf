@@ -10,6 +10,45 @@ terraform {
   }
 }
 
+locals {
+  k3s_install_script = var.install_k3s ? <<-EOF
+    #!/bin/bash
+    set -euo pipefail
+    LOG_FILE="/var/log/k3s-bootstrap.log"
+    exec > >(tee -a "$LOG_FILE") 2>&1
+    
+    echo "=== K3s Bootstrap Started at $(date) ==="
+    
+    # Install required packages
+    apt-get update && apt-get install -y curl open-iscsi nfs-common jq
+    
+    # Create data directories
+    mkdir -p /mnt/data/nexus
+    chown -R 200:200 /mnt/data/nexus
+    
+    # Install K3s with disabled components (Cilium replaces them)
+    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
+      --flannel-backend=none \
+      --disable-network-policy \
+      --disable-kube-proxy \
+      --disable servicelb \
+      --disable traefik \
+      --write-kubeconfig-mode 644" ${var.k3s_version != "" ? "INSTALL_K3S_VERSION=${var.k3s_version}" : ""} sh -
+    
+    # Wait for K3s API
+    echo "Waiting for K3s API..."
+    until /usr/local/bin/k3s kubectl get node &>/dev/null; do sleep 5; done
+    
+    # Setup kubeconfig for ubuntu user
+    mkdir -p /home/ubuntu/.kube
+    cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
+    chown -R ubuntu:ubuntu /home/ubuntu/.kube
+    
+    echo "=== K3s Bootstrap Complete at $(date) ==="
+    EOF
+  : null
+}
+
 resource "proxmox_virtual_environment_vm" "vm" {
   name      = var.vm_name
   node_name = var.proxmox_node
@@ -64,7 +103,22 @@ resource "proxmox_virtual_environment_vm" "vm" {
       keys     = var.ssh_keys
     }
 
-    user_data_file_id = var.cloud_init_user_data_id
+    # Use inline user_data for K3s install, otherwise use file_id
+    user_data_file_id = var.install_k3s ? null : var.cloud_init_user_data_id
+    
+    dynamic "user_data" {
+      for_each = var.install_k3s ? [1] : []
+      content {
+        content = <<-YAML
+          #cloud-config
+          package_update: true
+          package_upgrade: true
+          runcmd:
+            - |
+              ${indent(14, local.k3s_install_script)}
+        YAML
+      }
+    }
   }
 
   # Agent - enabled but don't wait for it

@@ -9,6 +9,11 @@
   vars:
     terraform_version: "1.9.8"
     k8s_tf_dir: "/opt/homelab/kubernetes"
+    # These should be passed via -e or group_vars
+    argocd_deploy_key: "{{ lookup('file', '~/.ssh/argocd-deploy-key', errors='ignore') | default('') }}"
+    github_app_id: "{{ lookup('env', 'GITHUB_APP_ID') | default('2512413') }}"
+    github_app_installation_id: "{{ lookup('env', 'GITHUB_APP_INSTALLATION_ID') | default('100583737') }}"
+    github_app_private_key: "{{ lookup('file', '~/.ssh/github-app-private-key.pem', errors='ignore') | default('') }}"
 
   tasks:
     - name: Install required packages
@@ -59,10 +64,22 @@
     - name: Create terraform.tfvars
       ansible.builtin.copy:
         content: |
-          kubeconfig_path = "/etc/rancher/k3s/k3s.yaml"
-          k8s_api_host    = "{{ ansible_default_ipv4.address | default('192.168.1.50') }}"
+          kubeconfig_path            = "/etc/rancher/k3s/k3s.yaml"
+          k8s_api_host               = "{{ ansible_default_ipv4.address | default('192.168.1.50') }}"
+          github_app_id              = "{{ github_app_id }}"
+          github_app_installation_id = "{{ github_app_installation_id }}"
+          {% if argocd_deploy_key %}
+          argocd_deploy_key = <<-EOT
+          {{ argocd_deploy_key }}
+          EOT
+          {% endif %}
+          {% if github_app_private_key %}
+          github_app_private_key = <<-EOT
+          {{ github_app_private_key }}
+          EOT
+          {% endif %}
         dest: "{{ k8s_tf_dir }}/terraform.tfvars"
-        mode: '0644'
+        mode: '0600'
 
     - name: Initialize Terraform
       ansible.builtin.command:

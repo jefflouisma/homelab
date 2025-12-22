@@ -88,8 +88,8 @@ module "practice_k3s" {
   description  = "K3s node for HomePractice environment"
   tags         = ["terraform", "homepractice", "kubernetes"]
 
-  cpu_cores  = 4
-  memory_mb  = 16384
+  cpu_cores    = 4
+  memory_mb    = 16384
   disk_size_gb = 100
 
   datastore_id   = var.datastore_id
@@ -103,4 +103,7 @@ module "practice_k3s" {
   gateway    = "10.10.10.1"
   username   = "ubuntu"
   ssh_keys   = var.ssh_public_keys
+
+  # Install K3s via cloud-init (following terraform/ patterns)
+  install_k3s = true
 }
