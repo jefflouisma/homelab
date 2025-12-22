@@ -1,49 +1,61 @@
 ---
 # OPNsense Configuration Playbook
-# Configures: Interface IPs, NAT, DHCP, Firewall Rules
+# Configures: Interface IPs, NAT, Gateway
 - name: Configure OPNsense Firewall
   hosts: opnsense
   gather_facts: false
   vars:
     wan_interface: vtnet0
     lan_interface: vtnet1
+    wan_ip: "192.168.1.1"
+    wan_subnet: "24"
+    wan_gateway: "192.168.1.254"
+    lan_ip: "10.10.10.1"
+    lan_subnet: "24"
+    lan_network: "10.10.10.0"
 
   tasks:
-    - name: Add LAN IP to isolated interface
-      ansible.builtin.raw: |
-        ifconfig {{ lan_interface }} {{ lan_ip }} netmask 255.255.255.0 alias
+    - name: Configure LAN interface
+      ansible.builtin.raw: "ifconfig {{ lan_interface }} {{ lan_ip }} netmask 255.255.255.0"
       changed_when: true
 
-    - name: Add default gateway for internet access
-      ansible.builtin.raw: |
-        route add default {{ lan_gateway }} 2>/dev/null || true
-      changed_when: true
-
-    - name: Configure NAT and firewall rules
-      ansible.builtin.raw: |
-        cat > /tmp/pf.conf << 'EOF'
-        # NAT for isolated network
-        nat on {{ wan_interface }} from {{ lan_ip | regex_replace('\\.[0-9]+$', '.0') }}/{{ lan_subnet }} to any -> ({{ wan_interface }})
-        
-        # Pass all traffic (OPNsense will manage detailed rules via UI)
-        pass all
-        EOF
-        pfctl -f /tmp/pf.conf
+    - name: Set default gateway
+      ansible.builtin.raw: "route delete default 2>/dev/null; route add default {{ wan_gateway }}"
       changed_when: true
 
     - name: Enable IP forwarding
+      ansible.builtin.raw: "sysctl net.inet.ip.forwarding=1"
+      changed_when: true
+
+    - name: Configure NAT rules
+      ansible.builtin.raw: "echo 'nat on {{ wan_interface }} from {{ lan_network }}/{{ lan_subnet }} to any -> ({{ wan_interface }})' | pfctl -f - && pfctl -e 2>/dev/null || true"
+      changed_when: true
+
+    - name: Add startup script for persistence
       ansible.builtin.raw: |
+        cat > /usr/local/etc/rc.syshook.d/early/99-homelab.sh << 'EOF'
+        #!/bin/sh
+        # HomePractice network configuration
+        ifconfig vtnet1 10.10.10.1 netmask 255.255.255.0
+        route add default 192.168.1.254 2>/dev/null || true
         sysctl net.inet.ip.forwarding=1
+        echo 'nat on vtnet0 from 10.10.10.0/24 to any -> (vtnet0)' | pfctl -f -
+        pfctl -e 2>/dev/null || true
+        EOF
+        chmod +x /usr/local/etc/rc.syshook.d/early/99-homelab.sh
+        echo "Startup script created for persistence"
       changed_when: true
 
     - name: Verify configuration
       ansible.builtin.raw: |
         echo "=== Interface Configuration ==="
-        ifconfig {{ lan_interface }} | grep inet
+        ifconfig vtnet1 | grep inet
         echo "=== Routing Table ==="
         netstat -rn | grep default
         echo "=== NAT Rules ==="
-        pfctl -sn
+        pfctl -sn 2>/dev/null || echo "No NAT rules"
+        echo "=== Internet Test ==="
+        ping -c 1 8.8.8.8 && echo "Internet: OK" || echo "Internet: FAILED"
       register: verify_output
 
     - name: Display verification

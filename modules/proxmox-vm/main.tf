@@ -32,14 +32,68 @@ resource "proxmox_virtual_environment_file" "k3s_cloudinit" {
         package_update  = true
         package_upgrade = true
         packages        = ["curl", "open-iscsi", "nfs-common", "jq", "qemu-guest-agent"]
+        write_files = [{
+          path        = "/usr/local/bin/install-k3s.sh"
+          permissions = "0755"
+          content     = <<-EOF
+#!/bin/bash
+set -euo pipefail
+LOG=/var/log/k3s-install.log
+exec > >(tee -a $LOG) 2>&1
+echo "=== K3s Install Started $(date) ==="
+
+# Wait for network connectivity (up to 5 minutes)
+echo "Waiting for network connectivity..."
+for i in $(seq 1 60); do
+  if ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+    echo "Network is up after $i attempts"
+    break
+  fi
+  echo "Attempt $i: Network not ready, waiting..."
+  sleep 5
+done
+
+# Wait for DNS resolution
+echo "Waiting for DNS resolution..."
+for i in $(seq 1 30); do
+  if host github.com >/dev/null 2>&1 || nslookup github.com >/dev/null 2>&1; then
+    echo "DNS is working after $i attempts"
+    break
+  fi
+  echo "Attempt $i: DNS not ready, waiting..."
+  sleep 5
+done
+
+# Install K3s with retries
+echo "Installing K3s..."
+for i in $(seq 1 5); do
+  if curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='server --flannel-backend=none --disable-network-policy --disable-kube-proxy --disable servicelb --disable traefik --write-kubeconfig-mode 644' sh -; then
+    echo "K3s installed successfully on attempt $i"
+    break
+  fi
+  echo "K3s install attempt $i failed, retrying in 30s..."
+  sleep 30
+done
+
+# Wait for K3s API
+echo "Waiting for K3s API..."
+until /usr/local/bin/k3s kubectl get node; do sleep 5; done
+
+# Setup kubeconfig for user
+echo "Setting up kubeconfig..."
+mkdir -p /home/${var.username}/.kube
+cp /etc/rancher/k3s/k3s.yaml /home/${var.username}/.kube/config
+chown -R ${var.username}:${var.username} /home/${var.username}/.kube
+chmod 600 /home/${var.username}/.kube/config
+
+echo "=== K3s Install Complete $(date) ==="
+EOF
+        }]
         runcmd = [
+          "echo '127.0.0.1 $(hostname)' >> /etc/hosts",
           "systemctl enable qemu-guest-agent && systemctl start qemu-guest-agent",
           "mkdir -p /mnt/data/nexus && chown -R 200:200 /mnt/data/nexus",
-          "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='server --flannel-backend=none --disable-network-policy --disable-kube-proxy --disable servicelb --disable traefik --write-kubeconfig-mode 644' sh -",
-          "until /usr/local/bin/k3s kubectl get node; do sleep 5; done",
-          "mkdir -p /home/${var.username}/.kube",
-          "cp /etc/rancher/k3s/k3s.yaml /home/${var.username}/.kube/config",
-          "chown -R ${var.username}:${var.username} /home/${var.username}/.kube"
+          "/usr/local/bin/install-k3s.sh"
         ]
       })
     ])
