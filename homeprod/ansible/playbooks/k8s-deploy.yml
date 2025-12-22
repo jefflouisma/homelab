@@ -1,0 +1,104 @@
+---
+# Kubernetes Layer Deployment Playbook for HomeProd
+# Installs Terraform on K3s node and deploys Cilium, MetalLB, ArgoCD
+- name: Deploy Kubernetes Layer via Terraform
+  hosts: k3s
+  become: true
+  gather_facts: true
+
+  vars:
+    terraform_version: "1.9.8"
+    k8s_tf_dir: "/opt/homelab/kubernetes"
+
+  tasks:
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - unzip
+          - jq
+        state: present
+        update_cache: true
+
+    - name: Check if Terraform is installed
+      ansible.builtin.command: terraform version
+      register: tf_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Download Terraform
+      ansible.builtin.get_url:
+        url: "https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ terraform_version }}_linux_amd64.zip"
+        dest: /tmp/terraform.zip
+        mode: '0644'
+      when: tf_check.rc != 0
+
+    - name: Install Terraform
+      ansible.builtin.unarchive:
+        src: /tmp/terraform.zip
+        dest: /usr/local/bin
+        remote_src: true
+        mode: '0755'
+      when: tf_check.rc != 0
+
+    - name: Create Terraform directory
+      ansible.builtin.file:
+        path: "{{ k8s_tf_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy Terraform files
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ k8s_tf_dir }}/"
+        mode: '0644'
+      loop:
+        - "{{ playbook_dir }}/../../../homeprod/kubernetes/main.tf"
+        - "{{ playbook_dir }}/../../../homeprod/kubernetes/variables.tf"
+        - "{{ playbook_dir }}/../../../homeprod/kubernetes/outputs.tf"
+
+    - name: Create terraform.tfvars
+      ansible.builtin.copy:
+        content: |
+          kubeconfig_path = "/etc/rancher/k3s/k3s.yaml"
+          k8s_api_host    = "{{ ansible_default_ipv4.address | default('192.168.1.50') }}"
+        dest: "{{ k8s_tf_dir }}/terraform.tfvars"
+        mode: '0644'
+
+    - name: Initialize Terraform
+      ansible.builtin.command:
+        cmd: terraform init
+        chdir: "{{ k8s_tf_dir }}"
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: tf_init
+
+    - name: Display Terraform init output
+      ansible.builtin.debug:
+        var: tf_init.stdout_lines
+
+    - name: Apply Terraform (Cilium, MetalLB, ArgoCD)
+      ansible.builtin.command:
+        cmd: terraform apply -auto-approve
+        chdir: "{{ k8s_tf_dir }}"
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: tf_apply
+      async: 900
+      poll: 30
+
+    - name: Display Terraform apply output
+      ansible.builtin.debug:
+        var: tf_apply.stdout_lines
+
+    - name: Verify deployment
+      ansible.builtin.shell: |
+        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+        echo "=== Nodes ==="
+        kubectl get nodes
+        echo "=== Pods (all namespaces) ==="
+        kubectl get pods -A
+      register: verify
+
+    - name: Display cluster status
+      ansible.builtin.debug:
+        var: verify.stdout_lines

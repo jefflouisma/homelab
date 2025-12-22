@@ -67,9 +67,10 @@ resource "proxmox_virtual_environment_vm" "vm" {
     user_data_file_id = var.cloud_init_user_data_id
   }
 
-  # Agent
+  # Agent - enabled but don't wait for it
   agent {
     enabled = true
+    timeout = "60s"
   }
 
   # Start on boot
