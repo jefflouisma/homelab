@@ -37,3 +37,9 @@ variable "github_app_private_key" {
   sensitive   = true
   default     = ""
 }
+
+variable "k8s_api_host" {
+  description = "Kubernetes API server host IP"
+  type        = string
+  default     = "192.168.1.50"
+}

@@ -60,7 +60,7 @@ resource "helm_release" "cilium" {
   }
   set {
     name  = "k8sServiceHost"
-    value = "127.0.0.1"
+    value = var.k8s_api_host
   }
   set {
     name  = "k8sServicePort"
@@ -137,6 +137,34 @@ resource "kubectl_manifest" "metallb_l2_advertisement" {
   YAML
 
   depends_on = [kubectl_manifest.metallb_ip_pool]
+}
+
+# =============================================================================
+# CERT-MANAGER - Required for ARC webhooks
+# =============================================================================
+
+resource "helm_release" "cert_manager" {
+  name             = "cert-manager"
+  repository       = "https://charts.jetstack.io"
+  chart            = "cert-manager"
+  version          = "v1.14.4"
+  namespace        = "cert-manager"
+  create_namespace = true
+
+  set {
+    name  = "installCRDs"
+    value = "true"
+  }
+
+  depends_on = [time_sleep.wait_for_cilium]
+
+  timeout = 300
+  wait    = true
+}
+
+resource "time_sleep" "wait_for_cert_manager" {
+  depends_on      = [helm_release.cert_manager]
+  create_duration = "15s"
 }
 
 # =============================================================================
