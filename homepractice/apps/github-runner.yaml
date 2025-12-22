@@ -5,6 +5,8 @@ kind: RunnerDeployment
 metadata:
   name: homelab-practice-runner
   namespace: actions-runner-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   replicas: 1
   template:
@@ -31,6 +33,8 @@ kind: HorizontalRunnerAutoscaler
 metadata:
   name: homelab-practice-runner-autoscaler
   namespace: actions-runner-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   scaleTargetRef:
     kind: RunnerDeployment

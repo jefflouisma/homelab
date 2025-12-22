@@ -17,10 +17,11 @@
       register: wg_check
       changed_when: false
 
-    - name: Install WireGuard plugin if needed
+    - name: Install WireGuard plugin via OPNsense
       ansible.builtin.raw: |
-        pkg install -y wireguard-tools
+        pkg install -y os-wireguard || configctl firmware install os-wireguard
       when: "'NOT_INSTALLED' in wg_check.stdout"
+      ignore_errors: true
 
     - name: Generate WireGuard server keys
       ansible.builtin.raw: |
