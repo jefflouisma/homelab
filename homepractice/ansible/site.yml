@@ -1,0 +1,23 @@
+---
+# HomePractice Environment - Main Playbook
+# Orchestrates all configuration in correct order
+
+- name: Phase 1 - Configure OPNsense Firewall
+  import_playbook: playbooks/opnsense-configure.yml
+  tags: [opnsense, network]
+
+- name: Phase 2 - Bootstrap K3s Cluster
+  import_playbook: playbooks/k3s-bootstrap.yml
+  tags: [k3s, kubernetes]
+
+- name: Phase 3 - Cleanup stale K8s resources (if needed)
+  import_playbook: playbooks/k8s-cleanup.yml
+  tags: [cleanup, kubernetes]
+
+- name: Phase 4 - Deploy Kubernetes Layer (Cilium, MetalLB, ArgoCD)
+  import_playbook: playbooks/k8s-deploy.yml
+  tags: [deploy, kubernetes, terraform]
+
+- name: Phase 5 - Configure WireGuard VPN
+  import_playbook: playbooks/wireguard-setup.yml
+  tags: [wireguard, vpn]

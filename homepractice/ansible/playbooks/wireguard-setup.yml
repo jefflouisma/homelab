@@ -1,0 +1,90 @@
+---
+# WireGuard VPN Setup Playbook
+# Configures WireGuard server on OPNsense for remote access
+- name: Configure WireGuard VPN on OPNsense
+  hosts: opnsense
+  gather_facts: false
+
+  vars:
+    wg_server_privkey: ""  # Will be generated
+    wg_server_pubkey: ""   # Will be generated
+    wg_peer_pubkey: ""     # Client public key (set in group_vars)
+
+  tasks:
+    - name: Check if WireGuard plugin is installed
+      ansible.builtin.raw: |
+        pkg info | grep wireguard || echo "NOT_INSTALLED"
+      register: wg_check
+      changed_when: false
+
+    - name: Install WireGuard plugin if needed
+      ansible.builtin.raw: |
+        pkg install -y wireguard-tools
+      when: "'NOT_INSTALLED' in wg_check.stdout"
+
+    - name: Generate WireGuard server keys
+      ansible.builtin.raw: |
+        if [ ! -f /usr/local/etc/wireguard/server_private.key ]; then
+          mkdir -p /usr/local/etc/wireguard
+          wg genkey | tee /usr/local/etc/wireguard/server_private.key | wg pubkey > /usr/local/etc/wireguard/server_public.key
+          chmod 600 /usr/local/etc/wireguard/server_private.key
+        fi
+        cat /usr/local/etc/wireguard/server_private.key
+      register: server_privkey
+      changed_when: false
+
+    - name: Get server public key
+      ansible.builtin.raw: |
+        cat /usr/local/etc/wireguard/server_public.key
+      register: server_pubkey
+      changed_when: false
+
+    - name: Create WireGuard configuration
+      ansible.builtin.raw: |
+        cat > /usr/local/etc/wireguard/wg0.conf << 'EOF'
+        [Interface]
+        PrivateKey = {{ server_privkey.stdout | trim }}
+        Address = {{ wireguard_server_ip }}/24
+        ListenPort = {{ wireguard_port }}
+        
+        # Add peers below as needed
+        # [Peer]
+        # PublicKey = <client_public_key>
+        # AllowedIPs = 10.8.0.2/32
+        EOF
+        chmod 600 /usr/local/etc/wireguard/wg0.conf
+      changed_when: true
+
+    - name: Enable WireGuard interface
+      ansible.builtin.raw: |
+        wg-quick up wg0 2>/dev/null || wg-quick down wg0 && wg-quick up wg0
+      changed_when: true
+      ignore_errors: true
+
+    - name: Add firewall rule for WireGuard
+      ansible.builtin.raw: |
+        echo "pass in on {{ wan_interface | default('vtnet0') }} proto udp from any to any port {{ wireguard_port }}" | pfctl -a wireguard -f -
+      changed_when: true
+      ignore_errors: true
+
+    - name: Display WireGuard server info
+      ansible.builtin.debug:
+        msg: |
+          WireGuard Server Configuration:
+          ================================
+          Endpoint: {{ ansible_host }}:{{ wireguard_port }}
+          Server Public Key: {{ server_pubkey.stdout | trim }}
+          Server IP: {{ wireguard_server_ip }}
+          
+          Client Configuration Template:
+          ================================
+          [Interface]
+          PrivateKey = <your_private_key>
+          Address = 10.8.0.2/24
+          DNS = {{ lan_ip }}
+          
+          [Peer]
+          PublicKey = {{ server_pubkey.stdout | trim }}
+          Endpoint = <your_public_ip>:{{ wireguard_port }}
+          AllowedIPs = {{ lan_ip | regex_replace('\\.[0-9]+$', '.0') }}/24, {{ wireguard_subnet }}
+          PersistentKeepalive = 25

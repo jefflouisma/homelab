@@ -1,0 +1,26 @@
+---
+# HomePractice Environment Variables
+
+# Network Configuration
+lan_ip: "10.10.10.1"
+lan_subnet: "24"
+lan_gateway: "192.168.1.254"
+dhcp_start: "10.10.10.100"
+dhcp_end: "10.10.10.199"
+
+# WireGuard VPN
+wireguard_port: 51820
+wireguard_subnet: "10.8.0.0/24"
+wireguard_server_ip: "10.8.0.1"
+
+# K3s Configuration
+k3s_version: "v1.33.6+k3s1"
+k3s_disable:
+  - traefik
+  - servicelb
+  - flannel
+  - network-policy
+  - kube-proxy
+
+# MetalLB IP Range
+metallb_ip_range: "10.10.10.200-10.10.10.250"

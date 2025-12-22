@@ -1,0 +1,80 @@
+---
+# K3s Bootstrap Playbook
+# Installs K3s with disabled components for Cilium CNI
+- name: Bootstrap K3s Cluster
+  hosts: k3s
+  become: true
+  gather_facts: true
+
+  vars:
+    k3s_install_options: >-
+      --disable traefik
+      --disable servicelb
+      --flannel-backend=none
+      --disable-network-policy
+      --disable-kube-proxy
+
+  tasks:
+    - name: Check if K3s is already installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s
+      register: k3s_binary
+
+    - name: Install K3s
+      when: not k3s_binary.stat.exists
+      block:
+        - name: Download and install K3s
+          ansible.builtin.shell: |
+            curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='{{ k3s_install_options }}' sh -
+          args:
+            creates: /usr/local/bin/k3s
+
+    - name: Wait for K3s to be ready
+      ansible.builtin.wait_for:
+        path: /etc/rancher/k3s/k3s.yaml
+        state: present
+        timeout: 120
+
+    - name: Create .kube directory for ubuntu user
+      ansible.builtin.file:
+        path: /home/ubuntu/.kube
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Copy kubeconfig to ubuntu user
+      ansible.builtin.copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: /home/ubuntu/.kube/config
+        remote_src: true
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+
+    - name: Update kubeconfig server address
+      ansible.builtin.replace:
+        path: /home/ubuntu/.kube/config
+        regexp: '127.0.0.1'
+        replace: '{{ ansible_host }}'
+
+    - name: Get kubeconfig content
+      ansible.builtin.slurp:
+        src: /home/ubuntu/.kube/config
+      register: kubeconfig_content
+
+    - name: Save kubeconfig locally
+      ansible.builtin.copy:
+        content: "{{ kubeconfig_content.content | b64decode }}"
+        dest: "{{ playbook_dir }}/../../../kubeconfig-homepractice.yaml"
+      delegate_to: localhost
+      become: false
+
+    - name: Verify K3s status
+      ansible.builtin.command: kubectl get nodes
+      register: k3s_nodes
+      changed_when: false
+
+    - name: Display K3s nodes
+      ansible.builtin.debug:
+        var: k3s_nodes.stdout_lines

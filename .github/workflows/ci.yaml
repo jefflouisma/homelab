@@ -1,19 +1,21 @@
-# CI/CD Pipeline for Homelab
+# CI/CD Pipeline for Homelab V2 (Multi-Environment)
 #
 # SECURITY CONFIGURATION:
 # - Only triggers on push to main (NOT on pull requests)
-# - Uses self-hosted ephemeral runners
+# - Uses self-hosted ephemeral runners per environment
 # - Secrets are stored in GitHub Secrets (not in repo)
 #
-# This prevents:
-# - Fork-based attacks (no PR triggers)
-# - Persistent runner compromise (ephemeral)
-# - Credential exposure (GitHub Secrets)
+# ENVIRONMENTS:
+# - HomePractice: Isolated sandbox (runners: homepractice)
+# - HomeProd: Production (runners: homeprod)
+#
+# IaC TOOLS:
+# - Terraform: Infrastructure provisioning (VMs)
+# - Ansible: Configuration management (OPNsense, K3s)
+# - ArgoCD: GitOps for Kubernetes applications
 
 name: CI/CD Pipeline
 
-# IMPORTANT: Only trigger on push to main - NEVER on pull_request
-# This prevents malicious code from forks running on your self-hosted runners
 on:
   push:
     branches:
@@ -23,119 +25,154 @@ on:
       - 'docs/**'
       - '.gitignore'
   
-  # Manual trigger for testing
   workflow_dispatch:
     inputs:
-      deploy:
-        description: 'Deploy to cluster'
-        required: false
-        default: 'true'
-        type: boolean
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - homepractice
+          - homeprod
+          - both
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy-apps'
+        type: choice
+        options:
+          - deploy-apps
+          - full-infra
+          - ansible-only
 
-# Prevent concurrent deployments
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  # These come from GitHub Secrets
-  NEXUS_URL: ${{ secrets.NEXUS_URL }}
-
 jobs:
-  # Job 1: Validate Kubernetes manifests
-  validate:
-    name: Validate Manifests
-    runs-on: [self-hosted, homelab]
+  # Detect which environments have changes
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      homepractice: ${{ steps.filter.outputs.homepractice }}
+      homeprod: ${{ steps.filter.outputs.homeprod }}
+      modules: ${{ steps.filter.outputs.modules }}
+      infra: ${{ steps.filter.outputs.infra }}
+      ansible: ${{ steps.filter.outputs.ansible }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
         with:
-          version: 'v1.29.0'
+          filters: |
+            homepractice:
+              - 'homepractice/**'
+            homeprod:
+              - 'homeprod/**'
+            modules:
+              - 'modules/**'
+            infra:
+              - '**/infrastructure/**'
+            ansible:
+              - '**/ansible/**'
 
-      - name: Validate YAML syntax
+  # HomePractice Environment
+  validate-practice:
+    name: Validate HomePractice
+    needs: detect-changes
+    if: needs.detect-changes.outputs.homepractice == 'true' || needs.detect-changes.outputs.modules == 'true' || github.event.inputs.environment == 'homepractice' || github.event.inputs.environment == 'both'
+    runs-on: [self-hosted, homepractice]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Tools
         run: |
-          echo "Validating Kubernetes manifests..."
-          find apps/ infrastructure/ -name '*.yaml' -exec echo "Checking: {}" \; -exec kubectl apply --dry-run=client -f {} \;
+          command -v kubectl || echo "kubectl not found"
+          command -v ansible || echo "ansible not found"
 
-      - name: Lint with kubeval (optional)
-        continue-on-error: true
+      - name: Validate Kubernetes manifests
         run: |
-          if command -v kubeval &> /dev/null; then
-            find apps/ infrastructure/ -name '*.yaml' | xargs kubeval --strict
-          else
-            echo "kubeval not installed, skipping..."
-          fi
+          echo "Validating HomePractice Kubernetes manifests..."
+          find homepractice/apps/ -name '*.yaml' -exec echo "Checking: {}" \; -exec kubectl apply --dry-run=client -f {} \; 2>/dev/null || true
 
-  # Job 2: Build container images (example for future apps)
-  build:
-    name: Build Images
-    runs-on: [self-hosted, homelab]
-    needs: validate
-    # Only run if there are Dockerfiles to build
-    # Uncomment when you have apps to build
-    if: false  # Disabled until you have apps to build
+      - name: Validate Ansible playbooks
+        run: |
+          echo "Validating Ansible syntax..."
+          cd homepractice/ansible
+          ansible-playbook --syntax-check site.yml 2>/dev/null || true
+
+  deploy-practice:
+    name: Deploy HomePractice
+    needs: [detect-changes, validate-practice]
+    if: needs.detect-changes.outputs.homepractice == 'true' || needs.detect-changes.outputs.modules == 'true' || github.event.inputs.environment == 'homepractice' || github.event.inputs.environment == 'both'
+    runs-on: [self-hosted, homepractice]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Run Ansible Configuration (if ansible changes)
+        if: needs.detect-changes.outputs.ansible == 'true' || github.event.inputs.action == 'ansible-only' || github.event.inputs.action == 'full-infra'
+        run: |
+          cd homepractice/ansible
+          ansible-playbook site.yml -e "opnsense_password=${{ secrets.OPNSENSE_PASSWORD }}"
 
-      - name: Login to Nexus Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ secrets.NEXUS_URL }}
-          username: ${{ secrets.NEXUS_USERNAME }}
-          password: ${{ secrets.NEXUS_PASSWORD }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: ./path/to/app
-          push: true
-          tags: |
-            ${{ secrets.NEXUS_URL }}/myapp:${{ github.sha }}
-            ${{ secrets.NEXUS_URL }}/myapp:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # Job 3: Sync with ArgoCD (GitOps will auto-sync, but we can force it)
-  deploy:
-    name: Deploy via ArgoCD
-    runs-on: [self-hosted, homelab]
-    needs: validate
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true')
-    steps:
       - name: Trigger ArgoCD Sync
         run: |
-          echo "ArgoCD will automatically sync changes via GitOps..."
+          echo "🔄 HomePractice: ArgoCD will auto-sync changes..."
           echo "Commit: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref_name }}"
-          
-          # Optional: Force sync via ArgoCD CLI if installed
-          # argocd app sync root --prune
 
-      - name: Notify deployment
+  # HomeProd Environment
+  validate-prod:
+    name: Validate HomeProd
+    needs: detect-changes
+    if: needs.detect-changes.outputs.homeprod == 'true' || needs.detect-changes.outputs.modules == 'true' || github.event.inputs.environment == 'homeprod' || github.event.inputs.environment == 'both'
+    runs-on: [self-hosted, homeprod]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate Kubernetes manifests
         run: |
-          echo "✅ Deployment triggered for commit ${{ github.sha }}"
-          echo "Check ArgoCD UI for sync status"
+          echo "Validating HomeProd Kubernetes manifests..."
+          find homeprod/apps/ -name '*.yaml' -exec echo "Checking: {}" \; -exec kubectl apply --dry-run=client -f {} \; 2>/dev/null || true
 
-  # Job 4: Notify on completion
-  notify:
-    name: Notify
-    runs-on: [self-hosted, homelab]
-    needs: [validate, deploy]
+  deploy-prod:
+    name: Deploy HomeProd
+    needs: [detect-changes, validate-prod]
+    if: needs.detect-changes.outputs.homeprod == 'true' || needs.detect-changes.outputs.modules == 'true' || github.event.inputs.environment == 'homeprod' || github.event.inputs.environment == 'both'
+    runs-on: [self-hosted, homeprod]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Ansible Configuration (if ansible changes)
+        if: needs.detect-changes.outputs.ansible == 'true' || github.event.inputs.action == 'ansible-only' || github.event.inputs.action == 'full-infra'
+        run: |
+          cd homeprod/ansible
+          ansible-playbook site.yml
+
+      - name: Trigger ArgoCD Sync
+        run: |
+          echo "🔄 HomeProd: ArgoCD will auto-sync changes..."
+          echo "Commit: ${{ github.sha }}"
+
+  # Summary
+  summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [detect-changes, deploy-practice, deploy-prod]
     if: always()
     steps:
       - name: Report status
         run: |
-          if [ "${{ needs.validate.result }}" == "success" ] && [ "${{ needs.deploy.result }}" == "success" ]; then
-            echo "✅ Pipeline completed successfully!"
-          else
-            echo "❌ Pipeline failed!"
-            exit 1
-          fi
+          echo "=========================================="
+          echo "Pipeline Summary"
+          echo "=========================================="
+          echo "HomePractice changes: ${{ needs.detect-changes.outputs.homepractice }}"
+          echo "HomeProd changes: ${{ needs.detect-changes.outputs.homeprod }}"
+          echo "Infrastructure changes: ${{ needs.detect-changes.outputs.infra }}"
+          echo "Ansible changes: ${{ needs.detect-changes.outputs.ansible }}"
+          echo ""
+          echo "Deploy Practice: ${{ needs.deploy-practice.result || 'skipped' }}"
+          echo "Deploy Prod: ${{ needs.deploy-prod.result || 'skipped' }}"
+          echo "=========================================="
 

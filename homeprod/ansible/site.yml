@@ -1,0 +1,7 @@
+---
+# HomeProd Environment - Main Playbook
+# Orchestrates all configuration in correct order
+
+- name: Bootstrap K3s Cluster
+  import_playbook: playbooks/k3s-bootstrap.yml
+  tags: [k3s, kubernetes]

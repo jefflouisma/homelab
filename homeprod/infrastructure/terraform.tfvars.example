@@ -1,0 +1,22 @@
+# HomeProd Infrastructure - Terraform Variables
+# Copy this to terraform.tfvars and fill in your values
+# DO NOT commit terraform.tfvars to git!
+
+# Proxmox API Configuration
+proxmox_api_url          = "https://192.168.1.228:8006/api2/json"
+proxmox_api_token_id     = "root@pam!root-api"
+proxmox_api_token_secret = "your-api-token-secret-here"
+
+# Proxmox Node
+proxmox_node = "pve"
+
+# Storage
+datastore_id = "local-lvm"
+
+# ISO/Image IDs (check Proxmox UI for exact paths)
+ubuntu_cloud_image_id = "local:iso/ubuntu-24.04-server-cloudimg-amd64.img"
+
+# SSH Keys for VM access
+ssh_public_keys = [
+  "ssh-rsa AAAA... your-key-here"
+]

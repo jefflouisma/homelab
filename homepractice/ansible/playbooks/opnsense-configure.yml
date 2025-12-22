@@ -1,0 +1,51 @@
+---
+# OPNsense Configuration Playbook
+# Configures: Interface IPs, NAT, DHCP, Firewall Rules
+- name: Configure OPNsense Firewall
+  hosts: opnsense
+  gather_facts: false
+  vars:
+    wan_interface: vtnet0
+    lan_interface: vtnet1
+
+  tasks:
+    - name: Add LAN IP to isolated interface
+      ansible.builtin.raw: |
+        ifconfig {{ lan_interface }} {{ lan_ip }} netmask 255.255.255.0 alias
+      changed_when: true
+
+    - name: Add default gateway for internet access
+      ansible.builtin.raw: |
+        route add default {{ lan_gateway }} 2>/dev/null || true
+      changed_when: true
+
+    - name: Configure NAT and firewall rules
+      ansible.builtin.raw: |
+        cat > /tmp/pf.conf << 'EOF'
+        # NAT for isolated network
+        nat on {{ wan_interface }} from {{ lan_ip | regex_replace('\\.[0-9]+$', '.0') }}/{{ lan_subnet }} to any -> ({{ wan_interface }})
+        
+        # Pass all traffic (OPNsense will manage detailed rules via UI)
+        pass all
+        EOF
+        pfctl -f /tmp/pf.conf
+      changed_when: true
+
+    - name: Enable IP forwarding
+      ansible.builtin.raw: |
+        sysctl net.inet.ip.forwarding=1
+      changed_when: true
+
+    - name: Verify configuration
+      ansible.builtin.raw: |
+        echo "=== Interface Configuration ==="
+        ifconfig {{ lan_interface }} | grep inet
+        echo "=== Routing Table ==="
+        netstat -rn | grep default
+        echo "=== NAT Rules ==="
+        pfctl -sn
+      register: verify_output
+
+    - name: Display verification
+      ansible.builtin.debug:
+        var: verify_output.stdout_lines

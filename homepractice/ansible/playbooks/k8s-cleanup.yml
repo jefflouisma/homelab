@@ -1,0 +1,51 @@
+---
+# Kubernetes Cleanup Playbook
+# Cleans up stale Helm releases and stuck namespaces before Terraform deployment
+- name: Clean up stale Kubernetes resources
+  hosts: k3s
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Remove stale Cilium Helm secrets
+      ansible.builtin.shell: |
+        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+        kubectl delete secret -n kube-system -l owner=helm,name=cilium --ignore-not-found=true
+      register: helm_cleanup
+      changed_when: "'deleted' in helm_cleanup.stdout"
+
+    - name: Force delete stuck cilium-secrets namespace
+      ansible.builtin.shell: |
+        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+        if kubectl get ns cilium-secrets 2>/dev/null; then
+          kubectl get ns cilium-secrets -o json | \
+            jq '.spec.finalizers=[]' | \
+            kubectl replace --raw /api/v1/namespaces/cilium-secrets/finalize -f -
+        fi
+      register: ns_cleanup
+      changed_when: "'cilium-secrets' in ns_cleanup.stdout"
+      ignore_errors: true
+
+    - name: Delete any stuck Cilium resources
+      ansible.builtin.shell: |
+        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+        helm uninstall cilium -n kube-system 2>/dev/null || true
+        kubectl delete crd -l app.kubernetes.io/part-of=cilium --ignore-not-found=true
+      register: crd_cleanup
+      changed_when: "'deleted' in crd_cleanup.stdout"
+      ignore_errors: true
+
+    - name: Verify cluster is clean
+      ansible.builtin.shell: |
+        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+        echo "=== Helm releases in kube-system ==="
+        helm list -n kube-system
+        echo "=== Namespaces ==="
+        kubectl get ns
+        echo "=== Pods in kube-system ==="
+        kubectl get pods -n kube-system
+      register: cluster_state
+
+    - name: Display cluster state
+      ansible.builtin.debug:
+        var: cluster_state.stdout_lines

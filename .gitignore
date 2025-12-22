@@ -1,9 +1,15 @@
-# Terraform files
-terraform/.terraform/
-terraform/terraform.tfstate
-terraform/terraform.tfstate.backup
-terraform/terraform.tfvars
-terraform/.terraform.lock.hcl
+# Terraform files (all environments)
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+*.tfvars
+
+# Kubeconfig files (sensitive)
+kubeconfig-*.yaml
+
+# Legacy terraform directory (to be removed after migration)
+terraform/
 
 # Sensitive files - NEVER commit these
 *.pem
