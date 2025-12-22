@@ -49,7 +49,7 @@ module "prod_k3s" {
   ]
 
   ip_address = "192.168.1.50/24"
-  gateway    = "192.168.1.1"
+  gateway    = "192.168.1.254"
   username   = "ubuntu"
   ssh_keys   = var.ssh_public_keys
 

@@ -19,20 +19,30 @@ resource "proxmox_virtual_environment_file" "k3s_cloudinit" {
   node_name    = var.proxmox_node
 
   source_raw {
-    data = yamlencode({
-      package_update  = true
-      package_upgrade = true
-      packages        = ["curl", "open-iscsi", "nfs-common", "jq", "qemu-guest-agent"]
-      runcmd = [
-        "systemctl enable qemu-guest-agent && systemctl start qemu-guest-agent",
-        "mkdir -p /mnt/data/nexus && chown -R 200:200 /mnt/data/nexus",
-        "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='server --flannel-backend=none --disable-network-policy --disable-kube-proxy --disable servicelb --disable traefik --write-kubeconfig-mode 644' sh -",
-        "until /usr/local/bin/k3s kubectl get node; do sleep 5; done",
-        "mkdir -p /home/${var.username}/.kube",
-        "cp /etc/rancher/k3s/k3s.yaml /home/${var.username}/.kube/config",
-        "chown -R ${var.username}:${var.username} /home/${var.username}/.kube"
-      ]
-    })
+    data = join("\n", [
+      "#cloud-config",
+      yamlencode({
+        users = [{
+          name   = var.username
+          sudo   = "ALL=(ALL) NOPASSWD:ALL"
+          shell  = "/bin/bash"
+          groups = ["sudo", "adm"]
+          ssh_authorized_keys = var.ssh_keys
+        }]
+        package_update  = true
+        package_upgrade = true
+        packages        = ["curl", "open-iscsi", "nfs-common", "jq", "qemu-guest-agent"]
+        runcmd = [
+          "systemctl enable qemu-guest-agent && systemctl start qemu-guest-agent",
+          "mkdir -p /mnt/data/nexus && chown -R 200:200 /mnt/data/nexus",
+          "curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='server --flannel-backend=none --disable-network-policy --disable-kube-proxy --disable servicelb --disable traefik --write-kubeconfig-mode 644' sh -",
+          "until /usr/local/bin/k3s kubectl get node; do sleep 5; done",
+          "mkdir -p /home/${var.username}/.kube",
+          "cp /etc/rancher/k3s/k3s.yaml /home/${var.username}/.kube/config",
+          "chown -R ${var.username}:${var.username} /home/${var.username}/.kube"
+        ]
+      })
+    ])
     file_name = "${var.vm_name}-cloudinit.yaml"
   }
 }

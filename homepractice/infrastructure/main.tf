@@ -89,7 +89,7 @@ module "practice_k3s" {
   tags         = ["terraform", "homepractice", "kubernetes"]
 
   cpu_cores    = 4
-  memory_mb    = 16384
+  memory_mb    = 32768
   disk_size_gb = 100
 
   datastore_id   = var.datastore_id
