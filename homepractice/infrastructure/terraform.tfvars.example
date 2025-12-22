@@ -3,17 +3,16 @@
 # DO NOT commit terraform.tfvars to git!
 
 # Proxmox API Configuration
-proxmox_api_url          = "https://192.168.1.228:8006/api2/json"
-proxmox_api_token_id     = "root@pam!root-api"
-proxmox_api_token_secret = "your-api-token-secret-here"
-
-# Proxmox Node
-proxmox_node = "pve"
+proxmox_api_url          = "https://192.168.1.30:8006/api2/json"
+proxmox_api_token_id     = "root@pam!terraform"
+proxmox_api_token_secret = "your-proxmox-api-token-secret"
+proxmox_host             = "192.168.1.30"
+proxmox_node             = "g913-proxmox"
 
 # Storage
 datastore_id = "local-lvm"
 
-# ISO/Image IDs (check Proxmox UI for exact paths)
+# ISO/Image IDs
 opnsense_iso_id       = "local:iso/OPNsense-24.7-dvd-amd64.iso"
 ubuntu_cloud_image_id = "local:iso/ubuntu-24.04-server-cloudimg-amd64.img"
 
@@ -21,3 +20,23 @@ ubuntu_cloud_image_id = "local:iso/ubuntu-24.04-server-cloudimg-amd64.img"
 ssh_public_keys = [
   "ssh-rsa AAAA... your-key-here"
 ]
+
+# =============================================================================
+# OPNsense API Credentials
+# =============================================================================
+# These are injected into config.xml for initial boot and used by the
+# OPNsense Terraform layer for post-boot configuration.
+#
+# Generate new credentials with:
+#   API_KEY=$(openssl rand -hex 20)
+#   API_SECRET=$(openssl rand -hex 20)
+#   API_SECRET_HASH=$(openssl passwd -6 "$API_SECRET")
+#
+opnsense_api_key         = "your-40-char-api-key"
+opnsense_api_secret      = "your-40-char-api-secret-plaintext"
+opnsense_api_secret_hash = "$6$salt$hashedvalue"
+
+# OPNsense Network Configuration (defaults should work for HomePractice)
+# opnsense_wan_ip      = "192.168.1.1"
+# opnsense_wan_gateway = "192.168.1.254"
+# opnsense_lan_ip      = "10.10.10.1"

@@ -42,3 +42,49 @@ variable "ssh_public_keys" {
   description = "List of SSH public keys for VM access"
   type        = list(string)
 }
+
+# =============================================================================
+# OPNsense Configuration Variables
+# =============================================================================
+
+variable "proxmox_host" {
+  description = "Proxmox host IP for SSH connection"
+  type        = string
+  default     = "192.168.1.30"
+}
+
+variable "opnsense_api_key" {
+  description = "OPNsense API key (injected via config.xml)"
+  type        = string
+  sensitive   = true
+}
+
+variable "opnsense_api_secret" {
+  description = "OPNsense API secret (plain text, used by Terraform provider)"
+  type        = string
+  sensitive   = true
+}
+
+variable "opnsense_api_secret_hash" {
+  description = "OPNsense API secret (SHA-512 hash for config.xml)"
+  type        = string
+  sensitive   = true
+}
+
+variable "opnsense_wan_ip" {
+  description = "OPNsense WAN interface IP"
+  type        = string
+  default     = "192.168.1.1"
+}
+
+variable "opnsense_wan_gateway" {
+  description = "OPNsense WAN gateway"
+  type        = string
+  default     = "192.168.1.254"
+}
+
+variable "opnsense_lan_ip" {
+  description = "OPNsense LAN interface IP"
+  type        = string
+  default     = "10.10.10.1"
+}

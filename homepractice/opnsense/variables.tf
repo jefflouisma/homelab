@@ -1,4 +1,5 @@
 # HomePractice OPNsense Configuration Variables
+# These credentials must match what was injected via config.xml in the infrastructure layer
 
 variable "opnsense_url" {
   description = "OPNsense API URL"
@@ -7,13 +8,13 @@ variable "opnsense_url" {
 }
 
 variable "opnsense_api_key" {
-  description = "OPNsense API key"
+  description = "OPNsense API key (same as infrastructure layer)"
   type        = string
   sensitive   = true
 }
 
 variable "opnsense_api_secret" {
-  description = "OPNsense API secret"
+  description = "OPNsense API secret - plain text (same as infrastructure layer)"
   type        = string
   sensitive   = true
 }

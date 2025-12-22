@@ -33,12 +33,75 @@ provider "proxmox" {
 }
 
 # =============================================================================
-# OPNsense Firewall VM
+# OPNsense Configuration - USB-based Importer
 # =============================================================================
-# Note: OPNsense requires initial installation from ISO.
-# After installation, configuration is managed via opnsense-config module.
+# OPNsense Importer detects /conf/config.xml on attached FAT disk at first boot.
+# This injects: interfaces, gateway, NAT, firewall rules, and API credentials.
+# Post-boot configuration is managed via OPNsense Terraform provider.
 
+# Render config.xml template with API credentials
+locals {
+  opnsense_config = templatefile("${path.module}/opnsense-config.xml.tpl", {
+    api_key            = var.opnsense_api_key
+    api_secret_hash    = var.opnsense_api_secret_hash
+    wan_ip             = var.opnsense_wan_ip
+    wan_subnet         = "24"
+    wan_gateway        = var.opnsense_wan_gateway
+    lan_ip             = var.opnsense_lan_ip
+    lan_subnet         = "24"
+    management_network = "192.168.1.0/24"
+  })
+}
+
+# Upload rendered config.xml to Proxmox
+resource "proxmox_virtual_environment_file" "opnsense_config" {
+  content_type = "snippets"
+  datastore_id = "local"
+  node_name    = var.proxmox_node
+
+  source_raw {
+    data      = local.opnsense_config
+    file_name = "opnsense-config.xml"
+  }
+}
+
+# Create FAT-formatted config disk on Proxmox host
+resource "null_resource" "opnsense_config_disk" {
+  depends_on = [proxmox_virtual_environment_file.opnsense_config]
+
+  triggers = {
+    config_hash = sha256(local.opnsense_config)
+  }
+
+  connection {
+    type        = "ssh"
+    host        = var.proxmox_host
+    user        = "root"
+    private_key = file("~/.ssh/id_cloudstack_ed25519")
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -e",
+      "echo 'Creating OPNsense config disk for Importer...'",
+      "rm -f /var/lib/vz/images/opnsense-config.raw",
+      "dd if=/dev/zero of=/var/lib/vz/images/opnsense-config.raw bs=1M count=8 2>/dev/null",
+      "mkfs.vfat -n CONFIG /var/lib/vz/images/opnsense-config.raw",
+      "mkdir -p /tmp/opnsense-cfg",
+      "mount -o loop /var/lib/vz/images/opnsense-config.raw /tmp/opnsense-cfg",
+      "mkdir -p /tmp/opnsense-cfg/conf",
+      "cp /var/lib/vz/snippets/opnsense-config.xml /tmp/opnsense-cfg/conf/config.xml",
+      "sync",
+      "umount /tmp/opnsense-cfg",
+      "rmdir /tmp/opnsense-cfg",
+      "echo 'Config disk ready at /var/lib/vz/images/opnsense-config.raw'"
+    ]
+  }
+}
+
+# OPNsense Firewall VM
 resource "proxmox_virtual_environment_vm" "opnsense" {
+  depends_on = [null_resource.opnsense_config_disk]
   name      = "practice-opnsense"
   node_name = var.proxmox_node
   vm_id     = 200
@@ -62,6 +125,7 @@ resource "proxmox_virtual_environment_vm" "opnsense" {
     interface = "ide2"
   }
 
+  # Main OS disk
   disk {
     datastore_id = var.datastore_id
     interface    = "scsi0"
@@ -85,6 +149,32 @@ resource "proxmox_virtual_environment_vm" "opnsense" {
   }
 
   on_boot = true
+}
+
+# Attach config disk to OPNsense VM for Importer
+resource "null_resource" "attach_config_disk" {
+  depends_on = [proxmox_virtual_environment_vm.opnsense]
+
+  triggers = {
+    vm_id       = proxmox_virtual_environment_vm.opnsense.vm_id
+    config_hash = sha256(local.opnsense_config)
+  }
+
+  connection {
+    type        = "ssh"
+    host        = var.proxmox_host
+    user        = "root"
+    private_key = file("~/.ssh/id_cloudstack_ed25519")
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -e",
+      "echo 'Attaching config disk to OPNsense VM...'",
+      "qm set 200 --scsi1 local:0,import-from=/var/lib/vz/images/opnsense-config.raw,format=raw",
+      "echo 'Config disk attached as scsi1'"
+    ]
+  }
 }
 
 # K3s VM using shared module
