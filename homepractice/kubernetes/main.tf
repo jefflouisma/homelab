@@ -140,6 +140,34 @@ resource "kubectl_manifest" "metallb_l2_advertisement" {
 }
 
 # =============================================================================
+# CERT-MANAGER - Required for ARC webhooks
+# =============================================================================
+
+resource "helm_release" "cert_manager" {
+  name             = "cert-manager"
+  repository       = "https://charts.jetstack.io"
+  chart            = "cert-manager"
+  version          = "v1.14.4"
+  namespace        = "cert-manager"
+  create_namespace = true
+
+  set {
+    name  = "installCRDs"
+    value = "true"
+  }
+
+  depends_on = [time_sleep.wait_for_cilium]
+
+  timeout = 300
+  wait    = true
+}
+
+resource "time_sleep" "wait_for_cert_manager" {
+  depends_on      = [helm_release.cert_manager]
+  create_duration = "15s"
+}
+
+# =============================================================================
 # ARGOCD - GitOps Controller
 # =============================================================================
 
