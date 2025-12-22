@@ -1,25 +1,31 @@
 ---
-# OPNsense Configuration Playbook
-# Configures: Interface IPs, NAT, Gateway
-- name: Configure OPNsense Firewall
+# OPNsense Bootstrap Playbook
+# Purpose: Minimal runtime config to enable API access for Terraform
+# 
+# IMPORTANT: This playbook only sets up the minimal network configuration
+# needed for the OPNsense Terraform provider to take over. All persistent
+# configuration is managed declaratively via:
+#   homepractice/opnsense/main.tf
+#
+# After initial OPNsense installation, you must:
+# 1. Run this playbook to enable basic connectivity
+# 2. Create API key in OPNsense UI: System > Access > Users > root > API keys
+# 3. Run: cd ../opnsense && terraform apply
+
+- name: Bootstrap OPNsense for Terraform management
   hosts: opnsense
   gather_facts: false
   vars:
-    wan_interface: vtnet0
     lan_interface: vtnet1
-    wan_ip: "192.168.1.1"
-    wan_subnet: "24"
-    wan_gateway: "192.168.1.254"
     lan_ip: "10.10.10.1"
-    lan_subnet: "24"
-    lan_network: "10.10.10.0"
+    wan_gateway: "192.168.1.254"
 
   tasks:
-    - name: Configure LAN interface
+    - name: Configure LAN interface for K3s access
       ansible.builtin.raw: "ifconfig {{ lan_interface }} {{ lan_ip }} netmask 255.255.255.0"
       changed_when: true
 
-    - name: Set default gateway
+    - name: Set default gateway for internet access
       ansible.builtin.raw: "route delete default 2>/dev/null; route add default {{ wan_gateway }}"
       changed_when: true
 
@@ -27,37 +33,23 @@
       ansible.builtin.raw: "sysctl net.inet.ip.forwarding=1"
       changed_when: true
 
-    - name: Configure NAT rules
-      ansible.builtin.raw: "echo 'nat on {{ wan_interface }} from {{ lan_network }}/{{ lan_subnet }} to any -> ({{ wan_interface }})' | pfctl -f - && pfctl -e 2>/dev/null || true"
+    - name: Enable basic NAT for K3s internet access
+      ansible.builtin.raw: "echo 'nat on vtnet0 from 10.10.10.0/24 to any -> (vtnet0)' | pfctl -f - && pfctl -e 2>/dev/null || true"
       changed_when: true
 
-    - name: Add startup script for persistence
+    - name: Verify bootstrap configuration
       ansible.builtin.raw: |
-        cat > /usr/local/etc/rc.syshook.d/early/99-homelab.sh << 'EOF'
-        #!/bin/sh
-        # HomePractice network configuration
-        ifconfig vtnet1 10.10.10.1 netmask 255.255.255.0
-        route add default 192.168.1.254 2>/dev/null || true
-        sysctl net.inet.ip.forwarding=1
-        echo 'nat on vtnet0 from 10.10.10.0/24 to any -> (vtnet0)' | pfctl -f -
-        pfctl -e 2>/dev/null || true
-        EOF
-        chmod +x /usr/local/etc/rc.syshook.d/early/99-homelab.sh
-        echo "Startup script created for persistence"
-      changed_when: true
+        echo "=== Bootstrap Status ==="
+        echo "LAN IP: $(ifconfig vtnet1 | grep 'inet ' | awk '{print $2}')"
+        echo "Gateway: $(netstat -rn | grep default | awk '{print $2}')"
+        echo "Internet: $(ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1 && echo 'OK' || echo 'FAILED')"
+        echo ""
+        echo "=== Next Steps ==="
+        echo "1. Create API key in OPNsense: System > Access > Users > root > API keys"
+        echo "2. Add credentials to homepractice/opnsense/terraform.tfvars"
+        echo "3. Run: cd homepractice/opnsense && terraform init && terraform apply"
+      register: status
 
-    - name: Verify configuration
-      ansible.builtin.raw: |
-        echo "=== Interface Configuration ==="
-        ifconfig vtnet1 | grep inet
-        echo "=== Routing Table ==="
-        netstat -rn | grep default
-        echo "=== NAT Rules ==="
-        pfctl -sn 2>/dev/null || echo "No NAT rules"
-        echo "=== Internet Test ==="
-        ping -c 1 8.8.8.8 && echo "Internet: OK" || echo "Internet: FAILED"
-      register: verify_output
-
-    - name: Display verification
+    - name: Display status
       ansible.builtin.debug:
-        var: verify_output.stdout_lines
+        var: status.stdout_lines

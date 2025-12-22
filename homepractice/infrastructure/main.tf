@@ -9,6 +9,10 @@ terraform {
       source  = "bpg/proxmox"
       version = "~> 0.70"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
+    }
   }
 
   backend "local" {
@@ -28,7 +32,12 @@ provider "proxmox" {
   }
 }
 
+# =============================================================================
 # OPNsense Firewall VM
+# =============================================================================
+# Note: OPNsense requires initial installation from ISO.
+# After installation, configuration is managed via opnsense-config module.
+
 resource "proxmox_virtual_environment_vm" "opnsense" {
   name      = "practice-opnsense"
   node_name = var.proxmox_node
@@ -61,12 +70,12 @@ resource "proxmox_virtual_environment_vm" "opnsense" {
     ssd          = true
   }
 
-  # WAN interface - connected to home network
+  # WAN interface - connected to home network (192.168.1.x)
   network_device {
     bridge = "vmbr0"
   }
 
-  # LAN interface - isolated lab network
+  # LAN interface - isolated lab network (10.10.10.x)
   network_device {
     bridge = "vmbr1"
   }
