@@ -1,47 +1,24 @@
-# GitHub Runner ScaleSet - HomePractice Environment
-# Ephemeral runners with 'homepractice' label
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
+# GitHub Runners App - HomePractice Environment
+# This Application syncs runner resources AFTER ARC installs the CRDs
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: homelab-practice-runner
-  namespace: actions-runner-system
+  name: github-runners
+  namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:
-  replicas: 1
-  template:
-    spec:
-      repository: jefflouisma/homelab
-      labels:
-        - self-hosted
-        - homepractice
-        - Linux
-        - X64
-      ephemeral: true
-      dockerdWithinRunnerContainer: true
-      image: summerwind/actions-runner-dind:latest
-      resources:
-        limits:
-          cpu: "2"
-          memory: "4Gi"
-        requests:
-          cpu: "500m"
-          memory: "1Gi"
----
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: HorizontalRunnerAutoscaler
-metadata:
-  name: homelab-practice-runner-autoscaler
-  namespace: actions-runner-system
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-spec:
-  scaleTargetRef:
-    kind: RunnerDeployment
-    name: homelab-practice-runner
-  minReplicas: 0
-  maxReplicas: 3
-  metrics:
-    - type: TotalNumberOfQueuedAndInProgressWorkflowRuns
-      repositoryNames:
-        - jefflouisma/homelab
+  project: default
+  source:
+    repoURL: git@github.com:jefflouisma/homelab.git
+    targetRevision: HEAD
+    path: homepractice/apps/runners
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: actions-runner-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

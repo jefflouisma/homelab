@@ -1,0 +1,43 @@
+# GitHub Runner ScaleSet - HomePractice Environment
+# Ephemeral runners with 'homepractice' label
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: RunnerDeployment
+metadata:
+  name: homelab-practice-runner
+  namespace: actions-runner-system
+spec:
+  replicas: 1
+  template:
+    spec:
+      repository: jefflouisma/homelab
+      labels:
+        - self-hosted
+        - homepractice
+        - Linux
+        - X64
+      ephemeral: true
+      dockerdWithinRunnerContainer: true
+      image: summerwind/actions-runner-dind:latest
+      resources:
+        limits:
+          cpu: "2"
+          memory: "4Gi"
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+---
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: HorizontalRunnerAutoscaler
+metadata:
+  name: homelab-practice-runner-autoscaler
+  namespace: actions-runner-system
+spec:
+  scaleTargetRef:
+    kind: RunnerDeployment
+    name: homelab-practice-runner
+  minReplicas: 0
+  maxReplicas: 3
+  metrics:
+    - type: TotalNumberOfQueuedAndInProgressWorkflowRuns
+      repositoryNames:
+        - jefflouisma/homelab
