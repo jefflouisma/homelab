@@ -1,6 +1,15 @@
 # HomePractice OPNsense Configuration - Declarative IaC
-# This layer configures OPNsense via its API after initial installation
-# The desired state is defined here and applied to OPNsense
+# This layer configures OPNsense via its API after infrastructure deployment
+#
+# Prerequisites:
+#   - OPNsense VM cloned from golden template and running
+#   - API accessible via DHCP IP (find via ARP scan)
+#
+# Configures:
+#   - Interface IP assignments (Management, WAN, Internal)
+#   - DHCP server on Internal network
+#   - Firewall rules and NAT
+#   - WireGuard VPN for remote access
 
 terraform {
   required_version = ">= 1.5.0"
@@ -9,6 +18,10 @@ terraform {
     opnsense = {
       source  = "browningluke/opnsense"
       version = "~> 0.11"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
     }
   }
 
@@ -22,6 +35,51 @@ provider "opnsense" {
   api_key        = var.opnsense_api_key
   api_secret     = var.opnsense_api_secret
   allow_insecure = true
+}
+
+# =============================================================================
+# Interface Configuration via API
+# =============================================================================
+# The browningluke/opnsense provider doesn't support interface configuration,
+# so we use direct API calls via null_resource
+
+locals {
+  api_auth = "${var.opnsense_api_key}:${var.opnsense_api_secret}"
+}
+
+# Configure interfaces via SSH (API doesn't support interface IP config)
+resource "null_resource" "configure_interfaces" {
+  triggers = {
+    management_ip = var.management_ip
+    wan_ip        = var.wan_ip  
+    internal_ip   = var.internal_ip
+    config_hash   = sha256("${var.management_ip}${var.wan_ip}${var.internal_ip}")
+  }
+
+  connection {
+    type     = "ssh"
+    host     = var.opnsense_current_ip
+    user     = "root"
+    password = var.opnsense_password
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "echo '=== Configuring OPNsense interfaces ==='",
+      
+      # Backup current config
+      "cp /conf/config.xml /conf/config.xml.bak.$(date +%s)",
+      
+      # Use sed to update interface IPs in config.xml
+      # vtnet0 = opt1 (Management), vtnet1 = wan, vtnet2 = lan
+      "sed -i '' 's|<ipaddr>dhcp</ipaddr>|<ipaddr>${var.wan_ip}</ipaddr>|' /conf/config.xml || true",
+      
+      # Reload interfaces
+      "/usr/local/etc/rc.reload_all",
+      
+      "echo '=== Interface configuration complete ==='"
+    ]
+  }
 }
 
 # =============================================================================

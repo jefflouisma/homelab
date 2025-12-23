@@ -119,24 +119,48 @@ Proxmox Linux Bridges manage connectivity for both environments:
 
 ### Phase 2: Deploy HomePractice (Enterprise Sandbox)
 
-#### Step 2.1: Infrastructure (Tier 0)
+#### Step 2.1: Golden Template Setup (One-Time)
+Create OPNsense golden template (VM 9000) with:
+- 3 NICs: Management (vmbr0), WAN (vmbr0), Internal (vmbr1)
+- All interfaces on DHCP for initial boot
+- SSH enabled with root login
+- API key pre-configured for automation
+
+```bash
+# Template created manually via Proxmox console:
+# 1. Create VM 9000 with 3 NICs, boot from OPNsense ISO
+# 2. Install OPNsense, enable SSH, add API key via web UI
+# 3. Convert to template: qm template 9000
+```
+
+#### Step 2.2: Infrastructure Deployment (Tier 0)
 ```bash
 cd homepractice/infrastructure
 terraform init && terraform apply
 ```
 **Creates:**
-- `practice-opnsense`: 2 vCPU, 4GB RAM, NICs: vmbr0 (WAN) + vmbr1 (LAN)
-- `practice-k3s`: 4 vCPU, 16GB RAM, NIC: vmbr1, IP: 10.10.10.10
+- `practice-opnsense` (VM 200): Cloned from template 9000
+  - 2 vCPU, 4GB RAM
+  - NICs: vtnet0 (Management), vtnet1 (WAN), vtnet2 (Internal)
+  - Boots with DHCP, immediately accessible via API
+- `practice-k3s` (VM 201): 4 vCPU, 32GB RAM, NIC: vmbr1, IP: 10.10.10.10
 
-#### Step 2.2: OPNsense Configuration (Manual Once)
-1. Console into OPNsense VM
-2. Assign interfaces: WAN (vtnet0), LAN (vtnet1)
-3. Set LAN IP: 10.10.10.1/24
-4. Enable DHCP on LAN (10.10.10.100-199)
-5. **Configure WireGuard VPN** for remote access
-6. NAT rule for GitHub runner outbound access
+#### Step 2.3: OPNsense Configuration via Ansible
+After clone boots, configure OPNsense via Ansible (API doesn't support interface config):
+```bash
+cd homepractice/ansible
+ansible-playbook -i inventory.yml playbooks/opnsense-configure.yml
+```
+**Configures:**
+- vtnet0 (Management): 192.168.1.41/24 - Admin access from home network
+- vtnet1 (WAN): 192.168.1.1/24, Gateway: 192.168.1.254
+- vtnet2 (Internal): 10.10.10.1/24 - Isolated lab network
+- DHCP on Internal: 10.10.10.100-199
+- WireGuard VPN for remote access (port 51820)
+- NAT rules for outbound traffic
+- Firewall rules: Allow LAN→WAN, Block WAN→LAN (except VPN)
 
-#### Step 2.3: Kubernetes Bootstrap (Tier 1)
+#### Step 2.4: Kubernetes Bootstrap (Tier 1)
 ```bash
 # SSH via WireGuard VPN or Proxmox console
 ssh ubuntu@10.10.10.10
@@ -147,7 +171,7 @@ terraform init && terraform apply
 ```
 **Installs:** Cilium, MetalLB (10.10.10.200-250), ArgoCD
 
-#### Step 2.4: Applications (Tier 2)
+#### Step 2.5: Applications (Tier 2)
 ArgoCD auto-syncs from `homepractice/apps/`:
 - Actions Runner Controller + GitHub runners
 - Nexus (artifact registry)
