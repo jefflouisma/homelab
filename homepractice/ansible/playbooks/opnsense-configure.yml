@@ -17,13 +17,30 @@
   gather_facts: false
 
   vars:
+    hostname: "perimeter-fw"
+    domain: "local"
     lan_ip: "10.10.10.1"
     lan_subnet: "24"
     lan_if: "vtnet1"
+    wan_gateway: "192.168.1.254"
     dhcp_range_start: "10.10.10.100"
     dhcp_range_end: "10.10.10.199"
 
   tasks:
+    - name: Install QEMU Guest Agent
+      ansible.builtin.raw: |
+        pkg install -y qemu-guest-agent && sysrc qemu_guest_agent_enable=YES && service qemu-guest-agent start
+      register: qemu_install
+      changed_when: "'already installed' not in qemu_install.stdout"
+      ignore_errors: true
+
+    - name: Set hostname
+      ansible.builtin.raw: |
+        sed -i '' "s|<hostname>[^<]*</hostname>|<hostname>{{ hostname }}</hostname>|" /conf/config.xml
+        sed -i '' "s|<domain>[^<]*</domain>|<domain>{{ domain }}</domain>|" /conf/config.xml
+        hostname {{ hostname }}.{{ domain }}
+      changed_when: true
+
     - name: Backup config.xml
       ansible.builtin.raw: |
         /bin/sh -c 'cp /conf/config.xml /conf/config.xml.bak.`date +%Y%m%d_%H%M%S`'
@@ -55,6 +72,26 @@
         grep -q "<lan>" /conf/config.xml && grep -A20 "<dhcpd>" /conf/config.xml | grep -q "<lan>" || echo "DHCP may need manual config"
       ignore_errors: true
 
+    - name: Verify WAN gateway is set (DHCP provides this)
+      ansible.builtin.raw: |
+        netstat -rn | grep default
+      register: gateway_check
+      changed_when: false
+
+    - name: Display gateway
+      ansible.builtin.debug:
+        msg: "Default gateway: {{ gateway_check.stdout | trim }}"
+
+    - name: Verify NAT is automatic (uses WAN interface)
+      ansible.builtin.raw: |
+        grep -A2 "<outbound>" /conf/config.xml | grep mode
+      register: nat_mode
+      changed_when: false
+
+    - name: Display NAT mode
+      ansible.builtin.debug:
+        msg: "NAT mode: {{ nat_mode.stdout | trim }}"
+
     - name: Reload all services
       ansible.builtin.raw: |
         /usr/local/etc/rc.reload_all
@@ -80,10 +117,10 @@
   connection: local
 
   vars:
-    # OPNsense connection - WAN IP from DHCP (check inventory or router)
-    opn_host: "{{ opnsense_wan_ip | default('192.168.1.1') }}"
-    opn_api_key: "O0bQQHhpy4ASk72A8aOJai6p8G76ZErSDDWgq4rsrvappqk2o/Wt6LiOv1pSWFvATHJy7xEkAI7kZj6T"
-    opn_api_secret: "lfepNn2EIapayr0kHmtDMXcjy3s7QzBB6YuWSYepHEnR+zAjHPnztzvKI9MUoopmwGovNAhtZ9HGOyOo"
+    # OPNsense connection - WAN IP from DHCP
+    opn_host: "{{ opnsense_wan_ip | default('192.168.1.231') }}"
+    opn_api_key: "QDV+igIGmdwxoaW0OIXSJ9Abthc0C7y0X8xnk3yyYLzDia3EaTNVVo/TwC2zf9nma5dAbcVRG0RREkdE"
+    opn_api_secret: "A5h+hg6XbkjtCq9QM+LsweDn5ZatvbCU88eu9NJcZFjh+zGptL0waqru2OYc2ODH+mbgrOvaKoioo4q9"
 
     # Interface Configuration
     internal_ip: "10.10.10.1"

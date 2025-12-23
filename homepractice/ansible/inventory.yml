@@ -4,11 +4,14 @@ all:
   children:
     opnsense:
       hosts:
-        practice-opnsense:
-          ansible_host: 192.168.1.1
+        perimeter-fw:
+          ansible_host: "{{ opnsense_wan_ip | default('192.168.1.231') }}"
           ansible_user: root
           ansible_password: "opnsense"
           ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o PubkeyAuthentication=no'
+          # API credentials for ansibleguy.opnsense
+          opn_api_key: "QDV+igIGmdwxoaW0OIXSJ9Abthc0C7y0X8xnk3yyYLzDia3EaTNVVo/TwC2zf9nma5dAbcVRG0RREkdE"
+          opn_api_secret: "A5h+hg6XbkjtCq9QM+LsweDn5ZatvbCU88eu9NJcZFjh+zGptL0waqru2OYc2ODH+mbgrOvaKoioo4q9"
     
     k3s:
       hosts:

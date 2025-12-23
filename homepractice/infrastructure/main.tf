@@ -48,11 +48,11 @@ provider "proxmox" {
 
 # Clone OPNsense from golden template
 resource "proxmox_virtual_environment_vm" "opnsense" {
-  name      = "practice-opnsense"
+  name      = "perimeter-fw"
   node_name = var.proxmox_node
   vm_id     = 200
 
-  description = "OPNsense firewall for HomePractice isolated network"
+  description = "OPNsense perimeter firewall for HomePractice (perimeter-fw.local)"
   tags        = ["terraform", "homepractice", "firewall"]
 
   # Clone from golden template (VM 9000)
