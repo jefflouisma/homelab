@@ -145,11 +145,14 @@ terraform init && terraform apply
   - Boots with DHCP, immediately accessible via API
 - `practice-k3s` (VM 201): 4 vCPU, 32GB RAM, NIC: vmbr1, IP: 10.10.10.10
 
-#### Step 2.3: OPNsense Configuration via Ansible
-After clone boots, configure OPNsense via Ansible (API doesn't support interface config):
+#### Step 2.3: OPNsense Configuration via Ansible + Web UI
+After clone boots, configure OPNsense (API has limited support):
 ```bash
+# Ansible for firewall rules, WireGuard, automation
 cd homepractice/ansible
 ansible-playbook -i inventory.yml playbooks/opnsense-configure.yml
+
+# Web UI required for: Interface IPs, DHCP server (API doesn't support)
 ```
 **Configures:**
 - vtnet0 (Management): 192.168.1.41/24 - Admin access from home network
