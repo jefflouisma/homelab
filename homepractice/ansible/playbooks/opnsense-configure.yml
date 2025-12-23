@@ -118,9 +118,9 @@
 
   vars:
     # OPNsense connection - WAN IP from DHCP
-    opn_host: "{{ opnsense_wan_ip | default('192.168.1.231') }}"
-    opn_api_key: "QDV+igIGmdwxoaW0OIXSJ9Abthc0C7y0X8xnk3yyYLzDia3EaTNVVo/TwC2zf9nma5dAbcVRG0RREkdE"
-    opn_api_secret: "A5h+hg6XbkjtCq9QM+LsweDn5ZatvbCU88eu9NJcZFjh+zGptL0waqru2OYc2ODH+mbgrOvaKoioo4q9"
+    opn_host: "{{ opnsense_wan_ip | default('192.168.1.1') }}"
+    opn_api_key: "C9HdbF5A8zWsw+ZV1fzQ0aDbgQlaWEIGbwh7Cq7kq/hSz+rvpxNQa5vUylm3zi8an9UdNVPfzJiHqKtr"
+    opn_api_secret: "pHKan7aagfg6F4H8zG8Vnja97n0pIaz4MexuetCmcDq/Qy9v3Dk1JByi7p4Tb0SWEJXd02RKJUNtHZoZ"
 
     # Interface Configuration
     internal_ip: "10.10.10.1"
