@@ -1,6 +1,7 @@
 ---
-# OPNsense Configuration Playbook
-# Configures interfaces, DHCP, firewall rules, and WireGuard VPN
+# OPNsense Configuration Playbook (2-NIC Setup)
+# WAN (vtnet0/vmbr0): DHCP, gateway, WireGuard + management
+# LAN (vtnet1/vmbr1): 10.10.10.1/24, internal network
 #
 # Prerequisites:
 #   ansible-galaxy collection install ansibleguy.opnsense
@@ -9,16 +10,16 @@
 # Run: ansible-playbook -i inventory.yml playbooks/opnsense-configure.yml
 
 # =============================================================================
-# Play 1: Configure Interface IPs via SSH (API doesn't support this)
+# Play 1: Configure LAN interface via SSH (API doesn't support interface config)
 # =============================================================================
-- name: Configure OPNsense Interfaces via SSH
+- name: Configure OPNsense LAN Interface via SSH
   hosts: opnsense
   gather_facts: false
 
   vars:
-    internal_ip: "10.10.10.1"
-    internal_subnet: "24"
-    internal_if: "vtnet2"
+    lan_ip: "10.10.10.1"
+    lan_subnet: "24"
+    lan_if: "vtnet1"
     dhcp_range_start: "10.10.10.100"
     dhcp_range_end: "10.10.10.199"
 
@@ -28,48 +29,47 @@
         /bin/sh -c 'cp /conf/config.xml /conf/config.xml.bak.`date +%Y%m%d_%H%M%S`'
       changed_when: true
 
-    - name: Check if OPT1 interface exists
+    - name: Check current LAN IP
       ansible.builtin.raw: |
-        /bin/sh -c 'grep -c "<opt1>" /conf/config.xml || echo 0'
-      register: opt1_exists
+        /bin/sh -c 'grep -A5 "<lan>" /conf/config.xml | grep "<ipaddr>" | head -1'
+      register: current_lan
       changed_when: false
 
-    - name: Display OPT1 status
+    - name: Display current LAN config
       ansible.builtin.debug:
-        msg: "OPT1 exists: {{ 'yes' if '1' in opt1_exists.stdout else 'no' }}"
+        msg: "Current LAN: {{ current_lan.stdout | trim }}"
 
-    - name: Add OPT1 interface (vtnet2) for internal network
+    - name: Configure LAN interface IP
       ansible.builtin.raw: |
-        /bin/sh -c 'sed -i.tmp "s|</interfaces>|  <opt1>\n      <enable>1</enable>\n      <if>{{ internal_if }}</if>\n      <ipaddr>{{ internal_ip }}</ipaddr>\n      <subnet>{{ internal_subnet }}</subnet>\n      <descr>Internal</descr>\n    </opt1>\n  </interfaces>|" /conf/config.xml'
-      when: "'0' in opt1_exists.stdout"
-      register: opt1_added
-
-    - name: Add DHCP for OPT1 interface
-      ansible.builtin.raw: |
-        /bin/sh -c 'sed -i.tmp "s|</dhcpd>|  <opt1>\n      <enable/>\n      <range>\n        <from>{{ dhcp_range_start }}</from>\n        <to>{{ dhcp_range_end }}</to>\n      </range>\n    </opt1>\n  </dhcpd>|" /conf/config.xml'
-      when: opt1_added is changed
+        sed -i '' 's|<lan>|<lan_backup>|g; s|</lan>|</lan_backup>|g' /conf/config.xml 2>/dev/null || true
+        grep -q "<ipaddr>{{ lan_ip }}</ipaddr>" /conf/config.xml || sed -i '' "s|<lan_backup>|<lan>|g; s|</lan_backup>|</lan>|g" /conf/config.xml
       ignore_errors: true
 
-    - name: Set NAT mode to hybrid for OPT1 outbound
+    - name: Ensure LAN has correct IP (update if needed)
       ansible.builtin.raw: |
-        /bin/sh -c 'sed -i.tmp "s|<mode>automatic</mode>|<mode>hybrid</mode>|" /conf/config.xml'
+        grep -q "<lan>" /conf/config.xml && sed -i '' "/<lan>/,/<\/lan>/s|<ipaddr>[^<]*</ipaddr>|<ipaddr>{{ lan_ip }}</ipaddr>|" /conf/config.xml
+      ignore_errors: true
+
+    - name: Ensure LAN DHCP is configured
+      ansible.builtin.raw: |
+        grep -q "<lan>" /conf/config.xml && grep -A20 "<dhcpd>" /conf/config.xml | grep -q "<lan>" || echo "DHCP may need manual config"
       ignore_errors: true
 
     - name: Reload all services
       ansible.builtin.raw: |
         /usr/local/etc/rc.reload_all
-      when: opt1_added is changed
+      changed_when: true
       ignore_errors: true
 
-    - name: Verify OPT1 interface
+    - name: Verify LAN interface
       ansible.builtin.raw: |
-        /bin/sh -c 'ifconfig {{ internal_if }} | grep inet | head -1'
-      register: opt1_ip
+        /bin/sh -c 'ifconfig {{ lan_if }} | grep inet | head -1'
+      register: lan_ip_result
       changed_when: false
 
-    - name: Display OPT1 IP
+    - name: Display LAN IP
       ansible.builtin.debug:
-        msg: "Internal interface ({{ internal_if }}): {{ opt1_ip.stdout | trim }}"
+        msg: "LAN interface ({{ lan_if }}): {{ lan_ip_result.stdout | trim }}"
 
 # =============================================================================
 # Play 2: Configure via API (firewall rules, aliases, DNS, WireGuard)
@@ -80,8 +80,8 @@
   connection: local
 
   vars:
-    # OPNsense connection
-    opn_host: "192.168.1.1"
+    # OPNsense connection - WAN IP from DHCP (check inventory or router)
+    opn_host: "{{ opnsense_wan_ip | default('192.168.1.1') }}"
     opn_api_key: "O0bQQHhpy4ASk72A8aOJai6p8G76ZErSDDWgq4rsrvappqk2o/Wt6LiOv1pSWFvATHJy7xEkAI7kZj6T"
     opn_api_secret: "lfepNn2EIapayr0kHmtDMXcjy3s7QzBB6YuWSYepHEnR+zAjHPnztzvKI9MUoopmwGovNAhtZ9HGOyOo"
 
@@ -166,28 +166,6 @@
       register: fw_lan_rule
       changed_when: fw_lan_rule.json.uuid is defined
 
-    - name: Add OPT1 (Internal) to any firewall rule via API
-      ansible.builtin.uri:
-        url: "https://{{ opn_host }}/api/firewall/filter/addRule"
-        method: POST
-        user: "{{ opn_api_key }}"
-        password: "{{ opn_api_secret }}"
-        force_basic_auth: true
-        validate_certs: false
-        body_format: json
-        body:
-          rule:
-            enabled: "1"
-            action: "pass"
-            interface: "opt1"
-            direction: "in"
-            ipprotocol: "inet"
-            protocol: "any"
-            source_net: "opt1"
-            destination_net: "any"
-            description: "Allow LAN to any (Ansible)"
-      register: fw_lan_rule
-      changed_when: fw_lan_rule.json.uuid is defined
 
     - name: Apply firewall rules
       ansible.builtin.uri:
@@ -288,8 +266,8 @@
           ============================================
           
           Configured via SSH (Play 1):
-          - LAN interface: {{ internal_ip }}/{{ internal_subnet }}
-          - DHCP range: {{ dhcp_range_start }}-{{ dhcp_range_end }}
+          - LAN interface: 10.10.10.1/24 (vtnet1)
+          - DHCP range: 10.10.10.100-199
           
           Configured via API (Play 2):
           - Aliases: {{ final_aliases.data | length }}

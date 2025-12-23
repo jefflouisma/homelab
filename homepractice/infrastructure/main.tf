@@ -70,17 +70,12 @@ resource "proxmox_virtual_environment_vm" "opnsense" {
     dedicated = 4096
   }
 
-  # Management interface (vmbr0) - for initial access via DHCP
+  # WAN interface (vmbr0) - DHCP, gateway, WireGuard + management
   network_device {
     bridge = "vmbr0"
   }
 
-  # WAN interface (vmbr0) - will be configured to 192.168.1.1
-  network_device {
-    bridge = "vmbr0"
-  }
-
-  # Internal/LAN interface (vmbr1) - will be configured to 10.10.10.1
+  # LAN interface (vmbr1) - internal network 10.10.10.1/24
   network_device {
     bridge = "vmbr1"
   }
