@@ -1,13 +1,76 @@
 ---
-# OPNsense Configuration Playbook using ansibleguy.opnsense collection
+# OPNsense Configuration Playbook
 # Configures interfaces, DHCP, firewall rules, and WireGuard VPN
 #
 # Prerequisites:
 #   ansible-galaxy collection install ansibleguy.opnsense
+#   pip install httpx
 #
 # Run: ansible-playbook -i inventory.yml playbooks/opnsense-configure.yml
 
-- name: Configure OPNsense Firewall
+# =============================================================================
+# Play 1: Configure Interface IPs via SSH (API doesn't support this)
+# =============================================================================
+- name: Configure OPNsense Interfaces via SSH
+  hosts: opnsense
+  gather_facts: false
+
+  vars:
+    lan_ip: "10.10.10.1"
+    lan_subnet: "24"
+    wan_gateway: "192.168.1.254"
+    dhcp_range_start: "10.10.10.100"
+    dhcp_range_end: "10.10.10.199"
+
+  tasks:
+    - name: Backup config.xml
+      ansible.builtin.raw: |
+        /bin/sh -c 'cp /conf/config.xml /conf/config.xml.bak.`date +%Y%m%d_%H%M%S`'
+      changed_when: true
+
+    - name: Check current LAN IP
+      ansible.builtin.raw: |
+        /bin/sh -c 'grep -A5 "<lan>" /conf/config.xml | grep "<ipaddr>" | head -1'
+      register: current_lan_ip
+      changed_when: false
+
+    - name: Display current LAN IP
+      ansible.builtin.debug:
+        msg: "Current LAN config: {{ current_lan_ip.stdout | trim }}"
+
+    - name: Update LAN interface IP to {{ lan_ip }}
+      ansible.builtin.raw: |
+        /bin/sh -c 'sed -i.tmp "s|<ipaddr>192.168.1.1</ipaddr>|<ipaddr>{{ lan_ip }}</ipaddr>|" /conf/config.xml'
+      when: "'192.168.1.1' in current_lan_ip.stdout"
+      register: lan_updated
+
+    - name: Configure DHCP range on LAN
+      ansible.builtin.raw: |
+        /bin/sh -c 'sed -i.tmp "s|<from>192.168.1.100</from>|<from>{{ dhcp_range_start }}</from>|" /conf/config.xml'
+        /bin/sh -c 'sed -i.tmp "s|<to>192.168.1.199</to>|<to>{{ dhcp_range_end }}</to>|" /conf/config.xml'
+      when: lan_updated is changed
+      ignore_errors: true
+
+    - name: Reload all services
+      ansible.builtin.raw: |
+        /usr/local/etc/rc.reload_all
+      when: lan_updated is changed
+      ignore_errors: true
+
+    - name: Verify new LAN IP
+      ansible.builtin.raw: |
+        /bin/sh -c 'grep -A5 "<lan>" /conf/config.xml | grep "<ipaddr>" | head -1'
+      register: new_lan_ip
+      changed_when: false
+
+    - name: Display new LAN IP
+      ansible.builtin.debug:
+        msg: "New LAN config: {{ new_lan_ip.stdout | trim }}"
+
+# =============================================================================
+# Play 2: Configure via API (firewall rules, aliases, DNS, WireGuard)
+# =============================================================================
+- name: Configure OPNsense via API
   hosts: localhost
   gather_facts: false
   connection: local
@@ -197,15 +260,15 @@
           OPNsense Configuration Complete
           ============================================
           
-          Configured via Ansible:
+          Configured via SSH (Play 1):
+          - LAN interface: {{ internal_ip }}/{{ internal_subnet }}
+          - DHCP range: {{ dhcp_range_start }}-{{ dhcp_range_end }}
+          
+          Configured via API (Play 2):
           - Aliases: {{ final_aliases.data | length }}
           - Firewall rule: Allow LAN to any
           - DNS: k3s.practice.homelab.local → 10.10.10.10
           - WireGuard VPN: Enabled on port {{ wireguard_port }}
-          
-          Manual Steps Required (Web UI):
-          1. Interfaces → [LAN]: Set IP to {{ internal_ip }}/{{ internal_subnet }}
-          2. Services → DHCPv4 → [LAN]: Enable, range {{ dhcp_range_start }}-{{ dhcp_range_end }}
           
           API: https://{{ opn_host }}
           ============================================
