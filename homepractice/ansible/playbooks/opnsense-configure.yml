@@ -16,9 +16,9 @@
   gather_facts: false
 
   vars:
-    lan_ip: "10.10.10.1"
-    lan_subnet: "24"
-    wan_gateway: "192.168.1.254"
+    internal_ip: "10.10.10.1"
+    internal_subnet: "24"
+    internal_if: "vtnet2"
     dhcp_range_start: "10.10.10.100"
     dhcp_range_end: "10.10.10.199"
 
@@ -28,44 +28,43 @@
         /bin/sh -c 'cp /conf/config.xml /conf/config.xml.bak.`date +%Y%m%d_%H%M%S`'
       changed_when: true
 
-    - name: Check current LAN IP
+    - name: Check if OPT1 interface exists
       ansible.builtin.raw: |
-        /bin/sh -c 'grep -A5 "<lan>" /conf/config.xml | grep "<ipaddr>" | head -1'
-      register: current_lan_ip
+        /bin/sh -c 'grep -c "<opt1>" /conf/config.xml || echo 0'
+      register: opt1_exists
       changed_when: false
 
-    - name: Display current LAN IP
+    - name: Display OPT1 status
       ansible.builtin.debug:
-        msg: "Current LAN config: {{ current_lan_ip.stdout | trim }}"
+        msg: "OPT1 exists: {{ 'yes' if '1' in opt1_exists.stdout else 'no' }}"
 
-    - name: Update LAN interface IP to {{ lan_ip }}
+    - name: Add OPT1 interface (vtnet2) for internal network
       ansible.builtin.raw: |
-        /bin/sh -c 'sed -i.tmp "s|<ipaddr>192.168.1.1</ipaddr>|<ipaddr>{{ lan_ip }}</ipaddr>|" /conf/config.xml'
-      when: "'192.168.1.1' in current_lan_ip.stdout"
-      register: lan_updated
+        /bin/sh -c 'sed -i.tmp "s|</interfaces>|  <opt1>\n      <enable>1</enable>\n      <if>{{ internal_if }}</if>\n      <ipaddr>{{ internal_ip }}</ipaddr>\n      <subnet>{{ internal_subnet }}</subnet>\n      <descr>Internal</descr>\n    </opt1>\n  </interfaces>|" /conf/config.xml'
+      when: "'0' in opt1_exists.stdout"
+      register: opt1_added
 
-    - name: Configure DHCP range on LAN
+    - name: Add DHCP for OPT1 interface
       ansible.builtin.raw: |
-        /bin/sh -c 'sed -i.tmp "s|<from>192.168.1.100</from>|<from>{{ dhcp_range_start }}</from>|" /conf/config.xml'
-        /bin/sh -c 'sed -i.tmp "s|<to>192.168.1.199</to>|<to>{{ dhcp_range_end }}</to>|" /conf/config.xml'
-      when: lan_updated is changed
+        /bin/sh -c 'sed -i.tmp "s|</dhcpd>|  <opt1>\n      <enable/>\n      <range>\n        <from>{{ dhcp_range_start }}</from>\n        <to>{{ dhcp_range_end }}</to>\n      </range>\n    </opt1>\n  </dhcpd>|" /conf/config.xml'
+      when: opt1_added is changed
       ignore_errors: true
 
     - name: Reload all services
       ansible.builtin.raw: |
         /usr/local/etc/rc.reload_all
-      when: lan_updated is changed
+      when: opt1_added is changed
       ignore_errors: true
 
-    - name: Verify new LAN IP
+    - name: Verify OPT1 interface
       ansible.builtin.raw: |
-        /bin/sh -c 'grep -A5 "<lan>" /conf/config.xml | grep "<ipaddr>" | head -1'
-      register: new_lan_ip
+        /bin/sh -c 'ifconfig {{ internal_if }} | grep inet | head -1'
+      register: opt1_ip
       changed_when: false
 
-    - name: Display new LAN IP
+    - name: Display OPT1 IP
       ansible.builtin.debug:
-        msg: "New LAN config: {{ new_lan_ip.stdout | trim }}"
+        msg: "Internal interface ({{ internal_if }}): {{ opt1_ip.stdout | trim }}"
 
 # =============================================================================
 # Play 2: Configure via API (firewall rules, aliases, DNS, WireGuard)
