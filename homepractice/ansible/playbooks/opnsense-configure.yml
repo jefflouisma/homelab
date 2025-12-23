@@ -112,8 +112,53 @@
       changed_when: true
 
     # =========================================================================
-    # Phase 4: DHCP configured via web UI (API limited)
+    # Phase 4: Configure WireGuard VPN (built into OPNsense 25.1+)
     # =========================================================================
+    - name: Enable WireGuard
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/wireguard/general/set"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          general:
+            enabled: "1"
+      register: wg_enable
+
+    - name: Create WireGuard server instance
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/wireguard/server/addServer"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          server:
+            enabled: "1"
+            name: "wg0"
+            port: "{{ wireguard_port }}"
+            tunneladdress: "10.10.20.1/24"
+            dns: "10.10.10.1"
+      register: wg_server
+      changed_when: wg_server.json.uuid is defined
+      ignore_errors: true
+
+    - name: Apply WireGuard configuration
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/wireguard/service/reconfigure"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body: {}
+      changed_when: true
 
     # =========================================================================
     # Phase 5: Configure DNS Host Override
@@ -156,11 +201,11 @@
           - Aliases: {{ final_aliases.data | length }}
           - Firewall rule: Allow LAN to any
           - DNS: k3s.practice.homelab.local → 10.10.10.10
+          - WireGuard VPN: Enabled on port {{ wireguard_port }}
           
           Manual Steps Required (Web UI):
           1. Interfaces → [LAN]: Set IP to {{ internal_ip }}/{{ internal_subnet }}
           2. Services → DHCPv4 → [LAN]: Enable, range {{ dhcp_range_start }}-{{ dhcp_range_end }}
-          3. System → Firmware → Plugins: Install os-wireguard
           
           API: https://{{ opn_host }}
           ============================================
