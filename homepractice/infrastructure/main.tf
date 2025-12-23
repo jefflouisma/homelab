@@ -84,6 +84,11 @@ resource "proxmox_virtual_environment_vm" "opnsense" {
     type = "other"
   }
 
+  # Don't wait for guest agent - OPNsense boots fast but agent takes time
+  started = true
+  timeout_create = 120
+  timeout_clone  = 120
+
   on_boot = true
 }
 
