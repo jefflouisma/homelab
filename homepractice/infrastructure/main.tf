@@ -35,82 +35,19 @@ provider "proxmox" {
 # =============================================================================
 # OPNsense Firewall - Golden Template Clone Pattern
 # =============================================================================
-# Prerequisites:
-#   1. Golden template (VM 9000) with SSH + API key baked in
-#   2. Syshook script at /usr/local/etc/rc.syshook.d/early/20-instance-config
+# Golden template (VM 9000) has:
+#   - 3 NICs (Management, WAN, Internal) all on DHCP
+#   - SSH enabled with root login
+#   - API key pre-configured
 #
-# This Terraform:
-#   1. Clones golden template
-#   2. Creates seed disk with instance-specific config.xml
-#   3. Attaches seed disk - syshook imports on first boot
-#   4. OPNsense boots with instance config, immediately accessible via API
-
-# Render instance-specific config.xml
-locals {
-  opnsense_config = templatefile("${path.module}/opnsense-config.xml.tpl", {
-    api_key            = var.opnsense_api_key
-    api_secret_hash    = var.opnsense_api_secret_hash
-    wan_ip             = var.opnsense_wan_ip
-    wan_subnet         = "24"
-    wan_gateway        = var.opnsense_wan_gateway
-    lan_ip             = var.opnsense_lan_ip
-    lan_subnet         = "24"
-    management_network = "192.168.1.0/24"
-  })
-}
-
-# Upload rendered config.xml to Proxmox
-resource "proxmox_virtual_environment_file" "opnsense_config" {
-  content_type = "snippets"
-  datastore_id = "local"
-  node_name    = var.proxmox_node
-
-  source_raw {
-    data      = local.opnsense_config
-    file_name = "opnsense-instance-config.xml"
-  }
-}
-
-# Create FAT-formatted seed disk with instance config
-resource "null_resource" "opnsense_seed_disk" {
-  depends_on = [proxmox_virtual_environment_file.opnsense_config]
-
-  triggers = {
-    config_hash = sha256(local.opnsense_config)
-  }
-
-  connection {
-    type        = "ssh"
-    host        = var.proxmox_host
-    user        = "root"
-    private_key = file("~/.ssh/id_cloudstack_ed25519")
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "set -e",
-      "echo 'Creating OPNsense seed disk...'",
-      "rm -f /var/lib/vz/images/opnsense-seed.raw",
-      "dd if=/dev/zero of=/var/lib/vz/images/opnsense-seed.raw bs=1M count=32 2>/dev/null",
-      "echo 'type=0c' | sfdisk /var/lib/vz/images/opnsense-seed.raw",
-      "LOOPDEV=$(losetup -fP --show /var/lib/vz/images/opnsense-seed.raw)",
-      "mkfs.vfat -F 16 -n OPSEED $${LOOPDEV}p1",
-      "mkdir -p /tmp/opseed",
-      "mount $${LOOPDEV}p1 /tmp/opseed",
-      "mkdir -p /tmp/opseed/conf",
-      "cp /var/lib/vz/snippets/opnsense-instance-config.xml /tmp/opseed/conf/config.xml",
-      "sync",
-      "umount /tmp/opseed",
-      "losetup -d $LOOPDEV",
-      "rmdir /tmp/opseed",
-      "echo 'Seed disk ready'"
-    ]
-  }
-}
+# Deployment flow:
+#   1. Terraform clones golden template
+#   2. VM boots with DHCP on all interfaces
+#   3. Post-boot: Configure IPs via OPNsense API
+#   4. GitOps layer manages firewall rules
 
 # Clone OPNsense from golden template
 resource "proxmox_virtual_environment_vm" "opnsense" {
-  depends_on = [null_resource.opnsense_seed_disk]
   name      = "practice-opnsense"
   node_name = var.proxmox_node
   vm_id     = 200
@@ -133,12 +70,17 @@ resource "proxmox_virtual_environment_vm" "opnsense" {
     dedicated = 4096
   }
 
-  # WAN interface - connected to home network (192.168.1.x)
+  # Management interface (vmbr0) - for initial access via DHCP
   network_device {
     bridge = "vmbr0"
   }
 
-  # LAN interface - isolated lab network (10.10.10.x)
+  # WAN interface (vmbr0) - will be configured to 192.168.1.1
+  network_device {
+    bridge = "vmbr0"
+  }
+
+  # Internal/LAN interface (vmbr1) - will be configured to 10.10.10.1
   network_device {
     bridge = "vmbr1"
   }
@@ -148,32 +90,6 @@ resource "proxmox_virtual_environment_vm" "opnsense" {
   }
 
   on_boot = true
-}
-
-# Attach seed disk to cloned VM - syshook imports on first boot
-resource "null_resource" "attach_seed_disk" {
-  depends_on = [proxmox_virtual_environment_vm.opnsense]
-
-  triggers = {
-    vm_id       = proxmox_virtual_environment_vm.opnsense.vm_id
-    config_hash = sha256(local.opnsense_config)
-  }
-
-  connection {
-    type        = "ssh"
-    host        = var.proxmox_host
-    user        = "root"
-    private_key = file("~/.ssh/id_cloudstack_ed25519")
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "set -e",
-      "echo 'Attaching seed disk to OPNsense VM...'",
-      "qm set 200 --args '-drive file=/var/lib/vz/images/opnsense-seed.raw,format=raw,if=none,id=seed -device usb-storage,drive=seed'",
-      "echo 'Seed disk attached as USB storage'"
-    ]
-  }
 }
 
 # K3s VM using shared module

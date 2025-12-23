@@ -60,13 +60,7 @@ variable "opnsense_api_key" {
 }
 
 variable "opnsense_api_secret" {
-  description = "OPNsense API secret (plain text, used by Terraform provider)"
-  type        = string
-  sensitive   = true
-}
-
-variable "opnsense_api_secret_hash" {
-  description = "OPNsense API secret (SHA-512 hash for config.xml)"
+  description = "OPNsense API secret (plain text, for OPNsense Terraform provider)"
   type        = string
   sensitive   = true
 }

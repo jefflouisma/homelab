@@ -30,12 +30,6 @@
       <scope>system</scope>
       <password>$2y$10$YRVoF4SgskIsrXOvOQjGieB9XqHPRra9R7d80B3BZdbY/j21TwBfS</password>
       <descr>System Administrator</descr>
-      <apikeys>
-        <item>
-          <key>${api_key}</key>
-          <secret>${api_secret_hash}</secret>
-        </item>
-      </apikeys>
     </user>
     <nextuid>2000</nextuid>
     <nextgid>2000</nextgid>
