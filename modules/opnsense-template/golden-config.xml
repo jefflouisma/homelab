@@ -1,0 +1,158 @@
+<?xml version="1.0"?>
+<opnsense>
+  <theme>opnsense</theme>
+  <sysctl version="1.0.0">
+    <item>
+      <descr>Increase UFS read-ahead speeds</descr>
+      <tunable>vfs.read_max</tunable>
+      <value>default</value>
+    </item>
+  </sysctl>
+  <system>
+    <optimization>normal</optimization>
+    <hostname>opnsense-template</hostname>
+    <domain>localdomain</domain>
+    <timeservers>0.opnsense.pool.ntp.org 1.opnsense.pool.ntp.org 2.opnsense.pool.ntp.org 3.opnsense.pool.ntp.org</timeservers>
+    <timezone>UTC</timezone>
+    <language>en_US</language>
+    <dns1use>lan</dns1use>
+    <!-- SSH Enabled on all interfaces -->
+    <ssh>
+      <enabled>enabled</enabled>
+      <permitrootlogin>1</permitrootlogin>
+      <passwordauth>1</passwordauth>
+      <interfaces>wan,lan</interfaces>
+    </ssh>
+    <user>
+      <name>root</name>
+      <descr>System Administrator</descr>
+      <scope>system</scope>
+      <groupname>admins</groupname>
+      <uid>0</uid>
+      <!-- Default password: opnsense (change after deployment) -->
+      <password>$2y$10$YRVoF4SgskIsrXOvOQjGieB9XqHPRra9R7d80B3BZdbY/j21TwBfS</password>
+      <apikeys>
+        <!-- 
+          Golden Template API Key
+          Key:    GOLDEN_TEMPLATE_API_KEY_PLACEHOLDER
+          Secret: Use $6$ SHA-512 hash
+          
+          Generate production credentials:
+            API_KEY=$(openssl rand -hex 20)
+            API_SECRET=$(openssl rand -hex 20)
+            API_SECRET_HASH=$(openssl passwd -6 "$API_SECRET")
+        -->
+        <item>
+          <key>GOLDEN_TEMPLATE_API_KEY_PLACEHOLDER</key>
+          <secret>GOLDEN_TEMPLATE_API_SECRET_HASH_PLACEHOLDER</secret>
+        </item>
+      </apikeys>
+    </user>
+    <group>
+      <name>admins</name>
+      <description>System Administrators</description>
+      <scope>system</scope>
+      <gid>1999</gid>
+      <member>0</member>
+      <priv>page-all</priv>
+    </group>
+    <nextuid>2000</nextuid>
+    <nextgid>2000</nextgid>
+    <!-- WebGUI settings -->
+    <webgui>
+      <protocol>https</protocol>
+      <port>443</port>
+      <ssl-certref>selfsigned</ssl-certref>
+      <compression>1</compression>
+    </webgui>
+  </system>
+  <!-- 
+    Interfaces left unconfigured in template.
+    Instance config will assign IPs via seed disk.
+  -->
+  <interfaces>
+    <wan>
+      <enable>1</enable>
+      <if>vtnet0</if>
+      <descr>WAN</descr>
+      <ipaddr>dhcp</ipaddr>
+    </wan>
+    <lan>
+      <enable>1</enable>
+      <if>vtnet1</if>
+      <descr>LAN</descr>
+      <ipaddr>192.168.1.1</ipaddr>
+      <subnet>24</subnet>
+    </lan>
+    <lo0>
+      <internal_dynamic>1</internal_dynamic>
+      <descr>Loopback</descr>
+      <enable>1</enable>
+      <if>lo0</if>
+      <ipaddr>127.0.0.1</ipaddr>
+      <subnet>8</subnet>
+    </lo0>
+  </interfaces>
+  <gateways>
+    <gateway_item>
+      <interface>wan</interface>
+      <gateway>dynamic</gateway>
+      <name>WAN_DHCP</name>
+      <priority>255</priority>
+      <weight>1</weight>
+      <ipprotocol>inet</ipprotocol>
+      <descr>WAN DHCP Gateway</descr>
+    </gateway_item>
+  </gateways>
+  <!-- Minimal firewall - allows SSH/HTTPS management from anywhere initially -->
+  <filter>
+    <rule>
+      <type>pass</type>
+      <ipprotocol>inet</ipprotocol>
+      <descr>Allow LAN to any</descr>
+      <interface>lan</interface>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <any/>
+      </destination>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <ipprotocol>inet</ipprotocol>
+      <descr>Allow SSH management (template default)</descr>
+      <interface>wan,lan</interface>
+      <protocol>tcp</protocol>
+      <source>
+        <any/>
+      </source>
+      <destination>
+        <network>(self)</network>
+        <port>22</port>
+      </destination>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <ipprotocol>inet</ipprotocol>
+      <descr>Allow HTTPS management (template default)</descr>
+      <interface>wan,lan</interface>
+      <protocol>tcp</protocol>
+      <source>
+        <any/>
+      </source>
+      <destination>
+        <network>(self)</network>
+        <port>443</port>
+      </destination>
+    </rule>
+  </filter>
+  <nat>
+    <outbound>
+      <mode>automatic</mode>
+    </outbound>
+  </nat>
+  <rrd>
+    <enable/>
+  </rrd>
+</opnsense>

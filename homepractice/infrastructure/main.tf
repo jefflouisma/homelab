@@ -33,13 +33,19 @@ provider "proxmox" {
 }
 
 # =============================================================================
-# OPNsense Configuration - USB-based Importer
+# OPNsense Firewall - Golden Template Clone Pattern
 # =============================================================================
-# OPNsense Importer detects /conf/config.xml on attached FAT disk at first boot.
-# This injects: interfaces, gateway, NAT, firewall rules, and API credentials.
-# Post-boot configuration is managed via OPNsense Terraform provider.
+# Prerequisites:
+#   1. Golden template (VM 9000) with SSH + API key baked in
+#   2. Syshook script at /usr/local/etc/rc.syshook.d/early/20-instance-config
+#
+# This Terraform:
+#   1. Clones golden template
+#   2. Creates seed disk with instance-specific config.xml
+#   3. Attaches seed disk - syshook imports on first boot
+#   4. OPNsense boots with instance config, immediately accessible via API
 
-# Render config.xml template with API credentials
+# Render instance-specific config.xml
 locals {
   opnsense_config = templatefile("${path.module}/opnsense-config.xml.tpl", {
     api_key            = var.opnsense_api_key
@@ -61,12 +67,12 @@ resource "proxmox_virtual_environment_file" "opnsense_config" {
 
   source_raw {
     data      = local.opnsense_config
-    file_name = "opnsense-config.xml"
+    file_name = "opnsense-instance-config.xml"
   }
 }
 
-# Create FAT-formatted config disk on Proxmox host
-resource "null_resource" "opnsense_config_disk" {
+# Create FAT-formatted seed disk with instance config
+resource "null_resource" "opnsense_seed_disk" {
   depends_on = [proxmox_virtual_environment_file.opnsense_config]
 
   triggers = {
@@ -83,31 +89,39 @@ resource "null_resource" "opnsense_config_disk" {
   provisioner "remote-exec" {
     inline = [
       "set -e",
-      "echo 'Creating OPNsense config disk for Importer...'",
-      "rm -f /var/lib/vz/images/opnsense-config.raw",
-      "dd if=/dev/zero of=/var/lib/vz/images/opnsense-config.raw bs=1M count=8 2>/dev/null",
-      "mkfs.vfat -n CONFIG /var/lib/vz/images/opnsense-config.raw",
-      "mkdir -p /tmp/opnsense-cfg",
-      "mount -o loop /var/lib/vz/images/opnsense-config.raw /tmp/opnsense-cfg",
-      "mkdir -p /tmp/opnsense-cfg/conf",
-      "cp /var/lib/vz/snippets/opnsense-config.xml /tmp/opnsense-cfg/conf/config.xml",
+      "echo 'Creating OPNsense seed disk...'",
+      "rm -f /var/lib/vz/images/opnsense-seed.raw",
+      "dd if=/dev/zero of=/var/lib/vz/images/opnsense-seed.raw bs=1M count=32 2>/dev/null",
+      "echo 'type=0c' | sfdisk /var/lib/vz/images/opnsense-seed.raw",
+      "LOOPDEV=$(losetup -fP --show /var/lib/vz/images/opnsense-seed.raw)",
+      "mkfs.vfat -F 16 -n OPSEED $${LOOPDEV}p1",
+      "mkdir -p /tmp/opseed",
+      "mount $${LOOPDEV}p1 /tmp/opseed",
+      "mkdir -p /tmp/opseed/conf",
+      "cp /var/lib/vz/snippets/opnsense-instance-config.xml /tmp/opseed/conf/config.xml",
       "sync",
-      "umount /tmp/opnsense-cfg",
-      "rmdir /tmp/opnsense-cfg",
-      "echo 'Config disk ready at /var/lib/vz/images/opnsense-config.raw'"
+      "umount /tmp/opseed",
+      "losetup -d $LOOPDEV",
+      "rmdir /tmp/opseed",
+      "echo 'Seed disk ready'"
     ]
   }
 }
 
-# OPNsense Firewall VM
+# Clone OPNsense from golden template
 resource "proxmox_virtual_environment_vm" "opnsense" {
-  depends_on = [null_resource.opnsense_config_disk]
+  depends_on = [null_resource.opnsense_seed_disk]
   name      = "practice-opnsense"
   node_name = var.proxmox_node
   vm_id     = 200
 
   description = "OPNsense firewall for HomePractice isolated network"
   tags        = ["terraform", "homepractice", "firewall"]
+
+  # Clone from golden template (VM 9000)
+  clone {
+    vm_id = var.opnsense_template_id
+  }
 
   cpu {
     cores   = 2
@@ -117,21 +131,6 @@ resource "proxmox_virtual_environment_vm" "opnsense" {
 
   memory {
     dedicated = 4096
-  }
-
-  # Boot from OPNsense ISO for initial install
-  cdrom {
-    file_id   = var.opnsense_iso_id
-    interface = "ide2"
-  }
-
-  # Main OS disk
-  disk {
-    datastore_id = var.datastore_id
-    interface    = "scsi0"
-    size         = 32
-    discard      = "on"
-    ssd          = true
   }
 
   # WAN interface - connected to home network (192.168.1.x)
@@ -151,8 +150,8 @@ resource "proxmox_virtual_environment_vm" "opnsense" {
   on_boot = true
 }
 
-# Attach config disk to OPNsense VM for Importer
-resource "null_resource" "attach_config_disk" {
+# Attach seed disk to cloned VM - syshook imports on first boot
+resource "null_resource" "attach_seed_disk" {
   depends_on = [proxmox_virtual_environment_vm.opnsense]
 
   triggers = {
@@ -170,9 +169,9 @@ resource "null_resource" "attach_config_disk" {
   provisioner "remote-exec" {
     inline = [
       "set -e",
-      "echo 'Attaching config disk to OPNsense VM...'",
-      "qm set 200 --scsi1 local:0,import-from=/var/lib/vz/images/opnsense-config.raw,format=raw",
-      "echo 'Config disk attached as scsi1'"
+      "echo 'Attaching seed disk to OPNsense VM...'",
+      "qm set 200 --args '-drive file=/var/lib/vz/images/opnsense-seed.raw,format=raw,if=none,id=seed -device usb-storage,drive=seed'",
+      "echo 'Seed disk attached as USB storage'"
     ]
   }
 }

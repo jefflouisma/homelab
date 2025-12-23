@@ -88,3 +88,9 @@ variable "opnsense_lan_ip" {
   type        = string
   default     = "10.10.10.1"
 }
+
+variable "opnsense_template_id" {
+  description = "VM ID of the OPNsense golden template"
+  type        = number
+  default     = 9000
+}
