@@ -50,6 +50,11 @@
       when: opt1_added is changed
       ignore_errors: true
 
+    - name: Set NAT mode to hybrid for OPT1 outbound
+      ansible.builtin.raw: |
+        /bin/sh -c 'sed -i.tmp "s|<mode>automatic</mode>|<mode>hybrid</mode>|" /conf/config.xml'
+      ignore_errors: true
+
     - name: Reload all services
       ansible.builtin.raw: |
         /usr/local/etc/rc.reload_all
@@ -156,6 +161,29 @@
             ipprotocol: "inet"
             protocol: "any"
             source_net: "lan"
+            destination_net: "any"
+            description: "Allow LAN to any"
+      register: fw_lan_rule
+      changed_when: fw_lan_rule.json.uuid is defined
+
+    - name: Add OPT1 (Internal) to any firewall rule via API
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/firewall/filter/addRule"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          rule:
+            enabled: "1"
+            action: "pass"
+            interface: "opt1"
+            direction: "in"
+            ipprotocol: "inet"
+            protocol: "any"
+            source_net: "opt1"
             destination_net: "any"
             description: "Allow LAN to any (Ansible)"
       register: fw_lan_rule
