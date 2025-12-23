@@ -18,6 +18,4 @@
   import_playbook: playbooks/k8s-deploy.yml
   tags: [deploy, kubernetes, terraform]
 
-- name: Phase 5 - Configure WireGuard VPN
-  import_playbook: playbooks/wireguard-setup.yml
-  tags: [wireguard, vpn]
+# WireGuard VPN is now configured via opnsense-configure.yml (Phase 1)
