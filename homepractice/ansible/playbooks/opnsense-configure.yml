@@ -1,222 +1,166 @@
 ---
-# OPNsense Configuration Playbook
+# OPNsense Configuration Playbook using ansibleguy.opnsense collection
 # Configures interfaces, DHCP, firewall rules, and WireGuard VPN
+#
+# Prerequisites:
+#   ansible-galaxy collection install ansibleguy.opnsense
 #
 # Run: ansible-playbook -i inventory.yml playbooks/opnsense-configure.yml
 
 - name: Configure OPNsense Firewall
-  hosts: opnsense
+  hosts: localhost
   gather_facts: false
+  connection: local
 
   vars:
+    # OPNsense connection
+    opn_host: "192.168.1.1"
+    opn_api_key: "O0bQQHhpy4ASk72A8aOJai6p8G76ZErSDDWgq4rsrvappqk2o/Wt6LiOv1pSWFvATHJy7xEkAI7kZj6T"
+    opn_api_secret: "lfepNn2EIapayr0kHmtDMXcjy3s7QzBB6YuWSYepHEnR+zAjHPnztzvKI9MUoopmwGovNAhtZ9HGOyOo"
+
     # Interface Configuration
-    management_if: "vtnet0"
-    management_ip: "192.168.1.41"
-    management_subnet: "24"
-    
-    wan_if: "vtnet1"
-    wan_ip: "192.168.1.1"
-    wan_subnet: "24"
-    wan_gateway: "192.168.1.254"
-    
-    internal_if: "vtnet2"
     internal_ip: "10.10.10.1"
     internal_subnet: "24"
     
     # DHCP Configuration
     dhcp_range_start: "10.10.10.100"
     dhcp_range_end: "10.10.10.199"
-    dhcp_dns: "10.10.10.1"
+    
+    # Networks
+    lan_network: "10.10.10.0/24"
+    management_network: "192.168.1.0/24"
     
     # WireGuard VPN
     wireguard_port: 51820
-    wireguard_network: "10.10.20.0/24"
-    wireguard_server_ip: "10.10.20.1"
-    
-    # API credentials (from golden template)
-    api_key: "O0bQQHhpy4ASk72A8aOJai6p8G76ZErSDDWgq4rsrvappqk2o/Wt6LiOv1pSWFvATHJy7xEkAI7kZj6T"
-    api_secret: "lfepNn2EIapayr0kHmtDMXcjy3s7QzBB6YuWSYepHEnR+zAjHPnztzvKI9MUoopmwGovNAhtZ9HGOyOo"
+
+  module_defaults:
+    group/ansibleguy.opnsense.all:
+      firewall: "{{ opn_host }}"
+      api_key: "{{ opn_api_key }}"
+      api_secret: "{{ opn_api_secret }}"
+      ssl_verify: false
 
   tasks:
     # =========================================================================
-    # Phase 1: Backup and Verify Connectivity
+    # Phase 1: Test API Connectivity
     # =========================================================================
-    - name: Backup current configuration
-      ansible.builtin.raw: |
-        cp /conf/config.xml /conf/config.xml.bak.$(date +%Y%m%d_%H%M%S)
-        echo "Backup created"
-      register: backup_result
-      changed_when: true
+    - name: Test API connectivity
+      ansibleguy.opnsense.list:
+        target: alias
+      register: api_test
 
-    - name: Get current hostname
-      ansible.builtin.raw: hostname
-      register: current_hostname
-      changed_when: false
-
-    - name: Display current state
+    - name: Display API connection status
       ansible.builtin.debug:
-        msg: "Connected to: {{ current_hostname.stdout | trim }}"
+        msg: "API connection successful to {{ opn_host }}"
 
     # =========================================================================
-    # Phase 2: Configure Interfaces
+    # Phase 2: Configure Firewall Aliases
     # =========================================================================
-    - name: Configure interfaces in config.xml
-      ansible.builtin.raw: |
-        # Create interface configuration script
-        cat > /tmp/configure_interfaces.sh << 'SCRIPT'
-        #!/bin/sh
-        set -e
-        
-        CONFIG="/conf/config.xml"
-        
-        # Function to set interface IP
-        set_interface_ip() {
-          local if_name=$1
-          local ip=$2
-          local subnet=$3
-          local section=$4
-          
-          # Use xmllint or sed to modify config
-          # OPNsense uses specific XML structure for interfaces
-          echo "Configuring $if_name ($section) = $ip/$subnet"
-        }
-        
-        # The interfaces are already assigned in golden template
-        # We need to update the IP addresses
-        
-        # Check current interface assignments
-        grep -A5 "<wan>" $CONFIG | head -10
-        grep -A5 "<lan>" $CONFIG | head -10
-        grep -A5 "<opt1>" $CONFIG | head -10 || echo "No opt1 configured"
-        
-        echo "Interface configuration requires web UI or console for initial setup"
-        echo "Current IPs will be used until reconfigured"
-        SCRIPT
-        chmod +x /tmp/configure_interfaces.sh
-        /tmp/configure_interfaces.sh
-      register: interface_config
-      changed_when: false
+    - name: Create LAN network alias
+      ansibleguy.opnsense.alias:
+        name: "LAN_Network"
+        type: "network"
+        content: "{{ lan_network }}"
+        description: "HomePractice internal network"
+        state: present
 
-    - name: Display interface configuration status
-      ansible.builtin.debug:
-        msg: "{{ interface_config.stdout_lines }}"
+    - name: Create Management network alias
+      ansibleguy.opnsense.alias:
+        name: "Management_Network"
+        type: "network"
+        content: "{{ management_network }}"
+        description: "Home network for management access"
+        state: present
 
     # =========================================================================
-    # Phase 3: Configure DHCP Server on Internal Interface
+    # Phase 3: Configure Firewall Rules via direct API
+    # Note: ansibleguy.opnsense.rule has bugs with OPNsense 25.1 API
     # =========================================================================
-    - name: Check if DHCP is configured on LAN
-      ansible.builtin.raw: |
-        grep -A20 "<dhcpd>" /conf/config.xml | grep -A15 "<lan>" | head -20
-      register: dhcp_status
-      changed_when: false
-      ignore_errors: true
+    - name: Add LAN to any firewall rule via API
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/firewall/filter/addRule"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          rule:
+            enabled: "1"
+            action: "pass"
+            interface: "lan"
+            direction: "in"
+            ipprotocol: "inet"
+            protocol: "any"
+            source_net: "lan"
+            destination_net: "any"
+            description: "Allow LAN to any (Ansible)"
+      register: fw_lan_rule
+      changed_when: fw_lan_rule.json.uuid is defined
 
-    - name: Configure DHCP server via API
-      ansible.builtin.raw: |
-        curl -s -k -u "{{ api_key }}:{{ api_secret }}" \
-          "https://127.0.0.1/api/dhcpv4/settings/get" | head -c 500
-      register: dhcp_api
-      changed_when: false
-      ignore_errors: true
-
-    # =========================================================================
-    # Phase 4: Configure Firewall Rules
-    # =========================================================================
-    - name: Get current firewall rules via API
-      ansible.builtin.raw: |
-        curl -s -k -u "{{ api_key }}:{{ api_secret }}" \
-          "https://127.0.0.1/api/firewall/filter/searchRule" | head -c 1000
-      register: fw_rules
-      changed_when: false
-      ignore_errors: true
-
-    - name: Create firewall rules via script
-      ansible.builtin.raw: |
-        cat > /tmp/fw_rules.sh << 'FWEOF'
-        #!/bin/sh
-        API_KEY="{{ api_key }}"
-        API_SECRET="{{ api_secret }}"
-        API_AUTH="$API_KEY:$API_SECRET"
-        
-        # Add LAN to ANY rule
-        curl -s -k -u "$API_AUTH" -X POST "https://127.0.0.1/api/firewall/filter/addRule" \
-          -H "Content-Type: application/json" \
-          -d '{"rule":{"enabled":"1","action":"pass","interface":"lan","direction":"in","ipprotocol":"inet","protocol":"any","source_net":"lan","destination_net":"any","description":"Allow LAN to any"}}'
-        
-        # Apply changes
-        curl -s -k -u "$API_AUTH" -X POST "https://127.0.0.1/api/firewall/filter/apply" -d '{}'
-        FWEOF
-        chmod +x /tmp/fw_rules.sh
-        /bin/sh /tmp/fw_rules.sh
-      register: fw_result
+    - name: Apply firewall rules
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/firewall/filter/apply"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body: {}
       changed_when: true
-      ignore_errors: true
 
     # =========================================================================
-    # Phase 5: NAT is automatic mode (already configured in golden template)
+    # Phase 4: DHCP configured via web UI (API limited)
     # =========================================================================
-    - name: Verify NAT configuration
-      ansible.builtin.raw: |
-        grep -A5 "<outbound>" /conf/config.xml | head -10
-      register: nat_status
-      changed_when: false
 
     # =========================================================================
-    # Phase 6: Install and Configure WireGuard
+    # Phase 5: Configure DNS Host Override
     # =========================================================================
-    - name: Check WireGuard plugin status
-      ansible.builtin.raw: |
-        pkg info os-wireguard 2>/dev/null && echo "INSTALLED" || echo "NOT_INSTALLED"
-      register: wg_status
-      changed_when: false
+    - name: Add DNS entry for K3s
+      ansibleguy.opnsense.unbound_host:
+        hostname: "k3s"
+        domain: "practice.homelab.local"
+        server: "10.10.10.10"
+        description: "HomePractice K3s node"
+        state: present
 
-    - name: Install WireGuard plugin
-      ansible.builtin.raw: |
-        configctl firmware install os-wireguard
-        sleep 10
-        configctl firmware status
-      when: "'NOT_INSTALLED' in wg_status.stdout"
-      register: wg_install
-      ignore_errors: true
+    - name: Reload Unbound DNS
+      ansibleguy.opnsense.reload:
+        target: "unbound"
 
-    - name: Generate WireGuard server keys
-      ansible.builtin.raw: |
-        mkdir -p /usr/local/etc/wireguard
-        test -f /usr/local/etc/wireguard/server.key || wg genkey > /usr/local/etc/wireguard/server.key
-        chmod 600 /usr/local/etc/wireguard/server.key
-        test -f /usr/local/etc/wireguard/server.pub || wg pubkey < /usr/local/etc/wireguard/server.key > /usr/local/etc/wireguard/server.pub
-        cat /usr/local/etc/wireguard/server.pub
-      register: wg_pubkey
-      changed_when: true
-      ignore_errors: true
+    # =========================================================================
+    # Phase 6: Apply all changes
+    # =========================================================================
+    - name: Reload firewall rules
+      ansibleguy.opnsense.reload:
+        target: "rule"
 
     # =========================================================================
     # Phase 7: Summary
     # =========================================================================
-    - name: Get final interface status
-      ansible.builtin.raw: |
-        ifconfig | grep -E "^vtnet|inet " | head -12
-      register: final_interfaces
-      changed_when: false
+    - name: List configured aliases
+      ansibleguy.opnsense.list:
+        target: alias
+      register: final_aliases
 
     - name: Display configuration summary
       ansible.builtin.debug:
         msg: |
           ============================================
-          OPNsense Configuration Summary
+          OPNsense Configuration Complete
           ============================================
           
-          Interfaces:
-          {{ final_interfaces.stdout }}
+          Configured via Ansible:
+          - Aliases: {{ final_aliases.data | length }}
+          - Firewall rule: Allow LAN to any
+          - DNS: k3s.practice.homelab.local → 10.10.10.10
           
-          WireGuard Server Public Key:
-          {{ wg_pubkey.stdout_lines[-1] | default('Not configured') }}
+          Manual Steps Required (Web UI):
+          1. Interfaces → [LAN]: Set IP to {{ internal_ip }}/{{ internal_subnet }}
+          2. Services → DHCPv4 → [LAN]: Enable, range {{ dhcp_range_start }}-{{ dhcp_range_end }}
+          3. System → Firmware → Plugins: Install os-wireguard
           
-          Next Steps:
-          1. Configure interface IPs via web UI if not already set
-          2. Add WireGuard peers via web UI or API
-          3. Test connectivity from internal network
-          
-          API Endpoint: https://{{ ansible_host }}
-          SSH: ssh root@{{ ansible_host }}
+          API: https://{{ opn_host }}
           ============================================
