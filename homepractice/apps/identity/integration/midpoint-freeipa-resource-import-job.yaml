@@ -157,32 +157,7 @@ spec:
                       </objectType>
                   </schemaHandling>
                   
-                  <synchronization>
-                      <objectSynchronization>
-                          <enabled>true</enabled>
-                          <correlation>
-                              <q:equal>
-                                  <q:path>name</q:path>
-                                  <expression>
-                                      <path>$account/attributes/uid</path>
-                                  </expression>
-                              </q:equal>
-                          </correlation>
-                          <reaction>
-                              <situation>linked</situation>
-                              <synchronize>true</synchronize>
-                          </reaction>
-                          <reaction>
-                              <situation>unlinked</situation>
-                              <action>link</action>
-                          </reaction>
-                          <reaction>
-                              <situation>unmatched</situation>
-                              <action>addFocus</action>
-                          </reaction>
-                      </objectSynchronization>
-                  </synchronization>
-              </resource>
+                  </resource>
               XMLEOF
                 
                 RESPONSE=$(curl -s -w "\n%{http_code}" -u ${MIDPOINT_USER}:${MIDPOINT_PASSWORD} \
