@@ -132,8 +132,10 @@ jobs:
           github.event.inputs.action == 'ansible-full'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq python3-pip python3-venv
-          pip3 install --quiet ansible httpx
+          sudo apt-get install -y -qq pipx
+          pipx install ansible --include-deps
+          pipx inject ansible httpx
+          export PATH="$HOME/.local/bin:$PATH"
           ansible-galaxy collection install ansibleguy.opnsense --force
 
       - name: Run Ansible - OPNsense Configuration
@@ -145,6 +147,7 @@ jobs:
           OPNSENSE_API_KEY: ${{ secrets.OPNSENSE_API_KEY }}
           OPNSENSE_API_SECRET: ${{ secrets.OPNSENSE_API_SECRET }}
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           echo "🔧 Running OPNsense configuration via API..."
           cd homepractice/ansible
           
