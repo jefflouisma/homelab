@@ -54,8 +54,12 @@ spec:
                 secretKeyRef:
                   name: identity-postgres-secret
                   key: keycloak-password
+            - name: KC_HOSTNAME
+              value: "keycloak.practice.local"
             - name: KC_HOSTNAME_STRICT
               value: "false"
+            - name: KC_PROXY_HEADERS
+              value: "xforwarded"
             - name: KC_HTTP_ENABLED
               value: "true"
           resources:
