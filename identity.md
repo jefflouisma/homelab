@@ -971,9 +971,9 @@ Current HomePractice K3s node: **4 vCPU, 32GB RAM**
 
 | Service | URL | Default Credentials |
 |---------|-----|---------------------|
-| **Keycloak** | `https://192.168.1.243:8443` | admin / (from secret) |
-| **MidPoint** | `https://192.168.1.243:8444/midpoint` | administrator / 5ecr3t |
-| **FreeIPA** | `https://192.168.1.243:8445/ipa/ui` | admin / (from install) |
+| **Keycloak** | `https://192.168.1.40:8443` | admin / (from secret) |
+| **MidPoint** | `https://192.168.1.40:8444/midpoint` | administrator / 5ecr3t |
+| **FreeIPA** | `https://192.168.1.40:8445/ipa/ui` | admin / (from install) |
 
 ---
 
