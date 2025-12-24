@@ -1,0 +1,185 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-webauthn-config
+  namespace: identity
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: config
+          image: alpine:3.19
+          env:
+            - name: KEYCLOAK_URL
+              value: "http://keycloak.identity.svc.cluster.local:8080"
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin-secret
+                  key: admin-password
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              apk add --no-cache curl jq
+              
+              echo "=========================================="
+              echo "Configuring Keycloak WebAuthn Passwordless"
+              echo "=========================================="
+              
+              echo "Waiting for Keycloak to be ready..."
+              until curl -sf ${KEYCLOAK_URL}/realms/master >/dev/null 2>&1; do
+                echo "Keycloak not ready, waiting..."
+                sleep 10
+              done
+              echo "Keycloak is ready"
+              
+              # Get admin token
+              echo "Getting admin token..."
+              TOKEN=$(curl -s -X POST "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
+                -H "Content-Type: application/x-www-form-urlencoded" \
+                -d "username=admin" \
+                -d "password=${KEYCLOAK_ADMIN_PASSWORD}" \
+                -d "grant_type=password" \
+                -d "client_id=admin-cli" | jq -r '.access_token')
+              
+              if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+                echo "Failed to get admin token"
+                exit 1
+              fi
+              echo "Got admin token"
+              
+              # Check if practice realm exists
+              if ! curl -sf -H "Authorization: Bearer ${TOKEN}" \
+                "${KEYCLOAK_URL}/admin/realms/practice" >/dev/null 2>&1; then
+                echo "Practice realm does not exist, skipping WebAuthn config"
+                exit 0
+              fi
+              
+              # Step 1: Enable WebAuthn Register Passwordless as default required action
+              echo ""
+              echo "Step 1: Enabling WebAuthn Register Passwordless required action..."
+              curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice/authentication/required-actions/webauthn-register-passwordless" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "alias": "webauthn-register-passwordless",
+                  "name": "Webauthn Register Passwordless",
+                  "providerId": "webauthn-register-passwordless",
+                  "enabled": true,
+                  "defaultAction": true,
+                  "priority": 70
+                }'
+              echo "✅ WebAuthn Passwordless required action enabled"
+              
+              # Step 2: Configure WebAuthn Passwordless Policy
+              echo ""
+              echo "Step 2: Configuring WebAuthn Passwordless Policy..."
+              curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "webAuthnPolicyPasswordlessRpEntityName": "Practice Homelab",
+                  "webAuthnPolicyPasswordlessSignatureAlgorithms": ["ES256", "RS256"],
+                  "webAuthnPolicyPasswordlessRpId": "",
+                  "webAuthnPolicyPasswordlessAttestationConveyancePreference": "not specified",
+                  "webAuthnPolicyPasswordlessAuthenticatorAttachment": "not specified",
+                  "webAuthnPolicyPasswordlessRequireResidentKey": "not specified",
+                  "webAuthnPolicyPasswordlessUserVerificationRequirement": "required",
+                  "webAuthnPolicyPasswordlessCreateTimeout": 0,
+                  "webAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister": false
+                }'
+              echo "✅ WebAuthn Passwordless policy configured"
+              
+              # Step 3: Get existing browser flow to duplicate
+              echo ""
+              echo "Step 3: Creating passwordless browser flow..."
+              
+              # Check if flow already exists
+              FLOW_EXISTS=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
+                "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows" | \
+                jq -r '.[] | select(.alias=="browser-webauthn-passwordless") | .id')
+              
+              if [ -n "$FLOW_EXISTS" ]; then
+                echo "Flow 'browser-webauthn-passwordless' already exists"
+              else
+                # Copy browser flow
+                curl -s -X POST "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/browser/copy" \
+                  -H "Authorization: Bearer ${TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d '{"newName": "browser-webauthn-passwordless"}'
+                echo "Created browser-webauthn-passwordless flow"
+              fi
+              
+              # Get the new flow ID
+              FLOW_ID=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
+                "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows" | \
+                jq -r '.[] | select(.alias=="browser-webauthn-passwordless") | .id')
+              
+              echo "Flow ID: $FLOW_ID"
+              
+              # Step 4: Add WebAuthn Passwordless execution to the flow
+              echo ""
+              echo "Step 4: Adding WebAuthn Passwordless authenticator..."
+              
+              # Get executions for the flow
+              EXECUTIONS=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
+                "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/browser-webauthn-passwordless/executions")
+              
+              # Check if WebAuthn passwordless already in flow
+              WEBAUTHN_EXISTS=$(echo "$EXECUTIONS" | jq -r '.[] | select(.providerId=="webauthn-authenticator-passwordless") | .id')
+              
+              if [ -z "$WEBAUTHN_EXISTS" ]; then
+                # Find the forms subflow to add WebAuthn to
+                FORMS_FLOW_ID=$(echo "$EXECUTIONS" | jq -r '.[] | select(.displayName | contains("forms")) | .flowId' | head -1)
+                
+                if [ -n "$FORMS_FLOW_ID" ] && [ "$FORMS_FLOW_ID" != "null" ]; then
+                  # Add WebAuthn Passwordless to forms subflow
+                  curl -s -X POST "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/browser-webauthn-passwordless%20forms/executions/execution" \
+                    -H "Authorization: Bearer ${TOKEN}" \
+                    -H "Content-Type: application/json" \
+                    -d '{"provider": "webauthn-authenticator-passwordless"}'
+                  echo "Added WebAuthn Passwordless authenticator"
+                fi
+              else
+                echo "WebAuthn Passwordless already in flow"
+              fi
+              
+              # Step 5: Bind the flow as browser flow
+              echo ""
+              echo "Step 5: Binding flow as browser authentication..."
+              curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "{\"browserFlow\": \"browser-webauthn-passwordless\"}"
+              echo "✅ Browser flow bound"
+              
+              # Step 6: Add UPDATE_PASSWORD required action for first login
+              echo ""
+              echo "Step 6: Enabling UPDATE_PASSWORD required action..."
+              curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice/authentication/required-actions/UPDATE_PASSWORD" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "alias": "UPDATE_PASSWORD",
+                  "name": "Update Password",
+                  "providerId": "UPDATE_PASSWORD",
+                  "enabled": true,
+                  "defaultAction": false,
+                  "priority": 30
+                }'
+              echo "✅ UPDATE_PASSWORD action enabled"
+              
+              echo ""
+              echo "=========================================="
+              echo "WebAuthn Configuration Complete"
+              echo "=========================================="
+              echo ""
+              echo "User flow:"
+              echo "1. Login with temp password 'gitready'"
+              echo "2. Forced to change password"
+              echo "3. Prompted to register WebAuthn (passkey)"
+              echo "4. Future logins use WebAuthn only"

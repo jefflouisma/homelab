@@ -8,3 +8,6 @@ resources:
   - keycloak-realm-import-job.yaml
   - midpoint-resources-import-job.yaml
   - e2e-test-job.yaml
+  - user-jeff-provision-job.yaml
+  - keycloak-webauthn-config-job.yaml
+  - keycloak-test-app-client-job.yaml

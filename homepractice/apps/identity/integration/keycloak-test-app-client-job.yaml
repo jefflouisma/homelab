@@ -1,0 +1,123 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-create-test-app-client
+  namespace: identity
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-client
+          image: alpine:3.19
+          env:
+            - name: KEYCLOAK_URL
+              value: "http://keycloak.identity.svc.cluster.local:8080"
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin-secret
+                  key: admin-password
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              apk add --no-cache curl jq
+              
+              echo "=========================================="
+              echo "Creating Test App Client in Keycloak"
+              echo "=========================================="
+              
+              echo "Waiting for Keycloak to be ready..."
+              until curl -sf ${KEYCLOAK_URL}/realms/master >/dev/null 2>&1; do
+                echo "Keycloak not ready, waiting..."
+                sleep 10
+              done
+              echo "Keycloak is ready"
+              
+              # Get admin token
+              echo "Getting admin token..."
+              TOKEN=$(curl -s -X POST "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
+                -H "Content-Type: application/x-www-form-urlencoded" \
+                -d "username=admin" \
+                -d "password=${KEYCLOAK_ADMIN_PASSWORD}" \
+                -d "grant_type=password" \
+                -d "client_id=admin-cli" | jq -r '.access_token')
+              
+              if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+                echo "Failed to get admin token"
+                exit 1
+              fi
+              echo "Got admin token"
+              
+              # Check if client already exists
+              echo "Checking if test-app client exists..."
+              CLIENT_EXISTS=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
+                "${KEYCLOAK_URL}/admin/realms/practice/clients?clientId=test-app" | jq -r '.[0].id // empty')
+              
+              if [ -n "$CLIENT_EXISTS" ]; then
+                echo "Client 'test-app' already exists, updating..."
+                CLIENT_ID="$CLIENT_EXISTS"
+                METHOD="PUT"
+                URL="${KEYCLOAK_URL}/admin/realms/practice/clients/${CLIENT_ID}"
+              else
+                echo "Creating new client 'test-app'..."
+                METHOD="POST"
+                URL="${KEYCLOAK_URL}/admin/realms/practice/clients"
+              fi
+              
+              # Create/update client
+              curl -s -X ${METHOD} "${URL}" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "clientId": "test-app",
+                  "name": "HomePractice Test App",
+                  "description": "Test application for SSO validation",
+                  "enabled": true,
+                  "publicClient": true,
+                  "standardFlowEnabled": true,
+                  "implicitFlowEnabled": false,
+                  "directAccessGrantsEnabled": true,
+                  "serviceAccountsEnabled": false,
+                  "protocol": "openid-connect",
+                  "rootUrl": "http://192.168.1.220",
+                  "baseUrl": "/",
+                  "redirectUris": [
+                    "http://192.168.1.220/*",
+                    "http://10.10.10.220/*",
+                    "http://localhost:8080/*"
+                  ],
+                  "webOrigins": [
+                    "http://192.168.1.220",
+                    "http://10.10.10.220",
+                    "http://localhost:8080",
+                    "+"
+                  ],
+                  "attributes": {
+                    "pkce.code.challenge.method": "S256",
+                    "post.logout.redirect.uris": "http://192.168.1.220/*##http://10.10.10.220/*"
+                  },
+                  "defaultClientScopes": [
+                    "web-origins",
+                    "profile",
+                    "roles",
+                    "email"
+                  ]
+                }'
+              
+              echo ""
+              echo "✅ Client 'test-app' configured"
+              
+              # Verify client was created
+              echo ""
+              echo "Verifying client..."
+              curl -s -H "Authorization: Bearer ${TOKEN}" \
+                "${KEYCLOAK_URL}/admin/realms/practice/clients?clientId=test-app" | jq '.[0] | {clientId, enabled, publicClient}'
+              
+              echo ""
+              echo "=========================================="
+              echo "Test App Client Configuration Complete"
+              echo "=========================================="
