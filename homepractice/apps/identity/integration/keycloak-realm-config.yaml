@@ -83,7 +83,7 @@ data:
               "userObjectClasses": ["inetOrgPerson,organizationalPerson,person"],
               "usernameLDAPAttribute": ["uid"],
               "rdnLDAPAttribute": ["uid"],
-              "uuidLDAPAttribute": ["ipaUniqueID"],
+              "uuidLDAPAttribute": ["entryUUID"],
               "editMode": ["READ_ONLY"],
               "syncRegistrations": ["false"],
               "trustEmail": ["true"],
