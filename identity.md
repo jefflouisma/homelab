@@ -831,7 +831,90 @@ spec:
 
 ---
 
-## Phase 6: OPNsense Network Configuration
+## Phase 6: Service Integrations (CAC - Configuration as Code)
+
+All identity services are integrated using GitOps manifests stored in `homepractice/apps/identity/integration/`.
+
+### 6.1 Integration Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Identity Service Integration                      │
+│                                                                         │
+│  ┌──────────────┐         LDAP Federation          ┌──────────────┐    │
+│  │   Keycloak   │ ◄─────────────────────────────── │   FreeIPA    │    │
+│  │  (practice   │   uid=keycloak-service           │ (LDAP/KDC)   │    │
+│  │   realm)     │   cn=users,cn=accounts           │              │    │
+│  └──────┬───────┘   dc=practice,dc=local           └──────┬───────┘    │
+│         │                                                  │            │
+│         │ OIDC/REST                                       │ LDAP       │
+│         │ midpoint-admin client                            │            │
+│         ▼                                                  ▼            │
+│  ┌──────────────┐         LDAP Provisioning        ┌──────────────┐    │
+│  │   MidPoint   │ ─────────────────────────────────│   FreeIPA    │    │
+│  │    (IGA)     │   uid=midpoint-service           │              │    │
+│  │              │   Sync users/groups              │              │    │
+│  └──────────────┘                                  └──────────────┘    │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 6.2 GitOps Integration Files
+
+```
+homepractice/apps/identity/integration/
+├── kustomization.yaml                  # Kustomize bundle
+├── keycloak-realm-config.yaml          # Practice realm with LDAP federation
+├── keycloak-realm-import-job.yaml      # Auto-imports realm on deploy
+├── midpoint-resources-configmap.yaml   # FreeIPA & Keycloak connectors
+├── midpoint-resources-import-job.yaml  # Auto-imports resources
+└── freeipa-setup-job.yaml              # Creates service accounts
+```
+
+### 6.3 Keycloak Practice Realm Configuration
+
+The `practice` realm is configured with:
+- **LDAP User Federation** to FreeIPA at `ldaps://ipa.practice.local:636`
+- **Service account**: `uid=keycloak-service,cn=users,cn=accounts,dc=practice,dc=local`
+- **Attribute mappers**: username, email, firstName, lastName, groups
+- **Clients**: `midpoint` (for SSO), `midpoint-admin` (for REST API)
+
+### 6.4 MidPoint Resource Connectors
+
+**FreeIPA LDAP Resource** (`oid: 00000000-0000-0000-0000-000000000100`):
+- Connects to `ldaps://ipa.practice.local:636`
+- Service account: `uid=midpoint-service`
+- Provisions: users (inetOrgPerson), groups (groupOfNames)
+- Sync: bidirectional with correlation on `uid` → `name`
+
+**Keycloak REST Resource** (`oid: 00000000-0000-0000-0000-000000000200`):
+- Connects to `http://keycloak.identity.svc.cluster.local`
+- Realm: `practice`
+- Manages: users, realm roles
+- Uses `midpoint-admin` client with service account
+
+### 6.5 Credentials (Stored in Secrets)
+
+| Service Account | Purpose | Secret |
+|-----------------|---------|--------|
+| `keycloak-service` | Keycloak → FreeIPA LDAP bind | `freeipa-admin-secret.keycloak-ldap-password` |
+| `midpoint-service` | MidPoint → FreeIPA LDAP bind | `freeipa-admin-secret.midpoint-ldap-password` |
+| `midpoint-admin` | MidPoint → Keycloak REST API | `MidPointAdminAPI2024!` |
+
+### 6.6 Deploy Integrations
+
+```bash
+# Apply integration manifests
+kubectl apply -f homepractice/apps/identity/secrets/freeipa-admin-secret.yaml
+kubectl apply -f homepractice/apps/identity/integration/
+
+# Verify jobs completed
+kubectl get jobs -n identity
+```
+
+---
+
+## Phase 7: OPNsense Network Configuration
 
 Update Ansible playbook to configure port forwarding for external access.
 
