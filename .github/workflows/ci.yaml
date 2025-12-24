@@ -131,7 +131,9 @@ jobs:
           github.event.inputs.action == 'ansible-opnsense' || 
           github.event.inputs.action == 'ansible-full'
         run: |
-          pip install --quiet ansible httpx
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pip python3-venv
+          pip3 install --quiet ansible httpx
           ansible-galaxy collection install ansibleguy.opnsense --force
 
       - name: Run Ansible - OPNsense Configuration
