@@ -10,62 +10,80 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: setup
-          image: python:3.11-alpine
+          image: alpine:3.19
           env:
             - name: IPA_SERVER
-              value: "ipa.practice.local"
-            - name: IPA_ADMIN_PASSWORD
+              value: "10.10.10.212"
+            - name: IPA_DM_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: freeipa-admin-secret
                   key: admin-password
+            - name: KEYCLOAK_LDAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: freeipa-admin-secret
+                  key: keycloak-ldap-password
+            - name: MIDPOINT_LDAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: freeipa-admin-secret
+                  key: midpoint-ldap-password
           command:
             - sh
             - -c
             - |
               set -e
-              apk add --no-cache curl openldap-clients
+              apk add --no-cache openldap-clients
               
-              echo "Creating service accounts in FreeIPA..."
+              echo "Waiting for FreeIPA LDAP to be ready..."
+              until ldapsearch -x -H ldap://${IPA_SERVER}:389 -b "" -s base "(objectclass=*)" >/dev/null 2>&1; do
+                echo "FreeIPA not ready, waiting..."
+                sleep 10
+              done
+              echo "FreeIPA LDAP is ready"
               
-              # Get Kerberos ticket
-              echo "$IPA_ADMIN_PASSWORD" | kinit admin@PRACTICE.LOCAL 2>/dev/null || true
+              echo "Creating system accounts in FreeIPA cn=sysaccounts..."
               
-              # Create keycloak service account via LDAP
-              cat > /tmp/keycloak-user.ldif << 'EOF'
-              dn: uid=keycloak-service,cn=users,cn=accounts,dc=practice,dc=local
-              objectClass: top
-              objectClass: person
-              objectClass: organizationalPerson
-              objectClass: inetOrgPerson
+              # Create keycloak-service system account
+              cat > /tmp/keycloak-sysaccount.ldif << EOF
+              dn: uid=keycloak-service,cn=sysaccounts,cn=etc,dc=practice,dc=local
+              changetype: add
+              objectClass: account
+              objectClass: simpleSecurityObject
               uid: keycloak-service
-              cn: Keycloak Service Account
-              sn: Service
-              userPassword: KeycloakLDAP2024!
+              userPassword: ${KEYCLOAK_LDAP_PASSWORD}
+              passwordExpirationTime: 20380119031407Z
+              nsIdleTimeout: 0
               EOF
               
-              # Create midpoint service account via LDAP
-              cat > /tmp/midpoint-user.ldif << 'EOF'
-              dn: uid=midpoint-service,cn=users,cn=accounts,dc=practice,dc=local
-              objectClass: top
-              objectClass: person
-              objectClass: organizationalPerson
-              objectClass: inetOrgPerson
+              # Create midpoint-service system account
+              cat > /tmp/midpoint-sysaccount.ldif << EOF
+              dn: uid=midpoint-service,cn=sysaccounts,cn=etc,dc=practice,dc=local
+              changetype: add
+              objectClass: account
+              objectClass: simpleSecurityObject
               uid: midpoint-service
-              cn: MidPoint Service Account
-              sn: Service
-              userPassword: MidPointLDAP2024!
+              userPassword: ${MIDPOINT_LDAP_PASSWORD}
+              passwordExpirationTime: 20380119031407Z
+              nsIdleTimeout: 0
               EOF
               
-              # Apply via ldapadd (will fail if already exists, that's ok)
-              ldapadd -x -H ldaps://${IPA_SERVER}:636 \
-                -D "uid=admin,cn=users,cn=accounts,dc=practice,dc=local" \
-                -w "$IPA_ADMIN_PASSWORD" \
-                -f /tmp/keycloak-user.ldif 2>/dev/null || echo "Keycloak service account may already exist"
+              # Apply via ldapmodify as Directory Manager
+              ldapmodify -x -H ldap://${IPA_SERVER}:389 \
+                -D "cn=Directory Manager" \
+                -w "${IPA_DM_PASSWORD}" \
+                -f /tmp/keycloak-sysaccount.ldif 2>&1 || echo "Keycloak sysaccount may already exist"
               
-              ldapadd -x -H ldaps://${IPA_SERVER}:636 \
-                -D "uid=admin,cn=users,cn=accounts,dc=practice,dc=local" \
-                -w "$IPA_ADMIN_PASSWORD" \
-                -f /tmp/midpoint-user.ldif 2>/dev/null || echo "MidPoint service account may already exist"
+              ldapmodify -x -H ldap://${IPA_SERVER}:389 \
+                -D "cn=Directory Manager" \
+                -w "${IPA_DM_PASSWORD}" \
+                -f /tmp/midpoint-sysaccount.ldif 2>&1 || echo "MidPoint sysaccount may already exist"
+              
+              echo "Verifying service accounts..."
+              ldapsearch -x -H ldap://${IPA_SERVER}:389 \
+                -D "cn=Directory Manager" \
+                -w "${IPA_DM_PASSWORD}" \
+                -b "cn=sysaccounts,cn=etc,dc=practice,dc=local" "(objectclass=account)" uid
               
               echo "Service accounts setup complete"

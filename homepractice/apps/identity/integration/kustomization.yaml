@@ -7,3 +7,4 @@ resources:
   - freeipa-setup-job.yaml
   - keycloak-realm-import-job.yaml
   - midpoint-resources-import-job.yaml
+  - e2e-test-job.yaml

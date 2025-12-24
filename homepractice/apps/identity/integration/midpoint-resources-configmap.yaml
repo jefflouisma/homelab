@@ -29,7 +29,7 @@ data:
                 <icfcldap:port>636</icfcldap:port>
                 <icfcldap:connectionSecurity>ssl</icfcldap:connectionSecurity>
                 <icfcldap:baseContext>dc=practice,dc=local</icfcldap:baseContext>
-                <icfcldap:bindDn>uid=midpoint-service,cn=users,cn=accounts,dc=practice,dc=local</icfcldap:bindDn>
+                <icfcldap:bindDn>uid=midpoint-service,cn=sysaccounts,cn=etc,dc=practice,dc=local</icfcldap:bindDn>
                 <icfcldap:bindPassword>
                     <c:clearValue>MidPointLDAP2024!</c:clearValue>
                 </icfcldap:bindPassword>
