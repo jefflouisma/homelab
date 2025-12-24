@@ -22,7 +22,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: freeipa-admin-secret
-                  key: admin-password
+                  key: ds-password
             - name: KEYCLOAK_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:

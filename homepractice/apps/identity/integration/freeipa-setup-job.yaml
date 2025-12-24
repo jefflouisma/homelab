@@ -18,7 +18,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: freeipa-admin-secret
-                  key: admin-password
+                  key: ds-password
             - name: KEYCLOAK_LDAP_PASSWORD
               valueFrom:
                 secretKeyRef:
