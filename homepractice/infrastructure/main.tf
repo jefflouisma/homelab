@@ -121,3 +121,37 @@ module "practice_k3s" {
   # Install K3s via cloud-init (following terraform/ patterns)
   install_k3s = true
 }
+
+# =============================================================================
+# FreeIPA Identity Server
+# =============================================================================
+# FreeIPA requires systemd and cannot run in K8s containers.
+# Deployed as a standalone VM with static IP on the internal network.
+
+module "freeipa" {
+  source = "../../modules/proxmox-vm"
+
+  vm_name      = "freeipa"
+  proxmox_node = var.proxmox_node
+  vm_id        = 202
+  description  = "FreeIPA Identity Server for HomePractice"
+  tags         = ["terraform", "homepractice", "identity"]
+
+  cpu_cores    = 2
+  memory_mb    = 4096
+  disk_size_gb = 50
+
+  datastore_id   = var.datastore_id
+  cloud_image_id = var.fedora_cloud_image_id
+
+  network_interfaces = [
+    { bridge = "vmbr1" }  # Connected to isolated network
+  ]
+
+  ip_address = "10.10.10.212/24"
+  gateway    = "10.10.10.1"
+  username   = "fedora"
+  ssh_keys   = var.ssh_public_keys
+
+  install_k3s = false
+}

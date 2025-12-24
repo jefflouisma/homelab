@@ -38,6 +38,12 @@ variable "ubuntu_cloud_image_id" {
   type        = string
 }
 
+variable "fedora_cloud_image_id" {
+  description = "File ID of Fedora cloud image for FreeIPA (e.g., local:iso/Fedora-Cloud-Base-41.qcow2)"
+  type        = string
+  default     = ""
+}
+
 variable "ssh_public_keys" {
   description = "List of SSH public keys for VM access"
   type        = list(string)

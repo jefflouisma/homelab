@@ -1,0 +1,29 @@
+---
+# Identity Stack - ArgoCD Application
+# Deploys PostgreSQL, Keycloak, and MidPoint to the identity namespace
+# FreeIPA is deployed as a VM via Terraform/Ansible (not in K8s)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: identity-stack
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jefflouisma/homelab
+    targetRevision: HEAD
+    path: homepractice/apps/identity
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: identity
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true

@@ -10,7 +10,7 @@ This document outlines the implementation plan for deploying an enterprise-grade
 |-----------|---------|---------|-----------|
 | **Keycloak** | SSO / Identity Broker (OIDC/SAML) | 26.x | `https://keycloak.practice.local` |
 | **MidPoint** | Identity Governance & Administration | 4.8.x | `https://midpoint.practice.local` |
-| **FreeIPA** | LDAP Directory + Kerberos KDC | Rocky 9 | `https://ipa.practice.local` |
+| **FreeIPA** | LDAP Directory + Kerberos KDC (VM) | Fedora 41 | `https://ipa.practice.local` |
 
 ### Architecture
 
@@ -40,18 +40,22 @@ This document outlines the implementation plan for deploying an enterprise-grade
 │  │                    K3s Cluster (10.10.10.10)                          │   │
 │  │                                                                       │   │
 │  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐       │   │
-│  │  │    Keycloak     │  │    MidPoint     │  │    FreeIPA      │       │   │
-│  │  │  10.10.10.210   │  │  10.10.10.211   │  │  10.10.10.212   │       │   │
-│  │  │  (LoadBalancer) │  │  (LoadBalancer) │  │  (LoadBalancer) │       │   │
-│  │  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘       │   │
-│  │           │                    │                    │                │   │
-│  │           └────────────────────┼────────────────────┘                │   │
-│  │                                ▼                                     │   │
-│  │                    ┌─────────────────────┐                           │   │
-│  │                    │     PostgreSQL      │                           │   │
-│  │                    │  (Shared Instance)  │                           │   │
-│  │                    │   10.10.10.213      │                           │   │
-│  │                    └─────────────────────┘                           │   │
+│  │  │    Keycloak     │  │    MidPoint     │  ┌─────────────────┐       │   │
+│  │  │  10.10.10.210   │  │  10.10.10.211   │  │     PostgreSQL  │       │   │
+│  │  │  (LoadBalancer) │  │  (LoadBalancer) │  │   10.10.10.213  │       │   │
+│  │  └────────┬────────┘  └────────┬────────┘  └─────────────────┘       │   │
+│  │           │                    │                                     │   │
+│  │           └────────────────────┘                                     │   │
+│  │                                                                       │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                    FreeIPA VM (10.10.10.212)                          │   │
+│  │                                                                       │   │
+│  │  - Fedora 41 VM deployed via Terraform                               │   │
+│  │  - FreeIPA server installed via Ansible                              │   │
+│  │  - LDAP (389/636), Kerberos (88/464), HTTPS (443)                    │   │
+│  │  - Requires systemd (cannot run in K8s containers)                   │   │
 │  │                                                                       │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
