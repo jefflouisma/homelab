@@ -242,6 +242,14 @@
         description: "Test App via Traefik"
         state: present
 
+    - name: Add DNS entry for step-ca PKI
+      ansibleguy.opnsense.unbound_host:
+        hostname: "ca"
+        domain: "practice.local"
+        server: "10.10.10.232"
+        description: "step-ca PKI server"
+        state: present
+
     - name: Reload Unbound DNS
       ansibleguy.opnsense.reload:
         target: "unbound"

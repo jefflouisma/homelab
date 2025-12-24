@@ -1,4 +1,18 @@
 ---
+# Traefik ACME Storage PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: traefik-acme-pvc
+  namespace: traefik
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 100Mi
+---
 # Traefik RBAC
 apiVersion: v1
 kind: ServiceAccount
@@ -80,6 +94,11 @@ spec:
             - --entrypoints.websecure.address=:443
             - --entrypoints.web.http.redirections.entryPoint.to=websecure
             - --entrypoints.web.http.redirections.entryPoint.scheme=https
+            - --certificatesresolvers.stepca.acme.email=admin@practice.local
+            - --certificatesresolvers.stepca.acme.storage=/acme/acme.json
+            - --certificatesresolvers.stepca.acme.caserver=https://step-ca.step-ca.svc.cluster.local:9000/acme/acme/directory
+            - --certificatesresolvers.stepca.acme.tlschallenge=true
+            - --serversTransport.insecureSkipVerify=true
             - --log.level=INFO
           ports:
             - name: web
@@ -88,6 +107,9 @@ spec:
               containerPort: 443
             - name: dashboard
               containerPort: 8080
+          volumeMounts:
+            - name: acme-storage
+              mountPath: /acme
           resources:
             requests:
               memory: "64Mi"
@@ -95,6 +117,10 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "500m"
+      volumes:
+        - name: acme-storage
+          persistentVolumeClaim:
+            claimName: traefik-acme-pvc
 ---
 # Traefik Service - LoadBalancer with MetalLB
 apiVersion: v1
