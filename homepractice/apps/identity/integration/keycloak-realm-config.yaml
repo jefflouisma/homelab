@@ -76,7 +76,7 @@ data:
             },
             "config": {
               "vendor": ["other"],
-              "connectionUrl": ["ldaps://ipa.practice.local:636"],
+              "connectionUrl": ["ldap://10.10.10.212:389"],
               "bindDn": ["uid=keycloak-service,cn=sysaccounts,cn=etc,dc=practice,dc=local"],
               "bindCredential": ["KeycloakLDAP2024!"],
               "usersDn": ["cn=users,cn=accounts,dc=practice,dc=local"],
