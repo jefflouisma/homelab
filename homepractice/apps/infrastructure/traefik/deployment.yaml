@@ -92,14 +92,16 @@ spec:
             - --providers.kubernetesingress.ingressclass=traefik
             - --entrypoints.web.address=:80
             - --entrypoints.websecure.address=:443
-            - --entrypoints.web.http.redirections.entryPoint.to=websecure
-            - --entrypoints.web.http.redirections.entryPoint.scheme=https
             - --certificatesresolvers.stepca.acme.email=admin@practice.local
             - --certificatesresolvers.stepca.acme.storage=/acme/acme.json
-            - --certificatesresolvers.stepca.acme.caserver=https://step-ca.step-ca.svc.cluster.local:9000/acme/acme/directory
-            - --certificatesresolvers.stepca.acme.tlschallenge=true
+            - --certificatesresolvers.stepca.acme.caserver=https://step-ca-step-certificates.step-ca.svc.cluster.local/acme/acme/directory
+            - --certificatesresolvers.stepca.acme.httpchallenge=true
+            - --certificatesresolvers.stepca.acme.httpchallenge.entrypoint=web
             - --serversTransport.insecureSkipVerify=true
             - --log.level=INFO
+          env:
+            - name: LEGO_CA_CERTIFICATES
+              value: /etc/ssl/step-ca/root_ca.crt
           ports:
             - name: web
               containerPort: 80
@@ -110,6 +112,9 @@ spec:
           volumeMounts:
             - name: acme-storage
               mountPath: /acme
+            - name: step-ca-root
+              mountPath: /etc/ssl/step-ca
+              readOnly: true
           resources:
             requests:
               memory: "64Mi"
@@ -121,6 +126,9 @@ spec:
         - name: acme-storage
           persistentVolumeClaim:
             claimName: traefik-acme-pvc
+        - name: step-ca-root
+          configMap:
+            name: step-ca-root-ca
 ---
 # Traefik Service - LoadBalancer with MetalLB
 apiVersion: v1
