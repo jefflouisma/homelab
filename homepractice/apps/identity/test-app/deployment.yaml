@@ -132,7 +132,7 @@ data:
         <script>
             // Keycloak configuration - using external IP for browser access
             const keycloakConfig = {
-                url: 'http://192.168.1.210:8080',
+                url: 'http://192.168.1.40:8080',
                 realm: 'practice',
                 clientId: 'test-app'
             };

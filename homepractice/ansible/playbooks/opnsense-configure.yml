@@ -231,6 +231,70 @@
         target: "unbound"
 
     # =========================================================================
+    # Phase 5: NAT Port Forwards for Identity Services
+    # =========================================================================
+    - name: Create NAT port forward for Keycloak
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/firewall/nat/addRule"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          rule:
+            interface: "wan"
+            protocol: "tcp"
+            source_net: "any"
+            destination_net: "wanip"
+            destination_port: "8080"
+            target: "10.10.10.210"
+            local_port: "80"
+            description: "Keycloak SSO"
+            enabled: "1"
+      register: nat_keycloak
+      changed_when: nat_keycloak.status == 200
+      ignore_errors: true
+
+    - name: Create NAT port forward for Test App
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/firewall/nat/addRule"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          rule:
+            interface: "wan"
+            protocol: "tcp"
+            source_net: "any"
+            destination_net: "wanip"
+            destination_port: "8081"
+            target: "10.10.10.220"
+            local_port: "80"
+            description: "Test App SSO"
+            enabled: "1"
+      register: nat_testapp
+      changed_when: nat_testapp.status == 200
+      ignore_errors: true
+
+    - name: Apply NAT rules
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/firewall/nat/apply"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body: {}
+      changed_when: true
+      ignore_errors: true
+
+    # =========================================================================
     # Phase 6: Apply all changes
     # =========================================================================
     - name: Reload firewall rules
