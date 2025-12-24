@@ -42,7 +42,7 @@ spec:
         app: midpoint
     spec:
       initContainers:
-        - name: init-schema-main
+        - name: wait-for-postgres
           image: postgres:16-alpine
           env:
             - name: PGPASSWORD
@@ -54,42 +54,11 @@ spec:
             - sh
             - -c
             - |
-              psql -h identity-postgres-postgresql.identity.svc.cluster.local -d midpoint -U midpoint -f /schema/postgres.sql || true
-          volumeMounts:
-            - name: schema-volume
-              mountPath: /schema
-        - name: init-schema-audit
-          image: postgres:16-alpine
-          env:
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: identity-postgres-secret
-                  key: midpoint-password
-          command:
-            - sh
-            - -c
-            - |
-              psql -h identity-postgres-postgresql.identity.svc.cluster.local -d midpoint -U midpoint -f /schema/postgres-audit.sql || true
-          volumeMounts:
-            - name: schema-volume
-              mountPath: /schema
-        - name: init-schema-quartz
-          image: postgres:16-alpine
-          env:
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: identity-postgres-secret
-                  key: midpoint-password
-          command:
-            - sh
-            - -c
-            - |
-              psql -h identity-postgres-postgresql.identity.svc.cluster.local -d midpoint -U midpoint -f /schema/postgres-quartz.sql || true
-          volumeMounts:
-            - name: schema-volume
-              mountPath: /schema
+              until pg_isready -h identity-postgres-postgresql.identity.svc.cluster.local -p 5432; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready"
       containers:
         - name: midpoint
           image: evolveum/midpoint:4.8-alpine
@@ -111,11 +80,13 @@ spec:
               value: 2048m
             - name: MP_MEM_INIT
               value: 1024m
+            - name: MP_SET_midpoint_repository_missingSchemaAction
+              value: create
+            - name: MP_SET_midpoint_repository_upgradeableSchemaAction  
+              value: upgrade
           volumeMounts:
             - name: midpoint-home
               mountPath: /opt/midpoint/var
-            - name: schema-volume
-              mountPath: /schema
           resources:
             requests:
               cpu: 500m
@@ -142,6 +113,3 @@ spec:
         - name: midpoint-home
           persistentVolumeClaim:
             claimName: midpoint-home-pvc
-        - name: schema-volume
-          configMap:
-            name: midpoint-schema
