@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: midpoint-import-freeipa-resource
+  namespace: identity
+  annotations:
+    argocd.argoproj.io/sync-options: Replace=true
+spec:
+  template:
+    spec:
+      containers:
+      - name: import-resource
+        image: alpine:3.19
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          
+          apk add --no-cache curl >/dev/null 2>&1
+          
+          MIDPOINT_URL="http://midpoint.identity.svc.cluster.local/midpoint"
+          AUTH="administrator:2MEcz|Ra"
+          
+          echo "=========================================="
+          echo "MidPoint FreeIPA Resource Import"
+          echo "=========================================="
+          echo ""
+          echo "NOTE: The FreeIPA LDAP resource needs to be"
+          echo "configured manually in MidPoint UI due to"
+          echo "complex schema requirements in 4.9"
+          echo ""
+          echo "Steps to complete manually:"
+          echo "1. Access MidPoint: http://10.10.10.210:8080/midpoint"
+          echo "2. Login with: administrator / 2MEcz|Ra"
+          echo "3. Go to Resources → New Resource"
+          echo "4. Select: LDAP Connector (com.evolveum.polygon.connector.ldap.LdapConnector)"
+          echo "5. Configure:"
+          echo "   - Host: 10.10.10.212"
+          echo "   - Port: 389"
+          echo "   - Base DN: dc=practice,dc=local"
+          echo "   - Bind DN: uid=midpoint-service,cn=sysaccounts,cn=etc,dc=practice,dc=local"
+          echo "   - Password: MidPointLDAP2024!"
+          echo "   - Base Context for Users: cn=users,cn=accounts,dc=practice,dc=local"
+          echo "6. Test connection and save"
+          echo ""
+          echo "After resource is created, the provisioning job will work."
+          echo ""
+          
+          # Check if resource already exists
+          echo "Checking if FreeIPA resource exists..."
+          if curl -s -u "$AUTH" -H "Accept: application/json" "${MIDPOINT_URL}/ws/rest/resources" | grep -q "FreeIPA LDAP"; then
+            echo "✅ FreeIPA resource exists - provisioning can proceed"
+          else
+            echo "❌ FreeIPA resource not found - manual configuration required"
+            exit 1
+          fi
+      restartPolicy: OnFailure
+  backoffLimit: 1

@@ -2,12 +2,18 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - keycloak-realm-config.yaml
-  - midpoint-resources-configmap.yaml
+  # Core infrastructure
+  - ../midpoint
+  - ../keycloak
+  - ../freeipa
+  - ../test-app
+
+  # Integration jobs
   - freeipa-setup-job.yaml
   - keycloak-realm-import-job.yaml
-  - midpoint-resources-import-job.yaml
-  - e2e-test-job.yaml
-  - user-jeff-provision-job.yaml
   - keycloak-webauthn-config-job.yaml
   - keycloak-test-app-client-job.yaml
+  - midpoint-resource-import-job.yaml
+  - user-jeff-provision-updated.yaml
+  - e2e-test-job.yaml
+  - opnsense-nat-config-job.yaml

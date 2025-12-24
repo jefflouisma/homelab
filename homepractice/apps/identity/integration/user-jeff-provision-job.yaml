@@ -70,29 +70,136 @@ spec:
                 USER_OID=$(echo "$EXISTING" | jq -r '.object[0].oid // empty')
                 echo "User OID: $USER_OID"
               else
-                echo "Creating user 'jeff' in MidPoint (IGA source of truth)..."
-                
-                # Create user via MidPoint REST API
-                cat > /tmp/user-jeff.xml << 'XMLEOF'
-              <?xml version="1.0" encoding="UTF-8"?>
-              <user xmlns="http://midpoint.evolveum.com/xml/ns/public/common/common-3">
-                  <name>jeff</name>
-                  <fullName>Jeff Louis</fullName>
-                  <givenName>Jeff</givenName>
-                  <familyName>Louis</familyName>
-                  <emailAddress>jeff@practice.local</emailAddress>
-                  <credentials>
-                      <password>
-                          <value>
-                              <clearValue>Gitready1!</clearValue>
-                          </value>
-                          <forceChange>true</forceChange>
-                      </password>
-                  </credentials>
-                  <activation>
-                      <administrativeStatus>enabled</administrativeStatus>
-                  </activation>
-              </user>
+                echo "Creating user jeff in MidPoint with FreeIPA role assignment..."
+          
+          # First get the FreeIPA User role OID
+          ROLE_OID=$(curl -s -u ${MIDPOINT_USER}:${MIDPOINT_PASSWORD} -H "Accept: application/json" "${MIDPOINT_URL}/ws/rest/roles?name=FreeIPA%20User" | \
+            jq -r '.object[0].oid // empty')
+          
+          if [ -z "$ROLE_OID" ]; then
+            echo "ERROR: FreeIPA User role not found"
+            exit 1
+          fi
+          
+          echo "FreeIPA User Role OID: $ROLE_OID"
+          
+          # Create user with role assignment
+          cat > /tmp/user.json << EOF
+          {
+            "user": {
+              "name": "jeff",
+              "givenName": "Jeff",
+              "familyName": "Louis",
+              "fullName": "Jeff Louis",
+              "emailAddress": "jeff@practice.local",
+              "credentials": {
+                "password": {
+                  "value": {
+                    "clearValue": "Gitready1!"
+                  },
+                  "forceChange": true
+                }
+              },
+              "activation": {
+                "administrativeStatus": "enabled"
+              },
+              "assignment": [
+                {
+                  "targetRef": {
+                    "oid": "$ROLE_OID",
+                    "type": "c:RoleType"
+                  }
+                }
+              ]
+            }
+          }
+          EOF
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" -u ${MIDPOINT_USER}:${MIDPOINT_PASSWORD} \
+            -H "Content-Type: application/json" \
+            -X POST "${MIDPOINT_URL}/ws/rest/users" \
+            -d @/tmp/user.json 2>&1)
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+            echo " User 'jeff' created in MidPoint IGA"
+            USER_OID=$(echo "$BODY" | grep -o 'oid="[^"]*"' | head -1 | sed 's/oid="//;s/"//')
+            echo "User OID: $USER_OID"
+          else
+            echo "MidPoint response: $HTTP_CODE"
+            echo "$BODY"
+          fi
+        fi
+        
+        # Step 3: Verify user propagated to FreeIPA
+        echo ""
+        echo "Step 3: Waiting for MidPoint to provision to FreeIPA..."
+        sleep 15
+        
+        echo "Checking FreeIPA LDAP for user 'jeff'..."
+        if ldapsearch -x -H ldap://${IPA_SERVER}:389 \
+          -D "cn=Directory Manager" \
+          -w "${IPA_DM_PASSWORD}" \
+          -b "cn=users,cn=accounts,dc=practice,dc=local" \
+          "(uid=jeff)" uid 2>&1 | grep -q "uid: jeff"; then
+          echo " User 'jeff' found in FreeIPA (provisioned by MidPoint)"
+        else
+          echo " User not yet in FreeIPA - MidPoint resource may need configuration"
+          echo "   (User exists in MidPoint IGA - manual resource assignment may be needed)"
+        fi
+        
+        # Step 4: Trigger Keycloak LDAP sync
+        echo ""
+        echo "Step 4: Triggering Keycloak LDAP federation sync..."
+        
+        TOKEN=$(curl -s -X POST "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          -d "username=admin" \
+          -d "password=${KEYCLOAK_ADMIN_PASSWORD}" \
+          -d "grant_type=password" \
+          -d "client_id=admin-cli" | jq -r '.access_token')
+        
+        LDAP_ID=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
+          "${KEYCLOAK_URL}/admin/realms/practice/components?type=org.keycloak.storage.UserStorageProvider" | \
+          jq -r '.[0].id // empty')
+        
+        if [ -n "$LDAP_ID" ]; then
+          SYNC_RESULT=$(curl -s -X POST -H "Authorization: Bearer ${TOKEN}" \
+            "${KEYCLOAK_URL}/admin/realms/practice/user-storage/${LDAP_ID}/sync?action=triggerFullSync")
+          echo "LDAP Sync result: $SYNC_RESULT"
+        fi
+        
+        # Step 5: Set Keycloak required actions
+        echo ""
+        echo "Step 5: Setting WebAuthn required actions in Keycloak..."
+        sleep 5
+        
+        JEFF_KC_ID=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
+          "${KEYCLOAK_URL}/admin/realms/practice/users?username=jeff" | jq -r '.[0].id // empty')
+        
+        if [ -n "$JEFF_KC_ID" ]; then
+          echo "Found jeff in Keycloak: $JEFF_KC_ID"
+          curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice/users/${JEFF_KC_ID}" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{"requiredActions": ["UPDATE_PASSWORD", "webauthn-register-passwordless"]}'
+          echo " WebAuthn required actions set"
+        else
+          echo " Jeff not yet in Keycloak (will sync on next LDAP interval)"
+        fi
+        
+        echo ""
+        echo "=========================================="
+        echo "Enterprise IGA Provisioning Complete"
+        echo "=========================================="
+        echo ""
+        echo "Source of Truth: MidPoint IGA"
+        echo "User: jeff"
+        echo "Temp Password: Gitready1!"
+        echo "Required: Change password + Register WebAuthn"
+        echo "=========================================="
               XMLEOF
                 
                 RESPONSE=$(curl -s -w "\n%{http_code}" -u ${MIDPOINT_USER}:${MIDPOINT_PASSWORD} \

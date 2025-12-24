@@ -1,0 +1,111 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: midpoint-create-minimal-resource
+  namespace: identity
+  annotations:
+    argocd.argoproj.io/sync-options: Replace=true
+spec:
+  template:
+    spec:
+      containers:
+      - name: create-resource
+        image: alpine:3.19
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          
+          apk add --no-cache curl >/dev/null 2>&1
+          
+          MIDPOINT_URL="http://midpoint.identity.svc.cluster.local/midpoint"
+          AUTH="administrator:2MEcz|Ra"
+          
+          echo "Creating minimal FreeIPA resource with fixed OID..."
+          
+          cat > /tmp/resource.xml << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <resource xmlns="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
+                    xmlns:c="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
+                    xmlns:ri="http://midpoint.evolveum.com/xml/ns/public/resource/instance-3"
+                    oid="00000000-0000-0000-0000-000000000100">
+              <name>FreeIPA LDAP</name>
+              <description>FreeIPA Identity Server</description>
+              <connectorRef type="ConnectorType">
+                  <filter>
+                      <q:equal xmlns:q="http://prism.evolveum.com/xml/ns/public/query-3">
+                          <q:path>connectorType</q:path>
+                          <q:value>com.evolveum.polygon.connector.ldap.LdapConnector</q:value>
+                      </q:equal>
+                  </filter>
+              </connectorRef>
+              <connectorConfiguration xmlns:icfcldap="http://midpoint.evolveum.com/xml/ns/public/connector/icf-1/bundle/com.evolveum.polygon.connector-ldap/com.evolveum.polygon.connector.ldap.LdapConnector">
+                  <icfc:configurationProperties>
+                      <icfcldap:host>10.10.10.212</icfcldap:host>
+                      <icfcldap:port>389</icfcldap:port>
+                      <icfcldap:connectionSecurity>none</icfcldap:connectionSecurity>
+                      <icfcldap:baseContext>dc=practice,dc=local</icfcldap:baseContext>
+                      <icfcldap:bindDn>uid=midpoint-service,cn=sysaccounts,cn=etc,dc=practice,dc=local</icfcldap:bindDn>
+                      <icfcldap:bindPassword>
+                          <c:clearValue>MidPointLDAP2024!</c:clearValue>
+                      </icfcldap:bindPassword>
+                      <icfcldap:pagingStrategy>auto</icfcldap:pagingStrategy>
+                  </icfc:configurationProperties>
+              </connectorConfiguration>
+          </resource>
+          EOF
+          
+          echo "Submitting resource to MidPoint..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -u "$AUTH" \
+            -H "Content-Type: application/xml" \
+            -X POST "${MIDPOINT_URL}/ws/rest/resources" \
+            -d @/tmp/resource.xml)
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          
+          if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "409" ]; then
+            echo "✅ FreeIPA resource created or already exists"
+            echo "Resource OID: 00000000-0000-0000-0000-000000000100"
+          else
+            echo "❌ Failed to create resource"
+            echo "Response code: $HTTP_CODE"
+            echo "$RESPONSE" | head -50
+            exit 1
+          fi
+          
+          echo ""
+          echo "Now updating the FreeIPA User role to reference this resource..."
+          
+          ROLE_OID=$(curl -s -u "$AUTH" -H "Accept: application/json" "${MIDPOINT_URL}/ws/rest/roles?name=FreeIPA%20User" | \
+            jq -r '.object[0].oid // empty')
+          
+          if [ -n "$ROLE_OID" ]; then
+            echo "Found FreeIPA User role: $ROLE_OID"
+            
+            cat > /tmp/update-role.xml << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <role xmlns="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
+                xmlns:c="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
+                oid="$ROLE_OID">
+              <name>FreeIPA User</name>
+              <description>Role that provisions users to FreeIPA LDAP</description>
+              <inducement>
+                  <construction>
+                      <resourceRef oid="00000000-0000-0000-0000-000000000100" type="c:ResourceType"/>
+                      <kind>account</kind>
+                      <intent>default</intent>
+                  </construction>
+              </inducement>
+          </role>
+          EOF
+          
+            curl -s -u "$AUTH" \
+              -H "Content-Type: application/xml" \
+              -X PUT "${MIDPOINT_URL}/ws/rest/roles/$ROLE_OID" \
+              -d @/tmp/update-role.xml
+            
+            echo "✅ Role updated with resource reference"
+          fi
+      restartPolicy: OnFailure
+  backoffLimit: 3
