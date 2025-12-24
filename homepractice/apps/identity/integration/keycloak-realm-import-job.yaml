@@ -30,7 +30,7 @@ spec:
             - |
               set -e
               echo "Waiting for Keycloak to be ready..."
-              until curl -sf ${KEYCLOAK_URL}/health/ready; do
+              until curl -sf ${KEYCLOAK_URL}/realms/master >/dev/null 2>&1; do
                 echo "Keycloak not ready, waiting..."
                 sleep 5
               done
