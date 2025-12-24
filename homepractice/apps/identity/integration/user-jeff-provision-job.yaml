@@ -13,7 +13,7 @@ spec:
           image: alpine:3.19
           env:
             - name: MIDPOINT_URL
-              value: "http://midpoint.identity.svc.cluster.local:8080/midpoint"
+              value: "http://midpoint.identity.svc.cluster.local/midpoint"
             - name: MIDPOINT_USER
               value: "administrator"
             - name: MIDPOINT_PASSWORD

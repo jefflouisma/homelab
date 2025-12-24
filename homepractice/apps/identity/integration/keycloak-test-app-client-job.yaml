@@ -13,7 +13,7 @@ spec:
           image: alpine:3.19
           env:
             - name: KEYCLOAK_URL
-              value: "http://keycloak.identity.svc.cluster.local:8080"
+              value: "http://keycloak.identity.svc.cluster.local"
             - name: KEYCLOAK_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
