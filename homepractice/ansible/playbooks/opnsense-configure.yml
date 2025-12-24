@@ -30,11 +30,55 @@
     domain: "local"
     lan_ip: "10.10.10.1"
     lan_if: "vtnet1"
+    wan_if: "vtnet0"
+    wan_ip: "192.168.1.40"
+    wan_subnet: "24"
+    wan_gateway: "192.168.1.254"
 
   tasks:
     - name: Skip bootstrap in CI/CD mode
       ansible.builtin.meta: end_play
       when: not (bootstrap_mode | default(false) | bool)
+
+    - name: Create interface config script
+      ansible.builtin.raw: |
+        echo '<?php' > /tmp/setip.php
+        echo 'require_once("/usr/local/etc/inc/config.inc");' >> /tmp/setip.php
+        echo 'require_once("/usr/local/etc/inc/interfaces.inc");' >> /tmp/setip.php
+        echo 'global $config;' >> /tmp/setip.php
+        echo '$config["interfaces"]["wan"]["ipaddr"]="{{ wan_ip }}";' >> /tmp/setip.php
+        echo '$config["interfaces"]["wan"]["subnet"]="{{ wan_subnet }}";' >> /tmp/setip.php
+        echo '$config["interfaces"]["wan"]["gateway"]="WAN_GW";' >> /tmp/setip.php
+        echo 'unset($config["interfaces"]["wan"]["dhcp"]);' >> /tmp/setip.php
+        echo '$config["interfaces"]["lan"]["ipaddr"]="{{ lan_ip }}";' >> /tmp/setip.php
+        echo '$config["interfaces"]["lan"]["subnet"]="24";' >> /tmp/setip.php
+        echo 'if(empty($config["gateways"])){$config["gateways"]=array();}' >> /tmp/setip.php
+        echo 'if(empty($config["gateways"]["gateway_item"])){$config["gateways"]["gateway_item"]=array();}' >> /tmp/setip.php
+        echo '$found=false;foreach($config["gateways"]["gateway_item"] as $g){if($g["name"]=="WAN_GW"){$found=true;}}' >> /tmp/setip.php
+        echo 'if($found==false){$config["gateways"]["gateway_item"][]=array("interface"=>"wan","gateway"=>"{{ wan_gateway }}","name"=>"WAN_GW","ipprotocol"=>"inet","defaultgw"=>"1");}' >> /tmp/setip.php
+        echo 'write_config("Set static IPs");' >> /tmp/setip.php
+        echo 'interface_configure("wan");' >> /tmp/setip.php
+        echo 'interface_configure("lan");' >> /tmp/setip.php
+        echo 'system_routing_configure();' >> /tmp/setip.php
+        echo 'echo "Done";' >> /tmp/setip.php
+        echo '?>' >> /tmp/setip.php
+      changed_when: true
+
+    - name: Execute interface config script
+      ansible.builtin.raw: /usr/local/bin/php /tmp/setip.php && rm /tmp/setip.php
+      register: interface_config
+      changed_when: true
+
+    - name: Verify interface configuration
+      ansible.builtin.raw: |
+        echo "WAN:" && ifconfig {{ wan_if }} | grep "inet " | head -1
+        echo "LAN:" && ifconfig {{ lan_if }} | grep "inet " | head -1
+      register: if_verify
+      changed_when: false
+
+    - name: Display interface configuration
+      ansible.builtin.debug:
+        msg: "{{ if_verify.stdout }}"
 
     - name: Install QEMU Guest Agent
       ansible.builtin.raw: |
