@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: midpoint
+  namespace: identity
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 10.10.10.211
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+    - name: https
+      port: 443
+      targetPort: 8443
+  selector:
+    app: midpoint
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: midpoint-home-pvc
+  namespace: identity
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: midpoint
+  namespace: identity
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: midpoint
+  template:
+    metadata:
+      labels:
+        app: midpoint
+    spec:
+      containers:
+        - name: midpoint
+          image: evolveum/midpoint:4.10-support
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8443
+              name: https
+          env:
+            - name: MP_SET_midpoint_repository_database
+              value: "postgresql"
+            - name: MP_SET_midpoint_repository_jdbcUrl
+              value: "jdbc:postgresql://identity-postgres-postgresql.identity.svc.cluster.local:5432/midpoint"
+            - name: MP_SET_midpoint_repository_jdbcUsername
+              value: "midpoint"
+            - name: MP_SET_midpoint_repository_jdbcPassword
+              valueFrom:
+                secretKeyRef:
+                  name: identity-postgres-secret
+                  key: midpoint-password
+            - name: MP_MEM_MAX
+              value: "2048m"
+            - name: MP_MEM_INIT
+              value: "1024m"
+            - name: TZ
+              value: "America/Los_Angeles"
+          volumeMounts:
+            - name: midpoint-home
+              mountPath: /opt/midpoint/var
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          readinessProbe:
+            httpGet:
+              path: /midpoint/actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 15
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /midpoint/actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 300
+            periodSeconds: 30
+            failureThreshold: 10
+      volumes:
+        - name: midpoint-home
+          persistentVolumeClaim:
+            claimName: midpoint-home-pvc

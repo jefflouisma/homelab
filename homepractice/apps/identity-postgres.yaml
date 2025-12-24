@@ -1,0 +1,65 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: identity-postgres
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://charts.bitnami.com/bitnami
+    chart: postgresql
+    targetRevision: "16.4.1"
+    helm:
+      values: |
+        global:
+          postgresql:
+            auth:
+              postgresPassword: ""
+              existingSecret: identity-postgres-secret
+              secretKeys:
+                adminPasswordKey: postgres-password
+
+        primary:
+          persistence:
+            enabled: true
+            storageClass: local-path
+            size: 20Gi
+          
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+
+          initdb:
+            scripts:
+              create-databases.sql: |
+                CREATE DATABASE keycloak;
+                CREATE DATABASE midpoint;
+                CREATE USER keycloak WITH ENCRYPTED PASSWORD 'KeycloakDB2024!';
+                CREATE USER midpoint WITH ENCRYPTED PASSWORD 'MidPointDB2024!';
+                GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak;
+                GRANT ALL PRIVILEGES ON DATABASE midpoint TO midpoint;
+                \c keycloak
+                GRANT ALL ON SCHEMA public TO keycloak;
+                \c midpoint
+                GRANT ALL ON SCHEMA public TO midpoint;
+
+        service:
+          type: LoadBalancer
+          loadBalancerIP: 10.10.10.213
+
+        metrics:
+          enabled: true
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: identity
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

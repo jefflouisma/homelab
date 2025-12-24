@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: freeipa
+  namespace: identity
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 10.10.10.212
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: https
+      port: 443
+      targetPort: 443
+    - name: ldap
+      port: 389
+      targetPort: 389
+    - name: ldaps
+      port: 636
+      targetPort: 636
+    - name: kerberos-udp
+      port: 88
+      targetPort: 88
+      protocol: UDP
+    - name: kerberos-tcp
+      port: 88
+      targetPort: 88
+      protocol: TCP
+    - name: kpasswd-udp
+      port: 464
+      targetPort: 464
+      protocol: UDP
+    - name: kpasswd-tcp
+      port: 464
+      targetPort: 464
+      protocol: TCP
+  selector:
+    app: freeipa
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: freeipa
+  namespace: identity
+spec:
+  serviceName: freeipa
+  replicas: 1
+  selector:
+    matchLabels:
+      app: freeipa
+  template:
+    metadata:
+      labels:
+        app: freeipa
+    spec:
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: freeipa
+          image: freeipa/freeipa-server:fedora-41
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: freeipa-env
+          startupProbe:
+            httpGet:
+              path: /ipa/ui/
+              port: 80
+              scheme: HTTP
+            failureThreshold: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ipa/ui/
+              port: 80
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          securityContext:
+            privileged: true
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 20Gi
