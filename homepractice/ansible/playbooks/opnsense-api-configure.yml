@@ -1,0 +1,273 @@
+---
+# OPNsense API-Only Configuration Playbook
+# 
+# This playbook configures OPNsense entirely via API - no SSH required.
+# Designed for CI/CD automation where SSH access may not be available.
+#
+# Prerequisites:
+#   - OPNsense golden template with API key pre-configured
+#   - Network access to OPNsense API (LAN: 10.10.10.1)
+#   - pip install httpx
+#
+# Run: ansible-playbook playbooks/opnsense-api-configure.yml -e opn_host=10.10.10.1
+#
+# Environment variables (for CI/CD):
+#   OPN_HOST: OPNsense API host (default: 10.10.10.1)
+#   OPN_API_KEY: API key
+#   OPN_API_SECRET: API secret
+
+- name: Configure OPNsense via API
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    # OPNsense connection - use LAN IP for reliable access
+    opn_host: "{{ lookup('env', 'OPN_HOST') | default('10.10.10.1', true) }}"
+    opn_api_key: "{{ lookup('env', 'OPN_API_KEY') | default('C9HdbF5A8zWsw+ZV1fzQ0aDbgQlaWEIGbwh7Cq7kq/hSz+rvpxNQa5vUylm3zi8an9UdNVPfzJiHqKtr', true) }}"
+    opn_api_secret: "{{ lookup('env', 'OPN_API_SECRET') | default('pHKan7aagfg6F4H8zG8Vnja97n0pIaz4MexuetCmcDq/Qy9v3Dk1JByi7p4Tb0SWEJXd02RKJUNtHZoZ', true) }}"
+
+    # Networks
+    lan_network: "10.10.10.0/24"
+    management_network: "192.168.1.0/24"
+    
+    # WireGuard VPN
+    wireguard_port: 51820
+    wireguard_tunnel: "10.10.20.1/24"
+
+  tasks:
+    # =========================================================================
+    # Phase 1: Wait for API and Test Connectivity
+    # =========================================================================
+    - name: Wait for OPNsense API to be available
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/core/firmware/status"
+        method: GET
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        timeout: 10
+      register: api_check
+      until: api_check.status == 200
+      retries: 30
+      delay: 10
+
+    - name: Display API connection status
+      ansible.builtin.debug:
+        msg: "API connection successful to {{ opn_host }} - OPNsense {{ api_check.json.product.product_version }}"
+
+    # =========================================================================
+    # Phase 2: Configure Firewall Aliases
+    # =========================================================================
+    - name: Create LAN network alias
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/firewall/alias/addItem"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          alias:
+            enabled: "1"
+            name: "LAN_Network"
+            type: "network"
+            content: "{{ lan_network }}"
+            description: "HomePractice internal network"
+      register: alias_lan
+      changed_when: alias_lan.json.uuid is defined
+      failed_when: false
+
+    - name: Create Management network alias
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/firewall/alias/addItem"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          alias:
+            enabled: "1"
+            name: "Management_Network"
+            type: "network"
+            content: "{{ management_network }}"
+            description: "Home network for management access"
+      register: alias_mgmt
+      changed_when: alias_mgmt.json.uuid is defined
+      failed_when: false
+
+    - name: Apply alias changes
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/firewall/alias/reconfigure"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body: {}
+
+    # =========================================================================
+    # Phase 3: Configure Firewall Rules
+    # =========================================================================
+    - name: Add LAN to any firewall rule
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/firewall/filter/addRule"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          rule:
+            enabled: "1"
+            action: "pass"
+            interface: "lan"
+            direction: "in"
+            ipprotocol: "inet"
+            protocol: "any"
+            source_net: "lan"
+            destination_net: "any"
+            description: "Allow LAN to any"
+      register: fw_lan_rule
+      changed_when: fw_lan_rule.json.uuid is defined
+      failed_when: false
+
+    - name: Apply firewall rules
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/firewall/filter/apply"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body: {}
+
+    # =========================================================================
+    # Phase 4: Configure WireGuard VPN
+    # =========================================================================
+    - name: Enable WireGuard
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/wireguard/general/set"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          general:
+            enabled: "1"
+
+    - name: Check existing WireGuard servers
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/wireguard/server/searchServer"
+        method: GET
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+      register: wg_servers
+
+    - name: Create WireGuard server instance (if none exists)
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/wireguard/server/addServer"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          server:
+            enabled: "1"
+            name: "wg0"
+            port: "{{ wireguard_port }}"
+            tunneladdress: "{{ wireguard_tunnel }}"
+            dns: "10.10.10.1"
+      register: wg_server
+      when: wg_servers.json.rowCount | default(0) | int == 0
+      changed_when: wg_server.json.uuid is defined
+      failed_when: false
+
+    - name: Apply WireGuard configuration
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/wireguard/service/reconfigure"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body: {}
+
+    # =========================================================================
+    # Phase 5: Configure DNS
+    # =========================================================================
+    - name: Add DNS entry for K3s
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/unbound/settings/addHostOverride"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          host:
+            enabled: "1"
+            hostname: "k3s"
+            domain: "practice.homelab.local"
+            server: "10.10.10.10"
+            description: "HomePractice K3s node"
+      register: dns_k3s
+      changed_when: dns_k3s.json.uuid is defined
+      failed_when: false
+
+    - name: Restart Unbound DNS
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/unbound/service/restart"
+        method: POST
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body: {}
+
+    # =========================================================================
+    # Phase 6: Verify Configuration
+    # =========================================================================
+    - name: Get system info
+      ansible.builtin.uri:
+        url: "https://{{ opn_host }}/api/diagnostics/system/systemInformation"
+        method: GET
+        user: "{{ opn_api_key }}"
+        password: "{{ opn_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+      register: system_info
+
+    - name: Display configuration summary
+      ansible.builtin.debug:
+        msg: |
+          ============================================
+          OPNsense API Configuration Complete
+          ============================================
+          
+          Host: {{ opn_host }}
+          Hostname: {{ system_info.json.name | default('unknown') }}
+          
+          Configured:
+          - Firewall aliases (LAN_Network, Management_Network)
+          - Firewall rule: Allow LAN to any
+          - WireGuard VPN: port {{ wireguard_port }}, tunnel {{ wireguard_tunnel }}
+          - DNS: k3s.practice.homelab.local → 10.10.10.10
+          
+          ============================================
