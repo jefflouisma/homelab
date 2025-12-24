@@ -125,6 +125,15 @@ jobs:
             kubectl apply --dry-run=client -f "$f" 2>&1 | grep -v "configured" || true
           done
 
+      - name: Install Ansible
+        if: |
+          needs.detect-changes.outputs.ansible_practice == 'true' || 
+          github.event.inputs.action == 'ansible-opnsense' || 
+          github.event.inputs.action == 'ansible-full'
+        run: |
+          pip install --quiet ansible httpx
+          ansible-galaxy collection install ansibleguy.opnsense --force
+
       - name: Run Ansible - OPNsense Configuration
         if: |
           needs.detect-changes.outputs.ansible_practice == 'true' || 
@@ -137,10 +146,6 @@ jobs:
           echo "🔧 Running OPNsense configuration via API..."
           cd homepractice/ansible
           
-          # Install Ansible collection if needed
-          ansible-galaxy collection install ansibleguy.opnsense --force 2>/dev/null || true
-          
-          # Run playbook with secrets from environment
           ansible-playbook playbooks/opnsense-configure.yml \
             -e "opnsense_api_key=${OPNSENSE_API_KEY}" \
             -e "opnsense_api_secret=${OPNSENSE_API_SECRET}" \
