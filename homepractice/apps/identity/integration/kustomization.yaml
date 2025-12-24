@@ -13,7 +13,7 @@ resources:
   - keycloak-realm-import-job.yaml
   - keycloak-webauthn-config-job.yaml
   - keycloak-test-app-client-job.yaml
-  - midpoint-resource-import-job.yaml
-  - user-jeff-provision-updated.yaml
+  - midpoint-freeipa-complete-job.yaml
+  - user-jeff-provision-job.yaml
   - e2e-test-job.yaml
   - opnsense-nat-config-job.yaml
