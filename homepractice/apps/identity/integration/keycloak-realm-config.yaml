@@ -1,0 +1,138 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm-config
+  namespace: identity
+data:
+  practice-realm.json: |
+    {
+      "realm": "practice",
+      "enabled": true,
+      "displayName": "HomePractice",
+      "sslRequired": "none",
+      "registrationAllowed": false,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "resetPasswordAllowed": true,
+      "editUsernameAllowed": false,
+      "bruteForceProtected": true,
+      "components": {
+        "org.keycloak.storage.UserStorageProvider": [
+          {
+            "name": "freeipa-ldap",
+            "providerId": "ldap",
+            "subComponents": {
+              "org.keycloak.storage.ldap.mappers.LDAPStorageMapper": [
+                {
+                  "name": "username",
+                  "providerId": "user-attribute-ldap-mapper",
+                  "config": {
+                    "ldap.attribute": ["uid"],
+                    "user.model.attribute": ["username"],
+                    "read.only": ["true"]
+                  }
+                },
+                {
+                  "name": "email",
+                  "providerId": "user-attribute-ldap-mapper",
+                  "config": {
+                    "ldap.attribute": ["mail"],
+                    "user.model.attribute": ["email"],
+                    "read.only": ["true"]
+                  }
+                },
+                {
+                  "name": "first name",
+                  "providerId": "user-attribute-ldap-mapper",
+                  "config": {
+                    "ldap.attribute": ["givenName"],
+                    "user.model.attribute": ["firstName"],
+                    "read.only": ["true"]
+                  }
+                },
+                {
+                  "name": "last name",
+                  "providerId": "user-attribute-ldap-mapper",
+                  "config": {
+                    "ldap.attribute": ["sn"],
+                    "user.model.attribute": ["lastName"],
+                    "read.only": ["true"]
+                  }
+                },
+                {
+                  "name": "groups",
+                  "providerId": "group-ldap-mapper",
+                  "config": {
+                    "groups.dn": ["cn=groups,cn=accounts,dc=practice,dc=local"],
+                    "group.name.ldap.attribute": ["cn"],
+                    "group.object.classes": ["groupOfNames,posixGroup"],
+                    "preserve.group.inheritance": ["true"],
+                    "membership.ldap.attribute": ["member"],
+                    "membership.attribute.type": ["DN"],
+                    "mode": ["READ_ONLY"]
+                  }
+                }
+              ]
+            },
+            "config": {
+              "vendor": ["other"],
+              "connectionUrl": ["ldaps://ipa.practice.local:636"],
+              "bindDn": ["uid=keycloak-service,cn=users,cn=accounts,dc=practice,dc=local"],
+              "bindCredential": ["KeycloakLDAP2024!"],
+              "usersDn": ["cn=users,cn=accounts,dc=practice,dc=local"],
+              "userObjectClasses": ["inetOrgPerson,organizationalPerson,person"],
+              "usernameLDAPAttribute": ["uid"],
+              "rdnLDAPAttribute": ["uid"],
+              "uuidLDAPAttribute": ["ipaUniqueID"],
+              "editMode": ["READ_ONLY"],
+              "syncRegistrations": ["false"],
+              "trustEmail": ["true"],
+              "fullSyncPeriod": ["604800"],
+              "changedSyncPeriod": ["86400"],
+              "cachePolicy": ["DEFAULT"],
+              "enabled": ["true"],
+              "priority": ["0"],
+              "importEnabled": ["true"],
+              "useTruststoreSpi": ["always"],
+              "connectionPooling": ["true"],
+              "pagination": ["true"]
+            }
+          }
+        ]
+      },
+      "clients": [
+        {
+          "clientId": "midpoint",
+          "name": "MidPoint Identity Governance",
+          "enabled": true,
+          "clientAuthenticatorType": "client-secret",
+          "secret": "MidPointKeycloak2024!",
+          "redirectUris": ["http://10.10.10.211/*", "http://midpoint.identity.svc.cluster.local/*"],
+          "webOrigins": ["*"],
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": true,
+          "serviceAccountsEnabled": true
+        },
+        {
+          "clientId": "midpoint-admin",
+          "name": "MidPoint Admin API",
+          "enabled": true,
+          "clientAuthenticatorType": "client-secret",
+          "secret": "MidPointAdminAPI2024!",
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "standardFlowEnabled": false,
+          "directAccessGrantsEnabled": true,
+          "serviceAccountsEnabled": true
+        }
+      ],
+      "roles": {
+        "realm": [
+          {"name": "admin", "description": "Administrator"},
+          {"name": "user", "description": "Regular User"},
+          {"name": "operator", "description": "System Operator"}
+        ]
+      }
+    }

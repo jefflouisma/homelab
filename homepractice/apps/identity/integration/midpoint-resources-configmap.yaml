@@ -1,0 +1,428 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: midpoint-resources
+  namespace: identity
+data:
+  freeipa-resource.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <resource xmlns="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
+              xmlns:c="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
+              xmlns:ri="http://midpoint.evolveum.com/xml/ns/public/resource/instance-3"
+              xmlns:icfc="http://midpoint.evolveum.com/xml/ns/public/connector/icf-1/connector-schema-3"
+              oid="00000000-0000-0000-0000-000000000100">
+        <name>FreeIPA LDAP</name>
+        <description>FreeIPA Identity Server - LDAP Connector</description>
+        
+        <connectorRef type="ConnectorType">
+            <filter>
+                <q:equal xmlns:q="http://prism.evolveum.com/xml/ns/public/query-3">
+                    <q:path>connectorType</q:path>
+                    <q:value>com.evolveum.polygon.connector.ldap.LdapConnector</q:value>
+                </q:equal>
+            </filter>
+        </connectorRef>
+        
+        <connectorConfiguration xmlns:icfcldap="http://midpoint.evolveum.com/xml/ns/public/connector/icf-1/bundle/com.evolveum.polygon.connector-ldap/com.evolveum.polygon.connector.ldap.LdapConnector">
+            <icfc:configurationProperties>
+                <icfcldap:host>ipa.practice.local</icfcldap:host>
+                <icfcldap:port>636</icfcldap:port>
+                <icfcldap:connectionSecurity>ssl</icfcldap:connectionSecurity>
+                <icfcldap:baseContext>dc=practice,dc=local</icfcldap:baseContext>
+                <icfcldap:bindDn>uid=midpoint-service,cn=users,cn=accounts,dc=practice,dc=local</icfcldap:bindDn>
+                <icfcldap:bindPassword>
+                    <c:clearValue>MidPointLDAP2024!</c:clearValue>
+                </icfcldap:bindPassword>
+                <icfcldap:pagingStrategy>auto</icfcldap:pagingStrategy>
+                <icfcldap:vlvSortAttribute>uid</icfcldap:vlvSortAttribute>
+                <icfcldap:operationalAttributes>ipaUniqueID</icfcldap:operationalAttributes>
+                <icfcldap:operationalAttributes>memberOf</icfcldap:operationalAttributes>
+            </icfc:configurationProperties>
+        </connectorConfiguration>
+        
+        <schemaHandling>
+            <objectType>
+                <kind>account</kind>
+                <intent>default</intent>
+                <displayName>FreeIPA User Account</displayName>
+                <default>true</default>
+                <objectClass>ri:inetOrgPerson</objectClass>
+                <baseContext>
+                    <objectClass>ri:organizationalUnit</objectClass>
+                    <filter>
+                        <q:equal xmlns:q="http://prism.evolveum.com/xml/ns/public/query-3">
+                            <q:path>attributes/dn</q:path>
+                            <q:value>cn=users,cn=accounts,dc=practice,dc=local</q:value>
+                        </q:equal>
+                    </filter>
+                </baseContext>
+                
+                <attribute>
+                    <ref>ri:dn</ref>
+                    <displayName>Distinguished Name</displayName>
+                    <outbound>
+                        <source>
+                            <path>name</path>
+                        </source>
+                        <expression>
+                            <script>
+                                <code>'uid=' + name + ',cn=users,cn=accounts,dc=practice,dc=local'</code>
+                            </script>
+                        </expression>
+                    </outbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:uid</ref>
+                    <displayName>Login Name</displayName>
+                    <outbound>
+                        <strength>strong</strength>
+                        <source>
+                            <path>name</path>
+                        </source>
+                    </outbound>
+                    <inbound>
+                        <target>
+                            <path>name</path>
+                        </target>
+                    </inbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:cn</ref>
+                    <displayName>Common Name</displayName>
+                    <outbound>
+                        <source>
+                            <path>fullName</path>
+                        </source>
+                    </outbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:sn</ref>
+                    <displayName>Surname</displayName>
+                    <outbound>
+                        <source>
+                            <path>familyName</path>
+                        </source>
+                    </outbound>
+                    <inbound>
+                        <target>
+                            <path>familyName</path>
+                        </target>
+                    </inbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:givenName</ref>
+                    <displayName>Given Name</displayName>
+                    <outbound>
+                        <source>
+                            <path>givenName</path>
+                        </source>
+                    </outbound>
+                    <inbound>
+                        <target>
+                            <path>givenName</path>
+                        </target>
+                    </inbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:mail</ref>
+                    <displayName>Email</displayName>
+                    <outbound>
+                        <source>
+                            <path>emailAddress</path>
+                        </source>
+                    </outbound>
+                    <inbound>
+                        <target>
+                            <path>emailAddress</path>
+                        </target>
+                    </inbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:homeDirectory</ref>
+                    <displayName>Home Directory</displayName>
+                    <outbound>
+                        <strength>weak</strength>
+                        <source>
+                            <path>name</path>
+                        </source>
+                        <expression>
+                            <script>
+                                <code>'/home/' + name</code>
+                            </script>
+                        </expression>
+                    </outbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:loginShell</ref>
+                    <displayName>Login Shell</displayName>
+                    <outbound>
+                        <strength>weak</strength>
+                        <expression>
+                            <value>/bin/bash</value>
+                        </expression>
+                    </outbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:gidNumber</ref>
+                    <displayName>Primary Group ID</displayName>
+                    <outbound>
+                        <strength>weak</strength>
+                        <expression>
+                            <value>10000</value>
+                        </expression>
+                    </outbound>
+                </attribute>
+                
+                <credentials>
+                    <password>
+                        <outbound>
+                            <expression>
+                                <asIs/>
+                            </expression>
+                        </outbound>
+                    </password>
+                </credentials>
+                
+                <activation>
+                    <administrativeStatus>
+                        <outbound/>
+                        <inbound/>
+                    </administrativeStatus>
+                </activation>
+            </objectType>
+            
+            <objectType>
+                <kind>entitlement</kind>
+                <intent>group</intent>
+                <displayName>FreeIPA Group</displayName>
+                <objectClass>ri:groupOfNames</objectClass>
+                <baseContext>
+                    <objectClass>ri:organizationalUnit</objectClass>
+                    <filter>
+                        <q:equal xmlns:q="http://prism.evolveum.com/xml/ns/public/query-3">
+                            <q:path>attributes/dn</q:path>
+                            <q:value>cn=groups,cn=accounts,dc=practice,dc=local</q:value>
+                        </q:equal>
+                    </filter>
+                </baseContext>
+                
+                <attribute>
+                    <ref>ri:cn</ref>
+                    <displayName>Group Name</displayName>
+                    <outbound>
+                        <source>
+                            <path>name</path>
+                        </source>
+                    </outbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:description</ref>
+                    <outbound>
+                        <source>
+                            <path>description</path>
+                        </source>
+                    </outbound>
+                </attribute>
+            </objectType>
+        </schemaHandling>
+        
+        <synchronization>
+            <objectSynchronization>
+                <objectClass>ri:inetOrgPerson</objectClass>
+                <kind>account</kind>
+                <intent>default</intent>
+                <focusType>UserType</focusType>
+                <enabled>true</enabled>
+                <correlation>
+                    <q:equal xmlns:q="http://prism.evolveum.com/xml/ns/public/query-3">
+                        <q:path>name</q:path>
+                        <expression>
+                            <path>$projection/attributes/ri:uid</path>
+                        </expression>
+                    </q:equal>
+                </correlation>
+                <reaction>
+                    <situation>linked</situation>
+                    <synchronize>true</synchronize>
+                </reaction>
+                <reaction>
+                    <situation>deleted</situation>
+                    <synchronize>true</synchronize>
+                    <action>
+                        <handlerUri>http://midpoint.evolveum.com/xml/ns/public/model/action-3#unlink</handlerUri>
+                    </action>
+                </reaction>
+                <reaction>
+                    <situation>unlinked</situation>
+                    <synchronize>true</synchronize>
+                    <action>
+                        <handlerUri>http://midpoint.evolveum.com/xml/ns/public/model/action-3#link</handlerUri>
+                    </action>
+                </reaction>
+                <reaction>
+                    <situation>unmatched</situation>
+                    <synchronize>true</synchronize>
+                    <action>
+                        <handlerUri>http://midpoint.evolveum.com/xml/ns/public/model/action-3#addFocus</handlerUri>
+                    </action>
+                </reaction>
+            </objectSynchronization>
+        </synchronization>
+    </resource>
+
+  keycloak-resource.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <resource xmlns="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
+              xmlns:c="http://midpoint.evolveum.com/xml/ns/public/common/common-3"
+              xmlns:ri="http://midpoint.evolveum.com/xml/ns/public/resource/instance-3"
+              xmlns:icfc="http://midpoint.evolveum.com/xml/ns/public/connector/icf-1/connector-schema-3"
+              oid="00000000-0000-0000-0000-000000000200">
+        <name>Keycloak Practice Realm</name>
+        <description>Keycloak Identity Provider - REST Connector</description>
+        
+        <connectorRef type="ConnectorType">
+            <filter>
+                <q:equal xmlns:q="http://prism.evolveum.com/xml/ns/public/query-3">
+                    <q:path>connectorType</q:path>
+                    <q:value>jp.openstandia.connector.keycloak.KeycloakConnector</q:value>
+                </q:equal>
+            </filter>
+        </connectorRef>
+        
+        <connectorConfiguration xmlns:keycloak="http://midpoint.evolveum.com/xml/ns/public/connector/icf-1/bundle/jp.openstandia.connector.connector-keycloak/jp.openstandia.connector.keycloak.KeycloakConnector">
+            <icfc:configurationProperties>
+                <keycloak:serverUrl>http://keycloak.identity.svc.cluster.local</keycloak:serverUrl>
+                <keycloak:realm>practice</keycloak:realm>
+                <keycloak:clientId>midpoint-admin</keycloak:clientId>
+                <keycloak:clientSecret>
+                    <c:clearValue>MidPointAdminAPI2024!</c:clearValue>
+                </keycloak:clientSecret>
+            </icfc:configurationProperties>
+        </connectorConfiguration>
+        
+        <schemaHandling>
+            <objectType>
+                <kind>account</kind>
+                <intent>default</intent>
+                <displayName>Keycloak User</displayName>
+                <default>true</default>
+                <objectClass>ri:user</objectClass>
+                
+                <attribute>
+                    <ref>ri:username</ref>
+                    <displayName>Username</displayName>
+                    <outbound>
+                        <strength>strong</strength>
+                        <source>
+                            <path>name</path>
+                        </source>
+                    </outbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:email</ref>
+                    <displayName>Email</displayName>
+                    <outbound>
+                        <source>
+                            <path>emailAddress</path>
+                        </source>
+                    </outbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:firstName</ref>
+                    <displayName>First Name</displayName>
+                    <outbound>
+                        <source>
+                            <path>givenName</path>
+                        </source>
+                    </outbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:lastName</ref>
+                    <displayName>Last Name</displayName>
+                    <outbound>
+                        <source>
+                            <path>familyName</path>
+                        </source>
+                    </outbound>
+                </attribute>
+                
+                <attribute>
+                    <ref>ri:enabled</ref>
+                    <displayName>Enabled</displayName>
+                    <outbound>
+                        <expression>
+                            <value>true</value>
+                        </expression>
+                    </outbound>
+                </attribute>
+                
+                <credentials>
+                    <password>
+                        <outbound>
+                            <expression>
+                                <asIs/>
+                            </expression>
+                        </outbound>
+                    </password>
+                </credentials>
+            </objectType>
+            
+            <objectType>
+                <kind>entitlement</kind>
+                <intent>role</intent>
+                <displayName>Keycloak Realm Role</displayName>
+                <objectClass>ri:realmRole</objectClass>
+                
+                <attribute>
+                    <ref>ri:name</ref>
+                    <displayName>Role Name</displayName>
+                    <outbound>
+                        <source>
+                            <path>name</path>
+                        </source>
+                    </outbound>
+                </attribute>
+            </objectType>
+        </schemaHandling>
+        
+        <synchronization>
+            <objectSynchronization>
+                <objectClass>ri:user</objectClass>
+                <kind>account</kind>
+                <intent>default</intent>
+                <focusType>UserType</focusType>
+                <enabled>true</enabled>
+                <correlation>
+                    <q:equal xmlns:q="http://prism.evolveum.com/xml/ns/public/query-3">
+                        <q:path>name</q:path>
+                        <expression>
+                            <path>$projection/attributes/ri:username</path>
+                        </expression>
+                    </q:equal>
+                </correlation>
+                <reaction>
+                    <situation>linked</situation>
+                    <synchronize>true</synchronize>
+                </reaction>
+                <reaction>
+                    <situation>unlinked</situation>
+                    <synchronize>true</synchronize>
+                    <action>
+                        <handlerUri>http://midpoint.evolveum.com/xml/ns/public/model/action-3#link</handlerUri>
+                    </action>
+                </reaction>
+            </objectSynchronization>
+        </synchronization>
+    </resource>

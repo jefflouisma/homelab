@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: midpoint-resources-import
+  namespace: identity
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: import
+          image: curlimages/curl:8.5.0
+          env:
+            - name: MIDPOINT_URL
+              value: "http://midpoint.identity.svc.cluster.local/midpoint"
+            - name: MIDPOINT_USER
+              value: "administrator"
+            - name: MIDPOINT_PASSWORD
+              value: "5ecr3t"
+          volumeMounts:
+            - name: resources
+              mountPath: /resources
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Waiting for MidPoint to be ready..."
+              until curl -sf ${MIDPOINT_URL}/actuator/health 2>/dev/null || curl -sf -o /dev/null ${MIDPOINT_URL}/self/dashboard; do
+                echo "MidPoint not ready, waiting..."
+                sleep 10
+              done
+              
+              echo "Importing FreeIPA resource..."
+              curl -s -X POST "${MIDPOINT_URL}/ws/rest/resources" \
+                -u "${MIDPOINT_USER}:${MIDPOINT_PASSWORD}" \
+                -H "Content-Type: application/xml" \
+                -d @/resources/freeipa-resource.xml || echo "FreeIPA resource may already exist"
+              
+              echo "Importing Keycloak resource..."
+              curl -s -X POST "${MIDPOINT_URL}/ws/rest/resources" \
+                -u "${MIDPOINT_USER}:${MIDPOINT_PASSWORD}" \
+                -H "Content-Type: application/xml" \
+                -d @/resources/keycloak-resource.xml || echo "Keycloak resource may already exist"
+              
+              echo "MidPoint resources import complete"
+      volumes:
+        - name: resources
+          configMap:
+            name: midpoint-resources

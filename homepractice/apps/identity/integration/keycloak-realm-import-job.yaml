@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-realm-import
+  namespace: identity
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: realm-import
+          image: curlimages/curl:8.5.0
+          env:
+            - name: KEYCLOAK_URL
+              value: "http://keycloak.identity.svc.cluster.local"
+            - name: KEYCLOAK_ADMIN
+              value: "admin"
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin-secret
+                  key: admin-password
+          volumeMounts:
+            - name: realm-config
+              mountPath: /config
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Waiting for Keycloak to be ready..."
+              until curl -sf ${KEYCLOAK_URL}/health/ready; do
+                echo "Keycloak not ready, waiting..."
+                sleep 5
+              done
+              
+              echo "Getting admin token..."
+              TOKEN=$(curl -s -X POST "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
+                -H "Content-Type: application/x-www-form-urlencoded" \
+                -d "username=${KEYCLOAK_ADMIN}" \
+                -d "password=${KEYCLOAK_ADMIN_PASSWORD}" \
+                -d "grant_type=password" \
+                -d "client_id=admin-cli" | sed 's/.*"access_token":"\([^"]*\)".*/\1/')
+              
+              if [ -z "$TOKEN" ]; then
+                echo "Failed to get admin token"
+                exit 1
+              fi
+              
+              echo "Checking if practice realm exists..."
+              REALM_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                "${KEYCLOAK_URL}/admin/realms/practice")
+              
+              if [ "$REALM_EXISTS" = "200" ]; then
+                echo "Practice realm already exists, skipping import"
+              else
+                echo "Importing practice realm..."
+                curl -s -X POST "${KEYCLOAK_URL}/admin/realms" \
+                  -H "Authorization: Bearer ${TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d @/config/practice-realm.json
+                echo "Realm import complete"
+              fi
+              
+              echo "Keycloak realm configuration complete"
+      volumes:
+        - name: realm-config
+          configMap:
+            name: keycloak-realm-config
