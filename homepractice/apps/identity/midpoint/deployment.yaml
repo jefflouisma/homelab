@@ -65,8 +65,8 @@ spec:
           ports:
             - containerPort: 8080
           env:
-            - name: MP_SET_midpoint_repository_database
-              value: postgresql
+            - name: MP_SET_midpoint_repository_type
+              value: native
             - name: MP_SET_midpoint_repository_jdbcUrl
               value: jdbc:postgresql://identity-postgres-postgresql.identity.svc.cluster.local:5432/midpoint
             - name: MP_SET_midpoint_repository_jdbcUsername
@@ -80,10 +80,6 @@ spec:
               value: 2048m
             - name: MP_MEM_INIT
               value: 1024m
-            - name: MP_SET_midpoint_repository_missingSchemaAction
-              value: create
-            - name: MP_SET_midpoint_repository_upgradeableSchemaAction  
-              value: upgrade
           volumeMounts:
             - name: midpoint-home
               mountPath: /opt/midpoint/var
