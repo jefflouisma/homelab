@@ -131,7 +131,7 @@ data:
         <script>
             // Keycloak configuration - using external IP for browser access
             const keycloakConfig = {
-                url: 'http://192.168.1.40:8080',
+                url: 'https://keycloak.practice.local',
                 realm: 'practice',
                 clientId: 'test-app'
             };
@@ -170,7 +170,7 @@ data:
                     const authenticated = await keycloak.init({
                         onLoad: 'check-sso',
                         checkLoginIframe: false,
-                        pkceMethod: false
+                        pkceMethod: 'S256'
                     });
                     
                     if (authenticated) {
@@ -205,10 +205,10 @@ data:
             // Initialize on page load
             async function loadAndInit() {
                 try {
-                    // Load Keycloak JS v21 (works over HTTP without Web Crypto)
+                    // Load Keycloak JS v26 (works over HTTPS with Web Crypto)
                     await new Promise((resolve, reject) => {
                         const script = document.createElement('script');
-                        script.src = 'https://cdn.jsdelivr.net/npm/keycloak-js@21.1.2/dist/keycloak.min.js';
+                        script.src = 'https://cdn.jsdelivr.net/npm/keycloak-js@26.0.0/dist/keycloak.min.js';
                         script.onload = resolve;
                         script.onerror = () => reject(new Error('Failed to load Keycloak JS'));
                         document.head.appendChild(script);
