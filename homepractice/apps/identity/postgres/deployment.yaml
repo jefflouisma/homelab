@@ -25,6 +25,28 @@ spec:
   selector:
     app: postgres
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: identity
+data:
+  init.sql: |
+    -- Create databases for identity stack
+    CREATE DATABASE keycloak;
+    CREATE DATABASE midpoint;
+    -- Create users
+    CREATE USER keycloak WITH PASSWORD 'KeycloakDB2024!';
+    CREATE USER midpoint WITH PASSWORD 'MidPointDB2024!';
+    -- Grant privileges
+    GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak;
+    GRANT ALL PRIVILEGES ON DATABASE midpoint TO midpoint;
+    -- Connect to each database and grant schema privileges
+    \c keycloak
+    GRANT ALL ON SCHEMA public TO keycloak;
+    \c midpoint
+    GRANT ALL ON SCHEMA public TO midpoint;
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -56,6 +78,8 @@ spec:
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
           resources:
             requests:
               cpu: 250m
@@ -67,3 +91,6 @@ spec:
         - name: postgres-data
           persistentVolumeClaim:
             claimName: postgres-pvc
+        - name: init-scripts
+          configMap:
+            name: postgres-init
