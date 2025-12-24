@@ -85,6 +85,9 @@ spec:
           volumeMounts:
             - name: midpoint-home
               mountPath: /opt/midpoint/var
+            - name: midpoint-config
+              mountPath: /opt/midpoint/var/config.xml
+              subPath: config.xml
           resources:
             requests:
               cpu: 500m
