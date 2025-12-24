@@ -19,19 +19,24 @@
 
 # =============================================================================
 # Play 1: Bootstrap via SSH (only runs with bootstrap_mode=true)
+# Run manually: ansible-playbook -e bootstrap_mode=true ...
 # =============================================================================
 - name: Bootstrap OPNsense via SSH
   hosts: opnsense
   gather_facts: false
-  when: bootstrap_mode | default(false) | bool
 
   vars:
     hostname: "perimeter-fw"
     domain: "local"
     lan_ip: "10.10.10.1"
     lan_if: "vtnet1"
+    bootstrap_mode: "{{ bootstrap_mode | default(false) | bool }}"
 
   tasks:
+    - name: Skip bootstrap in CI/CD mode
+      ansible.builtin.meta: end_play
+      when: not bootstrap_mode
+
     - name: Install QEMU Guest Agent
       ansible.builtin.raw: |
         pkg install -y qemu-guest-agent && sysrc qemu_guest_agent_enable=YES && service qemu-guest-agent start 2>/dev/null || true
