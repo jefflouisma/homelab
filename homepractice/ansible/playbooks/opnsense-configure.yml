@@ -30,12 +30,11 @@
     domain: "local"
     lan_ip: "10.10.10.1"
     lan_if: "vtnet1"
-    bootstrap_mode: "{{ bootstrap_mode | default(false) | bool }}"
 
   tasks:
     - name: Skip bootstrap in CI/CD mode
       ansible.builtin.meta: end_play
-      when: not bootstrap_mode
+      when: not (bootstrap_mode | default(false) | bool)
 
     - name: Install QEMU Guest Agent
       ansible.builtin.raw: |
