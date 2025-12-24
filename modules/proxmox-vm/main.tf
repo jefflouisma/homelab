@@ -101,6 +101,20 @@ EOF
   }
 }
 
+# Custom cloud-init user-data snippet (for FreeIPA, etc.)
+resource "proxmox_virtual_environment_file" "custom_cloudinit" {
+  count = var.custom_user_data != "" ? 1 : 0
+
+  content_type = "snippets"
+  datastore_id = "local"
+  node_name    = var.proxmox_node
+
+  source_raw {
+    data      = var.custom_user_data
+    file_name = "${var.vm_name}-custom-cloudinit.yaml"
+  }
+}
+
 resource "proxmox_virtual_environment_vm" "vm" {
   name      = var.vm_name
   node_name = var.proxmox_node
@@ -155,8 +169,8 @@ resource "proxmox_virtual_environment_vm" "vm" {
       keys     = var.ssh_keys
     }
 
-    # Use K3s cloud-init snippet if install_k3s is true, otherwise use provided file_id
-    user_data_file_id = var.install_k3s ? proxmox_virtual_environment_file.k3s_cloudinit[0].id : var.cloud_init_user_data_id
+    # Priority: custom_user_data > install_k3s > cloud_init_user_data_id
+    user_data_file_id = var.custom_user_data != "" ? proxmox_virtual_environment_file.custom_cloudinit[0].id : (var.install_k3s ? proxmox_virtual_environment_file.k3s_cloudinit[0].id : var.cloud_init_user_data_id)
   }
 
   # Agent - enabled but don't wait for it

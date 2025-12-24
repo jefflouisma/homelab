@@ -115,3 +115,9 @@ variable "k3s_version" {
   type        = string
   default     = ""
 }
+
+variable "custom_user_data" {
+  description = "Custom cloud-init user-data content (overrides install_k3s)"
+  type        = string
+  default     = ""
+}

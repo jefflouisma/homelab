@@ -1,0 +1,63 @@
+#cloud-config
+# FreeIPA Server Auto-Installation
+# This cloud-init configures FreeIPA automatically on first boot
+
+hostname: ipa.practice.local
+fqdn: ipa.practice.local
+manage_etc_hosts: true
+
+write_files:
+  - path: /root/install-freeipa.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -e
+      
+      # FreeIPA Configuration
+      IPA_REALM="PRACTICE.LOCAL"
+      IPA_DOMAIN="practice.local"
+      IPA_HOSTNAME="ipa.practice.local"
+      IPA_ADMIN_PASSWORD="FreeIPAAdmin2024!"
+      IPA_DS_PASSWORD="DirectoryServer2024!"
+      
+      # Wait for network
+      sleep 30
+      
+      # Update /etc/hosts
+      echo "$(hostname -I | awk '{print $1}') ${IPA_HOSTNAME} ipa" >> /etc/hosts
+      
+      # Install FreeIPA packages
+      dnf install -y freeipa-server freeipa-server-dns freeipa-server-trust-ad
+      
+      # Check if already installed
+      if [ -f /etc/ipa/default.conf ]; then
+        echo "FreeIPA already installed"
+        exit 0
+      fi
+      
+      # Install FreeIPA server (unattended)
+      ipa-server-install \
+        --realm=${IPA_REALM} \
+        --domain=${IPA_DOMAIN} \
+        --hostname=${IPA_HOSTNAME} \
+        --ds-password=${IPA_DS_PASSWORD} \
+        --admin-password=${IPA_ADMIN_PASSWORD} \
+        --mkhomedir \
+        --no-ntp \
+        --no-host-dns \
+        --unattended
+      
+      # Enable firewall rules
+      firewall-cmd --permanent --add-service=freeipa-ldap || true
+      firewall-cmd --permanent --add-service=freeipa-ldaps || true
+      firewall-cmd --permanent --add-service=dns || true
+      firewall-cmd --permanent --add-service=http || true
+      firewall-cmd --permanent --add-service=https || true
+      firewall-cmd --permanent --add-service=kerberos || true
+      firewall-cmd --permanent --add-service=kpasswd || true
+      firewall-cmd --reload || true
+      
+      echo "FreeIPA installation complete!"
+
+runcmd:
+  - /root/install-freeipa.sh > /var/log/freeipa-install.log 2>&1 &

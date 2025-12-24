@@ -154,4 +154,7 @@ module "freeipa" {
   ssh_keys   = var.ssh_public_keys
 
   install_k3s = false
+  
+  # GitOps: Auto-install FreeIPA via cloud-init on first boot
+  custom_user_data = file("${path.module}/freeipa-cloudinit.yaml")
 }
