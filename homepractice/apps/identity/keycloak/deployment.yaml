@@ -10,9 +10,6 @@ spec:
     - name: http
       port: 80
       targetPort: 8080
-    - name: https
-      port: 443
-      targetPort: 8443
   selector:
     app: keycloak
 ---
@@ -34,24 +31,24 @@ spec:
       containers:
         - name: keycloak
           image: quay.io/keycloak/keycloak:26.0.7
-          args: ["start-dev"]
+          args: ["start-dev", "--health-enabled=true"]
           ports:
             - containerPort: 8080
-            - containerPort: 8443
+            - containerPort: 9000
           env:
-            - name: KEYCLOAK_ADMIN
-              value: "admin"
-            - name: KEYCLOAK_ADMIN_PASSWORD
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              value: admin
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: keycloak-admin-secret
                   key: admin-password
             - name: KC_DB
-              value: "postgres"
+              value: postgres
             - name: KC_DB_URL
-              value: "jdbc:postgresql://identity-postgres-postgresql.identity.svc.cluster.local:5432/keycloak"
+              value: jdbc:postgresql://identity-postgres-postgresql.identity.svc.cluster.local:5432/keycloak
             - name: KC_DB_USERNAME
-              value: "keycloak"
+              value: keycloak
             - name: KC_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -61,8 +58,6 @@ spec:
               value: "false"
             - name: KC_HTTP_ENABLED
               value: "true"
-            - name: KC_PROXY
-              value: "edge"
           resources:
             requests:
               cpu: 500m
@@ -70,15 +65,21 @@ spec:
             limits:
               cpu: "2"
               memory: 2Gi
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /health/ready
-              port: 8080
-            initialDelaySeconds: 60
+              port: 9000
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health/live
-              port: 8080
-            initialDelaySeconds: 120
+              port: 9000
+            initialDelaySeconds: 60
             periodSeconds: 30

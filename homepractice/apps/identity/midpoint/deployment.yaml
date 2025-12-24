@@ -10,9 +10,6 @@ spec:
     - name: http
       port: 80
       targetPort: 8080
-    - name: https
-      port: 443
-      targetPort: 8443
   selector:
     app: midpoint
 ---
@@ -44,35 +41,81 @@ spec:
       labels:
         app: midpoint
     spec:
+      initContainers:
+        - name: init-schema-main
+          image: postgres:16-alpine
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: identity-postgres-secret
+                  key: midpoint-password
+          command:
+            - sh
+            - -c
+            - |
+              psql -h identity-postgres-postgresql.identity.svc.cluster.local -d midpoint -U midpoint -f /schema/postgres.sql || true
+          volumeMounts:
+            - name: schema-volume
+              mountPath: /schema
+        - name: init-schema-audit
+          image: postgres:16-alpine
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: identity-postgres-secret
+                  key: midpoint-password
+          command:
+            - sh
+            - -c
+            - |
+              psql -h identity-postgres-postgresql.identity.svc.cluster.local -d midpoint -U midpoint -f /schema/postgres-audit.sql || true
+          volumeMounts:
+            - name: schema-volume
+              mountPath: /schema
+        - name: init-schema-quartz
+          image: postgres:16-alpine
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: identity-postgres-secret
+                  key: midpoint-password
+          command:
+            - sh
+            - -c
+            - |
+              psql -h identity-postgres-postgresql.identity.svc.cluster.local -d midpoint -U midpoint -f /schema/postgres-quartz.sql || true
+          volumeMounts:
+            - name: schema-volume
+              mountPath: /schema
       containers:
         - name: midpoint
-          image: evolveum/midpoint:4.10-support
+          image: evolveum/midpoint:4.8-alpine
           ports:
             - containerPort: 8080
-              name: http
-            - containerPort: 8443
-              name: https
           env:
-            - name: MP_SET_midpoint_repository_database
-              value: "postgresql"
+            - name: MP_SET_midpoint_repository_type
+              value: native
             - name: MP_SET_midpoint_repository_jdbcUrl
-              value: "jdbc:postgresql://identity-postgres-postgresql.identity.svc.cluster.local:5432/midpoint"
+              value: jdbc:postgresql://identity-postgres-postgresql.identity.svc.cluster.local:5432/midpoint
             - name: MP_SET_midpoint_repository_jdbcUsername
-              value: "midpoint"
+              value: midpoint
             - name: MP_SET_midpoint_repository_jdbcPassword
               valueFrom:
                 secretKeyRef:
                   name: identity-postgres-secret
                   key: midpoint-password
             - name: MP_MEM_MAX
-              value: "2048m"
+              value: 2048m
             - name: MP_MEM_INIT
-              value: "1024m"
-            - name: TZ
-              value: "America/Los_Angeles"
+              value: 1024m
           volumeMounts:
             - name: midpoint-home
               mountPath: /opt/midpoint/var
+            - name: schema-volume
+              mountPath: /schema
           resources:
             requests:
               cpu: 500m
@@ -80,21 +123,25 @@ spec:
             limits:
               cpu: "2"
               memory: 4Gi
+          startupProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 30
           readinessProbe:
-            httpGet:
-              path: /midpoint/actuator/health/readiness
+            tcpSocket:
+              port: 8080
+            periodSeconds: 15
+          livenessProbe:
+            tcpSocket:
               port: 8080
             initialDelaySeconds: 120
-            periodSeconds: 15
-            failureThreshold: 20
-          livenessProbe:
-            httpGet:
-              path: /midpoint/actuator/health/liveness
-              port: 8080
-            initialDelaySeconds: 300
             periodSeconds: 30
-            failureThreshold: 10
       volumes:
         - name: midpoint-home
           persistentVolumeClaim:
             claimName: midpoint-home-pvc
+        - name: schema-volume
+          configMap:
+            name: midpoint-schema
