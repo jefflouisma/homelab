@@ -78,6 +78,12 @@ spec:
                 secretKeyRef:
                   name: identity-postgres-secret
                   key: midpoint-password
+            - name: MP_SET_midpoint_keystore_keyStorePath
+              value: /opt/midpoint/var/keystore.jceks
+            - name: MP_SET_midpoint_keystore_keyStorePassword
+              value: changeit
+            - name: MP_SET_midpoint_keystore_encryptionKeyAlias
+              value: default
             - name: MP_MEM_MAX
               value: 2048m
             - name: MP_MEM_INIT
@@ -85,9 +91,9 @@ spec:
           volumeMounts:
             - name: midpoint-home
               mountPath: /opt/midpoint/var
-            - name: midpoint-config
-              mountPath: /opt/midpoint/var/config.xml
-              subPath: config.xml
+            - name: keystore
+              mountPath: /opt/midpoint/var/keystore.jceks
+              subPath: keystore.jceks
           resources:
             requests:
               cpu: 500m
@@ -114,6 +120,6 @@ spec:
         - name: midpoint-home
           persistentVolumeClaim:
             claimName: midpoint-home-pvc
-        - name: midpoint-config
-          configMap:
-            name: midpoint-config
+        - name: keystore
+          secret:
+            secretName: midpoint-keystore
