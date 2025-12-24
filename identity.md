@@ -8,9 +8,9 @@ This document outlines the implementation plan for deploying an enterprise-grade
 
 | Component | Purpose | Version | UI Access |
 |-----------|---------|---------|-----------|
-| **Keycloak** | SSO / Identity Broker (OIDC/SAML) | 26.x | `https://keycloak.practice.homelab.local` |
-| **MidPoint** | Identity Governance & Administration | 4.8.x | `https://midpoint.practice.homelab.local` |
-| **FreeIPA** | LDAP Directory + Kerberos KDC | Rocky 9 | `https://ipa.practice.homelab.local` |
+| **Keycloak** | SSO / Identity Broker (OIDC/SAML) | 26.x | `https://keycloak.practice.local` |
+| **MidPoint** | Identity Governance & Administration | 4.8.x | `https://midpoint.practice.local` |
+| **FreeIPA** | LDAP Directory + Kerberos KDC | Rocky 9 | `https://ipa.practice.local` |
 
 ### Architecture
 
@@ -24,7 +24,7 @@ This document outlines the implementation plan for deploying an enterprise-grade
 │                            ▼                                                │
 │                   ┌────────────────┐                                        │
 │                   │   OPNsense     │  Port Forwards:                        │
-│                   │  192.168.1.243 │  - 8443 → Keycloak (10.10.10.210:443)  │
+│                   │  192.168.1.40  │  - 8443 → Keycloak (10.10.10.210:443)  │
 │                   │   (WAN)        │  - 8444 → MidPoint (10.10.10.211:443)  │
 │                   │  10.10.10.1    │  - 8445 → FreeIPA  (10.10.10.212:443)  │
 │                   │   (LAN)        │                                        │
@@ -108,10 +108,10 @@ Add DNS entries to OPNsense Unbound:
 
 | Hostname | IP |
 |----------|-----|
-| `keycloak.practice.homelab.local` | 10.10.10.210 |
-| `midpoint.practice.homelab.local` | 10.10.10.211 |
-| `ipa.practice.homelab.local` | 10.10.10.212 |
-| `postgres.practice.homelab.local` | 10.10.10.213 |
+| `keycloak.practice.local` | 10.10.10.210 |
+| `midpoint.practice.local` | 10.10.10.211 |
+| `ipa.practice.local` | 10.10.10.212 |
+| `postgres.practice.local` | 10.10.10.213 |
 
 ### 1.3 MetalLB IP Allocation
 
@@ -261,10 +261,10 @@ metadata:
   name: freeipa-env
   namespace: identity
 data:
-  IPA_SERVER_HOSTNAME: "ipa.practice.homelab.local"
+  IPA_SERVER_HOSTNAME: "ipa.practice.local"
   IPA_SERVER_INSTALL_OPTIONS: >-
-    --realm=PRACTICE.HOMELAB.LOCAL
-    --domain=practice.homelab.local
+    --realm=PRACTICE.LOCAL
+    --domain=practice.local
     --ds-password=DirectoryP@ssw0rd
     --admin-password=AdminP@ssw0rd
     --unattended
@@ -391,7 +391,7 @@ spec:
   hosts: localhost
   gather_facts: false
   vars:
-    ipa_host: "ipa.practice.homelab.local"
+    ipa_host: "ipa.practice.local"
     ipa_admin_password: "{{ lookup('env', 'IPA_ADMIN_PASSWORD') }}"
   
   tasks:
@@ -561,9 +561,9 @@ data:
               "editMode": ["READ_ONLY"],
               "vendor": ["rhds"],
               "connectionUrl": ["ldaps://freeipa.identity.svc.cluster.local:636"],
-              "bindDn": ["uid=keycloak-ldap,cn=users,cn=accounts,dc=practice,dc=homelab,dc=local"],
+              "bindDn": ["uid=keycloak-ldap,cn=users,cn=accounts,dc=practice,dc=local"],
               "bindCredential": ["${KEYCLOAK_LDAP_BIND_CREDENTIAL}"],
-              "usersDn": ["cn=users,cn=accounts,dc=practice,dc=homelab,dc=local"],
+              "usersDn": ["cn=users,cn=accounts,dc=practice,dc=local"],
               "usernameLDAPAttribute": ["uid"],
               "rdnLDAPAttribute": ["uid"],
               "uuidLDAPAttribute": ["ipaUniqueID"],
@@ -587,8 +587,8 @@ data:
           "standardFlowEnabled": true,
           "directAccessGrantsEnabled": true,
           "serviceAccountsEnabled": true,
-          "redirectUris": ["https://midpoint.practice.homelab.local/*"],
-          "webOrigins": ["https://midpoint.practice.homelab.local"]
+          "redirectUris": ["https://midpoint.practice.local/*"],
+          "webOrigins": ["https://midpoint.practice.local"]
         },
         {
           "clientId": "argocd",
@@ -808,11 +808,11 @@ spec:
             <host>freeipa.identity.svc.cluster.local</host>
             <port>636</port>
             <connectionSecurity>ssl</connectionSecurity>
-            <bindDn>uid=midpoint-ldap,cn=users,cn=accounts,dc=practice,dc=homelab,dc=local</bindDn>
+            <bindDn>uid=midpoint-ldap,cn=users,cn=accounts,dc=practice,dc=local</bindDn>
             <bindPassword>
                 <clearValue>MIDPOINT_LDAP_PASSWORD</clearValue>
             </bindPassword>
-            <baseContext>dc=practice,dc=homelab,dc=local</baseContext>
+            <baseContext>dc=practice,dc=local</baseContext>
         </configurationProperties>
     </connectorConfiguration>
     <schemaHandling>
