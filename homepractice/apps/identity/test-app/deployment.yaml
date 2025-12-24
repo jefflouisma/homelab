@@ -33,7 +33,6 @@ data:
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>HomePractice SSO Test App</title>
         <script src="https://cdn.tailwindcss.com"></script>
-        <script src="https://unpkg.com/keycloak-js@26.0.0/dist/keycloak.min.js"></script>
     </head>
     <body class="bg-gradient-to-br from-slate-900 to-slate-800 min-h-screen">
         <div class="container mx-auto px-4 py-8">
@@ -170,8 +169,8 @@ data:
                     
                     const authenticated = await keycloak.init({
                         onLoad: 'check-sso',
-                        silentCheckSsoRedirectUri: window.location.origin + '/silent-check-sso.html',
-                        checkLoginIframe: false
+                        checkLoginIframe: false,
+                        pkceMethod: false
                     });
                     
                     if (authenticated) {
@@ -181,7 +180,8 @@ data:
                     }
                 } catch (error) {
                     console.error('Keycloak init failed:', error);
-                    showError(`Failed to initialize Keycloak: ${error.message || error}`);
+                    const msg = error && error.message ? error.message : String(error || 'Unknown error');
+                    showError('Failed to initialize Keycloak: ' + msg);
                 }
             }
             
@@ -203,7 +203,24 @@ data:
             });
             
             // Initialize on page load
-            initKeycloak();
+            async function loadAndInit() {
+                try {
+                    // Load Keycloak JS v21 (works over HTTP without Web Crypto)
+                    await new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        script.src = 'https://cdn.jsdelivr.net/npm/keycloak-js@21.1.2/dist/keycloak.min.js';
+                        script.onload = resolve;
+                        script.onerror = () => reject(new Error('Failed to load Keycloak JS'));
+                        document.head.appendChild(script);
+                    });
+                    await initKeycloak();
+                } catch (error) {
+                    console.error('Failed to load Keycloak:', error);
+                    const msg = error && error.message ? error.message : String(error);
+                    showError('Failed to load Keycloak: ' + msg);
+                }
+            }
+            loadAndInit();
         </script>
     </body>
     </html>

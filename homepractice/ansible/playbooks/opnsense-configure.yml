@@ -233,9 +233,9 @@
     # =========================================================================
     # Phase 5: NAT Port Forwards for Identity Services
     # =========================================================================
-    - name: Create NAT port forward for Keycloak
+    - name: Create NAT port forward for Keycloak (8080 -> 10.10.10.210:80)
       ansible.builtin.uri:
-        url: "https://{{ opn_host }}/api/firewall/nat/addRule"
+        url: "https://{{ opn_host }}/api/firewall/nat/portforward/addRule"
         method: POST
         user: "{{ opn_api_key }}"
         password: "{{ opn_api_secret }}"
@@ -244,22 +244,28 @@
         body_format: json
         body:
           rule:
+            enabled: "1"
             interface: "wan"
+            ipprotocol: "inet"
             protocol: "tcp"
-            source_net: "any"
-            destination_net: "wanip"
-            destination_port: "8080"
+            src: ""
+            srcmask: ""
+            srcnot: "0"
+            dst: "wanip"
+            dstmask: "32"
+            dstnot: "0"
+            dstport: "8080"
             target: "10.10.10.210"
-            local_port: "80"
+            localport: "80"
             description: "Keycloak SSO"
-            enabled: "1"
+            associated: "add"
       register: nat_keycloak
-      changed_when: nat_keycloak.status == 200
-      ignore_errors: true
+      changed_when: nat_keycloak.json.uuid is defined
+      failed_when: false
 
-    - name: Create NAT port forward for Test App
+    - name: Create NAT port forward for Test App (8081 -> 10.10.10.220:80)
       ansible.builtin.uri:
-        url: "https://{{ opn_host }}/api/firewall/nat/addRule"
+        url: "https://{{ opn_host }}/api/firewall/nat/portforward/addRule"
         method: POST
         user: "{{ opn_api_key }}"
         password: "{{ opn_api_secret }}"
@@ -268,22 +274,28 @@
         body_format: json
         body:
           rule:
-            interface: "wan"
-            protocol: "tcp"
-            source_net: "any"
-            destination_net: "wanip"
-            destination_port: "8081"
-            target: "10.10.10.220"
-            local_port: "80"
-            description: "Test App SSO"
             enabled: "1"
+            interface: "wan"
+            ipprotocol: "inet"
+            protocol: "tcp"
+            src: ""
+            srcmask: ""
+            srcnot: "0"
+            dst: "wanip"
+            dstmask: "32"
+            dstnot: "0"
+            dstport: "8081"
+            target: "10.10.10.220"
+            localport: "80"
+            description: "Test App SSO"
+            associated: "add"
       register: nat_testapp
-      changed_when: nat_testapp.status == 200
-      ignore_errors: true
+      changed_when: nat_testapp.json.uuid is defined
+      failed_when: false
 
-    - name: Apply NAT rules
+    - name: Apply NAT port forward rules
       ansible.builtin.uri:
-        url: "https://{{ opn_host }}/api/firewall/nat/apply"
+        url: "https://{{ opn_host }}/api/firewall/nat/portforward/apply"
         method: POST
         user: "{{ opn_api_key }}"
         password: "{{ opn_api_secret }}"
@@ -291,8 +303,8 @@
         validate_certs: false
         body_format: json
         body: {}
+      when: nat_keycloak.json.uuid is defined or nat_testapp.json.uuid is defined
       changed_when: true
-      ignore_errors: true
 
     # =========================================================================
     # Phase 6: Apply all changes
