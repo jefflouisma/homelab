@@ -114,3 +114,6 @@ spec:
         - name: midpoint-home
           persistentVolumeClaim:
             claimName: midpoint-home-pvc
+        - name: midpoint-config
+          configMap:
+            name: midpoint-config
