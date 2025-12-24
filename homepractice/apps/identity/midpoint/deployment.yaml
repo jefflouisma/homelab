@@ -59,6 +59,32 @@ spec:
                 sleep 2
               done
               echo "PostgreSQL is ready"
+        - name: init-schema
+          image: postgres:16-alpine
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: identity-postgres-secret
+                  key: midpoint-password
+          command:
+            - sh
+            - -c
+            - |
+              echo "Checking if schema exists..."
+              TABLE_COUNT=$(psql -h identity-postgres-postgresql.identity.svc.cluster.local -U midpoint -d midpoint -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null || echo "0")
+              if [ "$TABLE_COUNT" -lt 10 ]; then
+                echo "Schema not found or incomplete, initializing..."
+                psql -h identity-postgres-postgresql.identity.svc.cluster.local -U midpoint -d midpoint -f /schema/postgres.sql
+                psql -h identity-postgres-postgresql.identity.svc.cluster.local -U midpoint -d midpoint -f /schema/postgres-audit.sql
+                psql -h identity-postgres-postgresql.identity.svc.cluster.local -U midpoint -d midpoint -f /schema/postgres-quartz.sql
+                echo "Schema initialized successfully"
+              else
+                echo "Schema already exists ($TABLE_COUNT tables), skipping initialization"
+              fi
+          volumeMounts:
+            - name: schema-volume
+              mountPath: /schema
       containers:
         - name: midpoint
           image: evolveum/midpoint:4.9.1-alpine
@@ -123,3 +149,6 @@ spec:
         - name: keystore
           secret:
             secretName: midpoint-keystore
+        - name: schema-volume
+          configMap:
+            name: midpoint-schema
