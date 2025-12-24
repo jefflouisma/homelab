@@ -84,7 +84,7 @@ spec:
                   <credentials>
                       <password>
                           <value>
-                              <clearValue>gitready</clearValue>
+                              <clearValue>Gitready1!</clearValue>
                           </value>
                           <forceChange>true</forceChange>
                       </password>
@@ -177,6 +177,6 @@ spec:
               echo ""
               echo "Source of Truth: MidPoint IGA"
               echo "User: jeff"
-              echo "Temp Password: gitready"
+              echo "Temp Password: Gitready1!"
               echo "Required: Change password + Register WebAuthn"
               echo "=========================================="  
