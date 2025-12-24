@@ -91,6 +91,8 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            - name: MP_SET_midpoint_administrator_initialPassword
+              value: "MidPointAdmin2024!"
             - name: MP_SET_midpoint_repository_type
               value: native
             - name: MP_SET_midpoint_repository_database
