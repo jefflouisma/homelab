@@ -27,7 +27,7 @@
 
   vars:
     hostname: "perimeter-fw"
-    domain: "local"
+    domain: "practice.local"
     lan_ip: "10.10.10.1"
     lan_if: "vtnet1"
     wan_if: "vtnet0"
@@ -221,7 +221,7 @@
     - name: Add DNS entry for K3s
       ansibleguy.opnsense.unbound_host:
         hostname: "k3s"
-        domain: "practice.homelab.local"
+        domain: "practice.local"
         server: "10.10.10.10"
         description: "HomePractice K3s node"
         state: present
@@ -253,13 +253,13 @@
           ============================================
           
           Configured via SSH (bootstrap_mode=true):
-          - Hostname: perimeter-fw.local
+          - Hostname: perimeter-fw.practice.local
           - QEMU Guest Agent installed
           
           Configured via API:
           - Aliases: {{ final_aliases.data | length }}
           - Firewall rule: Allow LAN to any
-          - DNS: k3s.practice.homelab.local → 10.10.10.10
+          - DNS: k3s.practice.local → 10.10.10.10
           
           API: https://{{ opn_host }}
           ============================================
