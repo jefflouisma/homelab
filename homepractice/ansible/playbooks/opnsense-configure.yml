@@ -1,35 +1,40 @@
 ---
-# OPNsense Configuration Playbook (2-NIC Setup)
-# WAN (vtnet0/vmbr0): DHCP, gateway, WireGuard + management
-# LAN (vtnet1/vmbr1): 10.10.10.1/24, internal network
+# OPNsense Configuration Playbook
+#
+# This playbook configures OPNsense firewall via API.
+# Designed to run from self-hosted runner on K3s (10.10.10.10) which has
+# direct access to OPNsense LAN interface (10.10.10.1).
+#
+# BOOTSTRAP MODE (from workstation):
+#   Run with: ansible-playbook -i inventory.yml playbooks/opnsense-configure.yml -e "bootstrap_mode=true"
+#   Uses SSH through Proxmox jump host for initial setup
+#
+# CI/CD MODE (from self-hosted runner):
+#   Run with: ansible-playbook -i inventory.yml playbooks/opnsense-configure.yml
+#   Uses API directly (runner is on same LAN as OPNsense)
 #
 # Prerequisites:
 #   ansible-galaxy collection install ansibleguy.opnsense
 #   pip install httpx
-#
-# Run: ansible-playbook -i inventory.yml playbooks/opnsense-configure.yml
 
 # =============================================================================
-# Play 1: Configure LAN interface via SSH (API doesn't support interface config)
+# Play 1: Bootstrap via SSH (only runs with bootstrap_mode=true)
 # =============================================================================
-- name: Configure OPNsense LAN Interface via SSH
+- name: Bootstrap OPNsense via SSH
   hosts: opnsense
   gather_facts: false
+  when: bootstrap_mode | default(false) | bool
 
   vars:
     hostname: "perimeter-fw"
     domain: "local"
     lan_ip: "10.10.10.1"
-    lan_subnet: "24"
     lan_if: "vtnet1"
-    wan_gateway: "192.168.1.254"
-    dhcp_range_start: "10.10.10.100"
-    dhcp_range_end: "10.10.10.199"
 
   tasks:
     - name: Install QEMU Guest Agent
       ansible.builtin.raw: |
-        pkg install -y qemu-guest-agent && sysrc qemu_guest_agent_enable=YES && service qemu-guest-agent start
+        pkg install -y qemu-guest-agent && sysrc qemu_guest_agent_enable=YES && service qemu-guest-agent start 2>/dev/null || true
       register: qemu_install
       changed_when: "'already installed' not in qemu_install.stdout"
       ignore_errors: true
@@ -41,66 +46,15 @@
         hostname {{ hostname }}.{{ domain }}
       changed_when: true
 
-    - name: Backup config.xml
-      ansible.builtin.raw: |
-        /bin/sh -c 'cp /conf/config.xml /conf/config.xml.bak.`date +%Y%m%d_%H%M%S`'
-      changed_when: true
-
-    - name: Check current LAN IP
-      ansible.builtin.raw: |
-        /bin/sh -c 'grep -A5 "<lan>" /conf/config.xml | grep "<ipaddr>" | head -1'
-      register: current_lan
-      changed_when: false
-
-    - name: Display current LAN config
-      ansible.builtin.debug:
-        msg: "Current LAN: {{ current_lan.stdout | trim }}"
-
-    - name: Configure LAN interface IP
-      ansible.builtin.raw: |
-        sed -i '' 's|<lan>|<lan_backup>|g; s|</lan>|</lan_backup>|g' /conf/config.xml 2>/dev/null || true
-        grep -q "<ipaddr>{{ lan_ip }}</ipaddr>" /conf/config.xml || sed -i '' "s|<lan_backup>|<lan>|g; s|</lan_backup>|</lan>|g" /conf/config.xml
-      ignore_errors: true
-
-    - name: Ensure LAN has correct IP (update if needed)
-      ansible.builtin.raw: |
-        grep -q "<lan>" /conf/config.xml && sed -i '' "/<lan>/,/<\/lan>/s|<ipaddr>[^<]*</ipaddr>|<ipaddr>{{ lan_ip }}</ipaddr>|" /conf/config.xml
-      ignore_errors: true
-
-    - name: Ensure LAN DHCP is configured
-      ansible.builtin.raw: |
-        grep -q "<lan>" /conf/config.xml && grep -A20 "<dhcpd>" /conf/config.xml | grep -q "<lan>" || echo "DHCP may need manual config"
-      ignore_errors: true
-
-    - name: Verify WAN gateway is set (DHCP provides this)
-      ansible.builtin.raw: |
-        netstat -rn | grep default
-      register: gateway_check
-      changed_when: false
-
-    - name: Display gateway
-      ansible.builtin.debug:
-        msg: "Default gateway: {{ gateway_check.stdout | trim }}"
-
-    - name: Verify NAT is automatic (uses WAN interface)
-      ansible.builtin.raw: |
-        grep -A2 "<outbound>" /conf/config.xml | grep mode
-      register: nat_mode
-      changed_when: false
-
-    - name: Display NAT mode
-      ansible.builtin.debug:
-        msg: "NAT mode: {{ nat_mode.stdout | trim }}"
-
     - name: Reload all services
       ansible.builtin.raw: |
-        /usr/local/etc/rc.reload_all
+        /usr/local/etc/rc.reload_all 2>/dev/null || configctl filter reload
       changed_when: true
       ignore_errors: true
 
     - name: Verify LAN interface
       ansible.builtin.raw: |
-        /bin/sh -c 'ifconfig {{ lan_if }} | grep inet | head -1'
+        ifconfig {{ lan_if }} | grep inet | head -1
       register: lan_ip_result
       changed_when: false
 
@@ -109,7 +63,7 @@
         msg: "LAN interface ({{ lan_if }}): {{ lan_ip_result.stdout | trim }}"
 
 # =============================================================================
-# Play 2: Configure via API (firewall rules, aliases, DNS, WireGuard)
+# Play 2: Configure via API (works from runner or workstation)
 # =============================================================================
 - name: Configure OPNsense via API
   hosts: localhost
@@ -117,10 +71,10 @@
   connection: local
 
   vars:
-    # OPNsense connection - WAN IP from DHCP
-    opn_host: "{{ opnsense_wan_ip | default('192.168.1.1') }}"
-    opn_api_key: "C9HdbF5A8zWsw+ZV1fzQ0aDbgQlaWEIGbwh7Cq7kq/hSz+rvpxNQa5vUylm3zi8an9UdNVPfzJiHqKtr"
-    opn_api_secret: "pHKan7aagfg6F4H8zG8Vnja97n0pIaz4MexuetCmcDq/Qy9v3Dk1JByi7p4Tb0SWEJXd02RKJUNtHZoZ"
+    # OPNsense LAN IP (accessible from runner on same network)
+    opn_host: "{{ opnsense_api_host | default('10.10.10.1') }}"
+    opn_api_key: "{{ opnsense_api_key | default('C9HdbF5A8zWsw+ZV1fzQ0aDbgQlaWEIGbwh7Cq7kq/hSz+rvpxNQa5vUylm3zi8an9UdNVPfzJiHqKtr') }}"
+    opn_api_secret: "{{ opnsense_api_secret | default('pHKan7aagfg6F4H8zG8Vnja97n0pIaz4MexuetCmcDq/Qy9v3Dk1JByi7p4Tb0SWEJXd02RKJUNtHZoZ') }}"
 
     # Interface Configuration
     internal_ip: "10.10.10.1"

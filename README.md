@@ -1,227 +1,318 @@
-# Homelab Kubernetes Infrastructure
+# Homelab Infrastructure
 
-Production-grade Kubernetes cluster with eBPF security, observability, and automated GitOps.
+Multi-environment Kubernetes homelab with OPNsense firewalls, GitOps, and CI/CD automation.
 
-## Architecture
+## Architecture Overview
 
-| Component | Technology |
-|-----------|------------|
-| Hardware | PowerSpec G913 (Ryzen 9 / RTX 5080) |
-| OS | Ubuntu 24.04.3 LTS |
-| K8s Distribution | K3s (lightweight Kubernetes) |
-| CNI | Cilium (eBPF-based networking) |
-| Load Balancer | MetalLB (L2 mode) |
-| GitOps | ArgoCD |
-| Artifact Registry | Nexus Repository Manager |
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              ENVIRONMENTS                                    │
+├─────────────────────────────────┬───────────────────────────────────────────┤
+│         HomePractice            │              HomeProd                      │
+│    (Isolated Sandbox)           │         (Production)                       │
+├─────────────────────────────────┼───────────────────────────────────────────┤
+│  OPNsense (VM 200)              │                                           │
+│    WAN: 192.168.1.x (DHCP)      │  K3s (VM 100)                             │
+│    LAN: 10.10.10.1/24           │    IP: 192.168.1.50                       │
+│         │                       │    Direct on home LAN                     │
+│         ▼                       │                                           │
+│  K3s (VM 201)                   │                                           │
+│    IP: 10.10.10.10              │                                           │
+│    Behind NAT                   │                                           │
+└─────────────────────────────────┴───────────────────────────────────────────┘
+                              │
+                              ▼
+                    Proxmox (192.168.1.30)
+                      VM Host for all VMs
+```
 
 ## Directory Structure
 
 ```
-.
-├── bootstrap/
-│   ├── install.sh            # Legacy: full bootstrap (deprecated)
-│   └── pre-kubernetes.sh     # NEW: minimal OS + K3s setup
-├── terraform/
-│   ├── main.tf               # Cilium, MetalLB, ArgoCD
-│   ├── variables.tf          # Configuration variables
-│   └── outputs.tf            # Post-apply instructions
-├── infrastructure/
-│   ├── namespaces.yaml       # Kubernetes namespaces
-│   └── metallb-config.yaml   # MetalLB IP pool (for reference)
-├── apps/
-│   ├── argocd-root.yaml      # ArgoCD "App of Apps"
-│   ├── cert-manager.yaml     # TLS certificate management
-│   ├── arc.yaml              # GitHub Actions Runner Controller
-│   ├── github-runner.yaml    # Runner ScaleSet configuration
-│   └── nexus.yaml            # Nexus artifact repository
-├── autoinstall/
-│   ├── user-data             # Ubuntu autoinstall configuration
-│   └── meta-data             # Cloud-init metadata
-└── plan.md                   # Detailed implementation plan
+homelab/
+├── homepractice/              # Isolated sandbox environment
+│   ├── infrastructure/        # Terraform: OPNsense + K3s VMs
+│   ├── kubernetes/            # Terraform: Cilium, MetalLB, ArgoCD
+│   ├── ansible/               # Configuration management
+│   └── apps/                  # ArgoCD applications
+│
+├── homeprod/                  # Production environment  
+│   ├── infrastructure/        # Terraform: K3s VM
+│   ├── kubernetes/            # Terraform: Cilium, MetalLB, ArgoCD
+│   ├── ansible/               # Configuration management
+│   └── apps/                  # ArgoCD applications
+│
+├── modules/                   # Shared Terraform modules
+│   └── proxmox-vm/            # Reusable VM provisioning
+│
+├── .github/workflows/         # CI/CD pipelines
+│   └── ci.yaml                # Main pipeline
+│
+└── scripts/                   # Utility scripts
 ```
 
-## Quick Start
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
-1. **Hardware**: Server with Ubuntu 24.04 LTS support
-2. **Network**: Static IP range for MetalLB (default: `192.168.1.40-50`)
-3. **Secrets**: Your `terraform.tfvars` file (stored securely outside the repo)
+| Requirement | Details |
+|-------------|---------|
+| **Proxmox** | Host at 192.168.1.30 with API token |
+| **SSH Keys** | `~/.ssh/id_rsa` for VMs |
+| **Terraform** | >= 1.5.0 |
+| **Ansible** | >= 2.15 |
+| **GitHub** | Repo with Actions enabled |
 
-### Fresh Install Steps
+---
 
-#### 1. Install Ubuntu Server
-- Install Ubuntu 24.04 Server (hostname: `g913-k8s-prod`, user: `admin-user`)
-- Enable SSH server during installation
+## 📋 Deployment Phases
 
-#### 2. Clone Repository & Copy Secrets
+### Phase 1: Manual Bootstrap (from Workstation)
 
-```bash
-# SSH to server
-ssh admin-user@<server-ip>
+> **Run once** to create initial infrastructure and self-hosted runners.
 
-# Clone repo
-git clone https://github.com/jefflouisma/homelab.git ~/homelab-ops
-cd ~/homelab-ops
-
-# Copy your terraform.tfvars from secure backup
-# (You stored this when first setting up - it contains all secrets)
-scp user@backup-location:terraform.tfvars terraform/terraform.tfvars
-```
-
-#### 3. Run Bootstrap Script
+#### Step 1: Create terraform.tfvars
 
 ```bash
-sudo ./bootstrap/pre-kubernetes.sh
+# HomePractice
+cat > homepractice/infrastructure/terraform.tfvars << 'EOF'
+proxmox_api_url          = "https://192.168.1.30:8006"
+proxmox_api_token_id     = "root@pam!terraform"
+proxmox_api_token_secret = "your-token-here"
+proxmox_node             = "g913-proxmox"
+datastore_id             = "local-lvm"
+ubuntu_cloud_image_id    = "local:iso/noble-server-cloudimg-amd64.img"
+opnsense_template_id     = 9000
+ssh_public_keys          = ["ssh-rsa AAAA... your-key"]
+EOF
+
+# HomeProd (similar, adjust as needed)
+cp homepractice/infrastructure/terraform.tfvars homeprod/infrastructure/
 ```
 
-This installs: OS packages, Terraform, K3s, Helm CLI.
-
-#### 4. Run Terraform
+#### Step 2: Deploy Infrastructure
 
 ```bash
-cd terraform
-terraform init
-terraform apply
+# HomePractice: OPNsense + K3s VMs
+cd homepractice/infrastructure
+terraform init && terraform apply
+
+# HomeProd: K3s VM only
+cd ../../homeprod/infrastructure  
+terraform init && terraform apply
 ```
 
-This installs: Cilium (CNI), MetalLB, ArgoCD, and configures all secrets.
+#### Step 3: Configure OPNsense (HomePractice only)
 
-#### 5. Done!
+```bash
+cd homepractice/ansible
 
-ArgoCD automatically syncs and installs:
-- cert-manager
-- Actions Runner Controller (with GitHub App credentials)
-- Nexus
-- GitHub self-hosted runners
+# Configure firewall via API (through Proxmox jump host)
+ansible-playbook -i inventory.yml playbooks/opnsense-configure.yml
+```
 
-#### 2. Verify Network Configuration
+#### Step 4: Deploy Kubernetes Components
 
-Ensure MetalLB IP range (`192.168.1.40-50`) is:
-- Outside your router's DHCP scope
-- Reserved in your router to prevent conflicts
+```bash
+# HomePractice
+cd homepractice/kubernetes
+terraform init && terraform apply
 
-#### 3. Create Bootable USB
+# HomeProd
+cd ../../homeprod/kubernetes
+terraform init && terraform apply
+```
 
-**Option A: Using Ventoy (Recommended)**
-1. Install [Ventoy](https://www.ventoy.net/) on a USB drive
-2. Copy Ubuntu 24.04 Server ISO to the USB
-3. Create `/ventoy/ventoy.json` for autoinstall configuration
+#### Step 5: Verify Self-Hosted Runners
 
-**Option B: Repack ISO**
-1. Extract Ubuntu ISO
-2. Place `user-data` and `meta-data` in `/nocloud/` directory
-3. Repack the ISO
+```bash
+# Check runners are registered
+kubectl get pods -n actions-runner-system
 
-#### 5. Install
+# Verify in GitHub: Settings → Actions → Runners
+```
 
-1. Configure BIOS:
-   - Enable XMP/EXPO for RAM
-   - Disable Secure Boot (or set to "Other OS")
-   - Set USB as boot priority
+---
 
-2. Boot from USB and walk away (~15-20 minutes)
+### Phase 2: CI/CD Operations (Automated)
 
-3. Verify installation:
-   ```bash
-   # Check bootstrap logs
-   ssh admin-user@g913-k8s-prod
-   journalctl -u homelab-bootstrap.service
-   
-   # Verify services
-   kubectl get pods -A
-   ```
+> Once runners are deployed, all future changes go through CI/CD.
 
-## Accessing Services
+#### What CI/CD Handles
+
+| Change Type | Trigger | Action |
+|-------------|---------|--------|
+| `homepractice/apps/*` | Push to main | ArgoCD auto-sync |
+| `homeprod/apps/*` | Push to main | ArgoCD auto-sync |
+| `**/ansible/**` | Push to main | Ansible playbook run |
+| `modules/**` | Push to main | Affects both environments |
+
+#### Manual Workflow Dispatch
+
+```bash
+# Via GitHub Actions UI or CLI
+gh workflow run ci.yaml -f environment=homepractice -f action=ansible-only
+```
+
+---
+
+## 🔧 Configuration Files
+
+### HomePractice Ansible Inventory
+
+```yaml
+# homepractice/ansible/inventory.yml
+all:
+  children:
+    opnsense:
+      hosts:
+        perimeter-fw:
+          ansible_host: "10.10.10.1"
+          ansible_user: root
+          ansible_password: "opnsense"
+          # API access from runner (on same LAN)
+          opn_api_key: "your-api-key"
+          opn_api_secret: "your-api-secret"
+    k3s:
+      hosts:
+        practice-k3s:
+          ansible_host: 10.10.10.10
+          ansible_user: ubuntu
+```
+
+### GitHub Secrets Required
+
+| Secret | Description |
+|--------|-------------|
+| `PROXMOX_API_TOKEN` | Proxmox API token |
+| `OPNSENSE_API_KEY` | OPNsense API key |
+| `OPNSENSE_API_SECRET` | OPNsense API secret |
+| `GH_APP_ID` | GitHub App ID for ARC |
+| `GH_APP_PRIVATE_KEY` | GitHub App private key |
+
+---
+
+## 🌐 Network Configuration
+
+### HomePractice (Isolated)
+
+| Component | IP | Notes |
+|-----------|-----|-------|
+| OPNsense WAN | DHCP (192.168.1.x) | Gateway to internet |
+| OPNsense LAN | 10.10.10.1/24 | Internal network |
+| K3s Node | 10.10.10.10 | Behind NAT |
+| MetalLB Pool | 10.10.10.40-50 | LoadBalancer IPs |
+| WireGuard | 10.10.20.0/24 | VPN access |
+
+### HomeProd (Direct)
+
+| Component | IP | Notes |
+|-----------|-----|-------|
+| K3s Node | 192.168.1.50 | On home LAN |
+| MetalLB Pool | 192.168.1.40-50 | LoadBalancer IPs |
+
+---
+
+## 📊 Accessing Services
 
 ### ArgoCD
 
 ```bash
-# Port forward
-kubectl port-forward svc/argocd-server -n argocd 8080:443
+# HomePractice (via WireGuard or port-forward)
+kubectl --kubeconfig=kubeconfig-homepractice.yaml port-forward svc/argocd-server -n argocd 8080:443
 
-# Get admin password
+# HomeProd
+kubectl --kubeconfig=kubeconfig-homeprod.yaml port-forward svc/argocd-server -n argocd 8081:443
+
+# Get password
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
-
-# Access at https://localhost:8080
-# Username: admin
 ```
 
-### Nexus
+---
+
+## 🔄 CI/CD Pipeline
+
+The pipeline (`.github/workflows/ci.yaml`) runs on self-hosted runners:
+
+```
+Push to main
+     │
+     ├─► Detect changes (paths-filter)
+     │
+     ├─► HomePractice (if changed)
+     │   ├─► Validate manifests
+     │   ├─► Run Ansible (if ansible/ changed)
+     │   └─► ArgoCD auto-syncs apps/
+     │
+     └─► HomeProd (if changed)
+         ├─► Validate manifests
+         ├─► Run Ansible (if ansible/ changed)
+         └─► ArgoCD auto-syncs apps/
+```
+
+### Runner Requirements
+
+Self-hosted runners need:
+- `kubectl` with cluster access
+- `ansible` for configuration management
+- Access to OPNsense API (10.10.10.1 for HomePractice)
+
+---
+
+## 🛠️ Troubleshooting
+
+### VMs Not Starting
 
 ```bash
-# Access at http://192.168.1.40:8081 (or your MetalLB IP)
-# Default admin password location: /mnt/data/nexus/admin.password
+# Check Proxmox
+ssh root@192.168.1.30 "qm list"
+
+# Check VM console
+ssh root@192.168.1.30 "qm terminal 200"
 ```
 
-## GPU Setup (Optional)
-
-For NVIDIA GPU workloads:
+### OPNsense API Not Responding
 
 ```bash
-# Install drivers
-apt-get install -y nvidia-driver-565
-
-# Install GPU Operator for Kubernetes
-helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
-helm install gpu-operator nvidia/gpu-operator \
-  --namespace gpu-operator \
-  --create-namespace \
-  --set driver.enabled=false
+# Test from Proxmox (can reach LAN)
+ssh root@192.168.1.30 "curl -sk https://10.10.10.1/api/core/firmware/status"
 ```
 
-## Network Configuration
-
-| Service | IP/Port |
-|---------|---------|
-| MetalLB Pool | 192.168.1.40-50 |
-| Nexus | 192.168.1.40:8081 |
-| ArgoCD | Port-forward :8080 |
-| K3s API | 6443 |
-
-## Troubleshooting
-
-### Bootstrap Failed
+### K3s Not Ready
 
 ```bash
-# Check logs
-journalctl -u homelab-bootstrap.service -f
+# Check cloud-init status
+ssh ubuntu@10.10.10.10 "cloud-init status"
 
-# Re-run bootstrap manually
-/opt/homelab-ops/bootstrap/install.sh
+# Check K3s service
+ssh ubuntu@10.10.10.10 "sudo systemctl status k3s"
 ```
 
-### Pods Not Starting
+### Runner Not Registering
 
 ```bash
-# Check Cilium status
-kubectl -n kube-system exec -it ds/cilium -- cilium status
+# Check ARC controller
+kubectl -n actions-runner-system logs -l app.kubernetes.io/name=gha-runner-scale-set-controller
 
-# Check node status
-kubectl describe node g913-k8s-prod
+# Check runner pods
+kubectl -n actions-runner-system get pods
 ```
 
-### MetalLB Not Assigning IPs
+---
 
-```bash
-# Verify MetalLB pods
-kubectl get pods -n metallb-system
+## 📁 Key Files
 
-# Check IP pool
-kubectl get ipaddresspools -n metallb-system
-```
+| File | Purpose |
+|------|---------|
+| `kubeconfig-homepractice.yaml` | K3s access (gitignored) |
+| `kubeconfig-homeprod.yaml` | K3s access (gitignored) |
+| `*/infrastructure/terraform.tfvars` | VM configs (gitignored) |
+| `*/kubernetes/terraform.tfvars` | K8s configs (gitignored) |
 
-## Security Notes
-
-- SSH password authentication is disabled
-- Only SSH key authentication is allowed
-- ArgoCD uses automated sync with prune and self-heal
-- Cilium provides eBPF-based network policies
+---
 
 ## License
 
 See [LICENSE](LICENSE) file.
-
-
-
-<- Self-hosted runner registers with E2E Test v2 -->
