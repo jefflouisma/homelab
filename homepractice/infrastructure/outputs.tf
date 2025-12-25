@@ -30,6 +30,16 @@ output "k3s_ip_address" {
   value       = "10.10.10.10"
 }
 
+output "adguard_ip" {
+  description = "AdGuard Home DNS server IP"
+  value       = var.adguard_ip
+}
+
+output "adguard_web_ui" {
+  description = "AdGuard Home Web UI URL"
+  value       = var.debian_lxc_template_id != "" ? "http://${var.adguard_ip}:3000" : "Not deployed (debian_lxc_template_id not set)"
+}
+
 output "next_steps" {
   description = "Post-deployment steps"
   value       = <<-EOT

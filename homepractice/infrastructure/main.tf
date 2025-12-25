@@ -158,3 +158,119 @@ module "freeipa" {
   # GitOps: Auto-install FreeIPA via cloud-init on first boot
   custom_user_data = file("${path.module}/freeipa-cloudinit.yaml")
 }
+
+# =============================================================================
+# AdGuard Home DNS Server
+# =============================================================================
+# Provides DNS resolution for the home network (192.168.1.0/24)
+# Forwards practice.local → OPNsense, everything else → home router
+# Deployed as LXC container on the home network for accessibility
+
+resource "proxmox_virtual_environment_container" "adguard" {
+  count = var.debian_lxc_template_id != "" ? 1 : 0
+
+  node_name   = var.proxmox_node
+  vm_id       = 203
+  description = "AdGuard Home DNS Server - forwards practice.local to OPNsense"
+  tags        = ["terraform", "homepractice", "dns"]
+
+  unprivileged  = true
+  start_on_boot = true
+
+  operating_system {
+    template_file_id = var.debian_lxc_template_id
+    type             = "debian"
+  }
+
+  cpu {
+    architecture = "amd64"
+    cores        = 1
+  }
+
+  memory {
+    dedicated = 512
+    swap      = 256
+  }
+
+  disk {
+    datastore_id = var.datastore_id
+    size         = 8
+  }
+
+  network_interface {
+    name   = "eth0"
+    bridge = "vmbr0"  # Home network, not isolated network
+  }
+
+  initialization {
+    hostname = "adguard"
+
+    ip_config {
+      ipv4 {
+        address = "${var.adguard_ip}/24"
+        gateway = "192.168.1.254"
+      }
+    }
+
+    user_account {
+      keys = var.ssh_public_keys
+    }
+  }
+
+  features {
+    nesting = false
+  }
+
+  startup {
+    order      = 1
+    up_delay   = 0
+    down_delay = 0
+  }
+}
+
+# Null resource to install AdGuard Home after container is created
+resource "null_resource" "adguard_install" {
+  count = var.debian_lxc_template_id != "" ? 1 : 0
+
+  depends_on = [proxmox_virtual_environment_container.adguard]
+
+  triggers = {
+    container_id = proxmox_virtual_environment_container.adguard[0].vm_id
+  }
+
+  connection {
+    type        = "ssh"
+    host        = var.adguard_ip
+    user        = "root"
+    private_key = file("~/.ssh/id_cloudstack_ed25519")
+    timeout     = "5m"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "echo 'Waiting for container to be ready...'",
+      "sleep 30",
+      "apt-get update",
+      "apt-get install -y curl ca-certificates",
+      "mkdir -p /opt/AdGuardHome",
+      "cd /opt/AdGuardHome",
+      "curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -v",
+      "systemctl enable AdGuardHome",
+      "systemctl start AdGuardHome",
+      "echo 'AdGuard Home installed successfully'"
+    ]
+  }
+
+  # Copy the configuration file
+  provisioner "file" {
+    source      = "${path.module}/adguard-home/AdGuardHome.yaml"
+    destination = "/opt/AdGuardHome/AdGuardHome.yaml"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "systemctl restart AdGuardHome",
+      "echo 'AdGuard Home configured with practice.local forwarding'"
+    ]
+  }
+}

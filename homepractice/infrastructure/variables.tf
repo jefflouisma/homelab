@@ -94,3 +94,19 @@ variable "opnsense_template_id" {
   type        = number
   default     = 9000
 }
+
+# =============================================================================
+# AdGuard Home DNS Server
+# =============================================================================
+
+variable "debian_lxc_template_id" {
+  description = "File ID of Debian LXC template (e.g., local:vztmpl/debian-12-standard_12.2-1_amd64.tar.zst)"
+  type        = string
+  default     = ""
+}
+
+variable "adguard_ip" {
+  description = "Static IP for AdGuard Home DNS server"
+  type        = string
+  default     = "192.168.1.53"
+}
