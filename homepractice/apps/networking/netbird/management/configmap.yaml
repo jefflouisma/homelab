@@ -31,7 +31,8 @@ data:
       "HttpConfig": {
         "Address": "0.0.0.0:8080",
         "AuthIssuer": "https://keycloak.practice.local/realms/practice",
-        "AuthAudience": "netbird",
+        "AuthAudience": "netbird-dashboard",
+        "AuthUserIDClaim": "preferred_username",
         "AuthKeysLocation": "https://keycloak.practice.local/realms/practice/protocol/openid-connect/certs",
         "OIDCConfigEndpoint": "https://keycloak.practice.local/realms/practice/.well-known/openid-configuration"
       },
