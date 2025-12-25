@@ -1,8 +1,10 @@
 # AdGuard Home Configuration
 # GitOps managed - deployed via Terraform + cloud-init
 # 
-# DNS Forwarding:
-#   - practice.local → OPNsense (192.168.1.40)
+# DNS Resolution Strategy (Hairpin NAT):
+#   - practice.local → 192.168.1.40 (OPNsense WAN) via local DNS records
+#   - OPNsense NAT forwards 192.168.1.40:443 → 10.10.10.230:443 (Traefik)
+#   - NAT reflection allows home network devices to access via OPNsense WAN IP
 #   - Everything else → Home Router (192.168.1.254)
 
 http:
@@ -24,14 +26,9 @@ dns:
     - 0.0.0.0
   port: 53
   
-  # Upstream DNS with conditional forwarding
-  # Syntax: [/domain/]server
+  # Upstream DNS - only for non-local domains
   upstream_dns:
-    # Forward practice.local to OPNsense
-    - '[/practice.local/]192.168.1.40'
-    # Forward reverse DNS for 10.10.10.x to OPNsense
-    - '[/10.10.10.in-addr.arpa/]192.168.1.40'
-    # Everything else goes to home router
+    # Everything goes to home router (practice.local handled by rewrites below)
     - '192.168.1.254'
   
   # Fallback DNS (used if upstream fails)
@@ -90,6 +87,27 @@ dns:
     enabled: false
     use_custom: false
 
+  # DNS Rewrites - Local DNS records for practice.local
+  # All practice.local domains resolve to OPNsense WAN IP (192.168.1.40)
+  # OPNsense NAT with reflection forwards to Traefik (10.10.10.230)
+  rewrites:
+    # Wildcard for all practice.local subdomains
+    - domain: '*.practice.local'
+      answer: 192.168.1.40
+    # Explicit entries for common services
+    - domain: keycloak.practice.local
+      answer: 192.168.1.40
+    - domain: testapp.practice.local
+      answer: 192.168.1.40
+    - domain: ca.practice.local
+      answer: 192.168.1.40
+    # K3s node (direct access if needed)
+    - domain: k3s.practice.local
+      answer: 192.168.1.40
+    # OPNsense itself
+    - domain: perimeter-fw.practice.local
+      answer: 192.168.1.40
+
 # Filtering (ad blocking)
 filtering:
   filtering_enabled: true
@@ -99,7 +117,6 @@ filtering:
     enabled: false
   
   # Block lists
-  rewrites: []
   safebrowsing_cache_size: 1048576
   safesearch_cache_size: 1048576
   parental_cache_size: 1048576

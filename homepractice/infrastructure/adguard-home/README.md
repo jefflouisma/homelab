@@ -1,43 +1,73 @@
 # AdGuard Home DNS Server
 
-GitOps-managed DNS server for the HomePractice environment.
+GitOps-managed DNS server for the HomePractice environment using **Hairpin NAT** strategy.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                 Home Network (192.168.1.0/24)                   │
-│                                                                 │
-│  ┌──────────────┐     DNS      ┌─────────────────┐             │
-│  │ Home Devices │ ───────────► │ AdGuard Home    │             │
-│  │ (phones, PCs)│              │ 192.168.1.10    │             │
-│  └──────────────┘              └────────┬────────┘             │
-│                                         │                       │
-│                    ┌────────────────────┴────────────────┐     │
-│                    │                                     │     │
-│                    ▼                                     ▼     │
-│         ┌─────────────────┐              ┌─────────────────┐  │
-│         │ practice.local  │              │ Other domains   │  │
-│         │ → OPNsense      │              │ → Home Router   │  │
-│         │   192.168.1.40  │              │   192.168.1.254 │  │
-│         └────────┬────────┘              └─────────────────┘  │
-│                  │                                             │
-│                  ▼                                             │
-│         ┌─────────────────┐                                    │
-│         │ HomePractice    │                                    │
-│         │ 10.10.10.0/24   │                                    │
-│         │ (keycloak, etc) │                                    │
-│         └─────────────────┘                                    │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       Home Network (192.168.1.0/24)                         │
+│                                                                             │
+│  ┌──────────────┐      DNS       ┌─────────────────┐                       │
+│  │ Home Devices │ ─────────────► │  AdGuard Home   │                       │
+│  │ (phones, PCs)│                │  192.168.1.10   │                       │
+│  └──────────────┘                └────────┬────────┘                       │
+│         │                                 │                                 │
+│         │                    ┌────────────┴────────────┐                   │
+│         │                    │                         │                   │
+│         │                    ▼                         ▼                   │
+│         │         ┌─────────────────┐      ┌─────────────────┐            │
+│         │         │ practice.local  │      │ Other domains   │            │
+│         │         │ → 192.168.1.40  │      │ → 192.168.1.254 │            │
+│         │         │ (DNS rewrite)   │      │ (Home Router)   │            │
+│         │         └────────┬────────┘      └─────────────────┘            │
+│         │                  │                                               │
+│         │    HTTPS :443    │                                               │
+│         └──────────────────┼───────────────────────────────────────────┐  │
+│                            ▼                                           │  │
+│                   ┌─────────────────┐                                  │  │
+│                   │    OPNsense     │◄── Hairpin NAT / Reflection      │  │
+│                   │  192.168.1.40   │    (allows LAN to access WAN IP) │  │
+│                   │     (WAN)       │                                  │  │
+│                   └────────┬────────┘                                  │  │
+│                            │ NAT: 443 → 10.10.10.230:443               │  │
+└────────────────────────────┼───────────────────────────────────────────┘  │
+                             │                                               │
+┌────────────────────────────┼───────────────────────────────────────────────┘
+│                            ▼
+│              HomePractice LAN (10.10.10.0/24)
+│
+│                   ┌─────────────────┐
+│                   │    Traefik      │
+│                   │  10.10.10.230   │
+│                   │  (Ingress)      │
+│                   └────────┬────────┘
+│                            │
+│           ┌────────────────┼────────────────┐
+│           ▼                ▼                ▼
+│    ┌──────────┐     ┌──────────┐     ┌──────────┐
+│    │ Keycloak │     │ TestApp  │     │  step-ca │
+│    └──────────┘     └──────────┘     └──────────┘
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## DNS Forwarding Rules
+## How It Works (Hairpin NAT)
 
-| Domain Pattern | Forwards To | Purpose |
+1. **DNS Resolution**: AdGuard resolves `keycloak.practice.local` → `192.168.1.40`
+2. **Client Connection**: Home device connects to `192.168.1.40:443`
+3. **NAT Reflection**: OPNsense recognizes traffic to its own WAN IP and applies NAT
+4. **Port Forward**: Traffic is forwarded to `10.10.10.230:443` (Traefik)
+5. **Response**: Traefik serves the request, response flows back through OPNsense
+
+## DNS Configuration
+
+| Domain Pattern | Resolves To | Purpose |
 |----------------|-------------|---------|
-| `*.practice.local` | 192.168.1.40 (OPNsense) | HomePractice services |
-| `10.10.10.in-addr.arpa` | 192.168.1.40 (OPNsense) | Reverse DNS for HomePractice |
-| Everything else | 192.168.1.254 (Home Router) | Internet DNS |
+| `*.practice.local` | 192.168.1.40 | OPNsense WAN (NAT to Traefik) |
+| `keycloak.practice.local` | 192.168.1.40 | Keycloak SSO |
+| `testapp.practice.local` | 192.168.1.40 | Test Application |
+| `ca.practice.local` | 192.168.1.40 | step-ca PKI |
+| Everything else | 192.168.1.254 | Home Router (Internet) |
 
 ## Deployment
 

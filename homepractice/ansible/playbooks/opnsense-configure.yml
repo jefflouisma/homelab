@@ -255,22 +255,14 @@
         target: "unbound"
 
     # =========================================================================
-    # Phase 5: NAT Port Forwards for Identity Services
-    # Note: OPNsense 25.1 does not have NAT API - configure via SSH/config.xml
-    # NAT rules configured via separate SSH task:
-    #   - 443 (HTTPS) -> 10.10.10.230:443 (Traefik Ingress)
-    #   - 8080 -> 10.10.10.210:80 (Keycloak direct - legacy)
-    #   - 8081 -> 10.10.10.220:80 (Test App direct - legacy)
+    # Phase 5: NAT Port Forwards - Configured via SSH in Play 3
     # =========================================================================
     - name: Note about NAT configuration
       ansible.builtin.debug:
         msg: |
-          NAT port forwards must be configured via SSH to OPNsense.
-          OPNsense 25.1 does not expose NAT API endpoints.
-          Required NAT rules:
-            - WAN:443 -> 10.10.10.230:443 (Traefik HTTPS)
-            - WAN:8080 -> 10.10.10.210:80 (Keycloak legacy)
-            - WAN:8081 -> 10.10.10.220:80 (Test App legacy)
+          NAT port forwards are configured via SSH in Play 3.
+          Rules configured:
+            - WAN:443 -> 10.10.10.230:443 (Traefik HTTPS) with NAT reflection
 
     # =========================================================================
     # Phase 6: Apply all changes
@@ -305,3 +297,109 @@
           
           API: https://{{ opn_host }}
           ============================================
+
+# =============================================================================
+# Play 3: Configure NAT Port Forwards via SSH
+# NAT API is not available in OPNsense 25.1, must use SSH + PHP
+# =============================================================================
+- name: Configure NAT Port Forwards via SSH
+  hosts: opnsense
+  gather_facts: false
+
+  vars:
+    wan_ip: "192.168.1.40"
+    traefik_ip: "10.10.10.230"
+
+  tasks:
+    - name: Create NAT port forward script with hairpin NAT
+      ansible.builtin.raw: |
+        cat > /tmp/configure_nat.php << 'EOFPHP'
+        <?php
+        require_once("/usr/local/etc/inc/config.inc");
+        require_once("/usr/local/etc/inc/filter.inc");
+        require_once("/usr/local/etc/inc/util.inc");
+        
+        global $config;
+        
+        // Initialize NAT rules array if not exists
+        if (!isset($config['nat']['rule'])) {
+            $config['nat']['rule'] = array();
+        }
+        
+        // Check if rule already exists
+        $rule_exists = false;
+        foreach ($config['nat']['rule'] as $rule) {
+            if (isset($rule['descr']) && strpos($rule['descr'], 'Traefik HTTPS') !== false) {
+                $rule_exists = true;
+                echo "NAT rule for Traefik HTTPS already exists\n";
+                break;
+            }
+        }
+        
+        if (!$rule_exists) {
+            // Create port forward rule: WAN:443 -> 10.10.10.230:443 with NAT reflection
+            $nat_rule = array(
+                'interface' => 'wan',
+                'protocol' => 'tcp',
+                'source' => array('any' => ''),
+                'destination' => array(
+                    'network' => 'wanip',
+                    'port' => '443'
+                ),
+                'target' => '{{ traefik_ip }}',
+                'local-port' => '443',
+                'descr' => 'Traefik HTTPS with NAT reflection (GitOps)',
+                'natreflection' => 'enable',
+                'associated-rule-id' => 'nat_traefik_https'
+            );
+            
+            $config['nat']['rule'][] = $nat_rule;
+            echo "Added NAT port forward: WAN:443 -> {{ traefik_ip }}:443\n";
+        }
+        
+        // Enable global NAT reflection settings
+        if (!isset($config['system']['disablenatreflection'])) {
+            // NAT reflection is enabled by default when this is not set
+            echo "NAT reflection: enabled (default)\n";
+        }
+        
+        // Enable reflection for port forwards
+        if (!isset($config['system']['enablenatreflectionhelper'])) {
+            $config['system']['enablenatreflectionhelper'] = '';
+            echo "NAT reflection helper: enabled\n";
+        }
+        
+        // Write config and reload
+        write_config("GitOps: NAT port forward with hairpin NAT");
+        echo "Configuration saved\n";
+        
+        // Reload filter rules
+        filter_configure();
+        echo "Filter rules reloaded\n";
+        ?>
+        EOFPHP
+      changed_when: true
+
+    - name: Execute NAT configuration script
+      ansible.builtin.raw: /usr/local/bin/php /tmp/configure_nat.php
+      register: nat_result
+      changed_when: true
+
+    - name: Display NAT configuration result
+      ansible.builtin.debug:
+        msg: "{{ nat_result.stdout }}"
+
+    - name: Clean up script
+      ansible.builtin.raw: rm -f /tmp/configure_nat.php
+      changed_when: false
+
+    - name: Verify NAT rules
+      ansible.builtin.raw: |
+        echo "=== Current NAT Rules ==="
+        grep -A5 '<nat>' /conf/config.xml | head -30
+      register: nat_verify
+      changed_when: false
+
+    - name: Display NAT verification
+      ansible.builtin.debug:
+        msg: "{{ nat_verify.stdout }}"
