@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: netbird
+
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - postgresql/deployment.yaml
+  - coturn/deployment.yaml
+  - management/configmap.yaml
+  - management/deployment.yaml
+  - signal/deployment.yaml
+  - dashboard/deployment.yaml
+  - ingress.yaml
+  - keycloak-clients-job.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: netbird

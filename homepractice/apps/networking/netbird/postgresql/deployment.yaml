@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbird-postgresql
+  namespace: netbird
+  labels:
+    app: netbird-postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netbird-postgresql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: netbird-postgresql
+    spec:
+      containers:
+        - name: postgresql
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          envFrom:
+            - secretRef:
+                name: netbird-postgres-secret
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - netbird
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - netbird
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: netbird-postgresql-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netbird-postgresql-pvc
+  namespace: netbird
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: local-path
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbird-postgresql
+  namespace: netbird
+spec:
+  selector:
+    app: netbird-postgresql
+  ports:
+    - port: 5432
+      targetPort: 5432
+      name: postgres

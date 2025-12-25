@@ -1,0 +1,95 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: netbird-dashboard
+  namespace: netbird
+  annotations:
+    cert-manager.io/cluster-issuer: stepca
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`netbird.practice.local`)
+      kind: Rule
+      services:
+        - name: netbird-dashboard
+          port: 80
+  tls:
+    secretName: netbird-dashboard-tls
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: netbird-api
+  namespace: netbird
+  annotations:
+    cert-manager.io/cluster-issuer: stepca
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`netbird-api.practice.local`)
+      kind: Rule
+      services:
+        - name: netbird-management
+          port: 8080
+  tls:
+    secretName: netbird-api-tls
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: netbird-signal
+  namespace: netbird
+  annotations:
+    cert-manager.io/cluster-issuer: stepca
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`netbird-signal.practice.local`)
+      kind: Rule
+      services:
+        - name: netbird-signal
+          port: 8080
+  tls:
+    secretName: netbird-signal-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: netbird-dashboard-cert
+  namespace: netbird
+spec:
+  secretName: netbird-dashboard-tls
+  issuerRef:
+    name: stepca
+    kind: ClusterIssuer
+  dnsNames:
+    - netbird.practice.local
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: netbird-api-cert
+  namespace: netbird
+spec:
+  secretName: netbird-api-tls
+  issuerRef:
+    name: stepca
+    kind: ClusterIssuer
+  dnsNames:
+    - netbird-api.practice.local
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: netbird-signal-cert
+  namespace: netbird
+spec:
+  secretName: netbird-signal-tls
+  issuerRef:
+    name: stepca
+    kind: ClusterIssuer
+  dnsNames:
+    - netbird-signal.practice.local
