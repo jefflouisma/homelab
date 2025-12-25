@@ -1,0 +1,24 @@
+---
+# Caddy Reverse Proxy - ArgoCD Application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infrastructure-caddy
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jefflouisma/homelab
+    targetRevision: HEAD
+    path: homepractice/apps/infrastructure/caddy
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: caddy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

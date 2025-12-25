@@ -1,27 +1,2 @@
----
-# Test App Ingress - HTTPS with step-ca ACME certificates
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: testapp-ingress
-  namespace: test-app
-  annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.tls.certresolver: stepca
-spec:
-  ingressClassName: traefik
-  tls:
-    - hosts:
-        - testapp.practice.local
-  rules:
-    - host: testapp.practice.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: test-app
-                port:
-                  number: 80
+# Test App routing is handled by Caddy reverse proxy
+# No Kubernetes Ingress needed - Caddy manages TLS and routing
