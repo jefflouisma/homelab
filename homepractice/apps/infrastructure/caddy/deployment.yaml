@@ -38,7 +38,7 @@ data:
     # NetBird Management API (HTTP + gRPC)
     netbird-api.practice.local {
       tls /etc/caddy/tls/netbird-api/tls.crt /etc/caddy/tls/netbird-api/tls.key
-      reverse_proxy netbird-management.netbird.svc.cluster.local:8080 {
+      reverse_proxy netbird-management.netbird.svc.cluster.local:443 {
         transport http {
           versions h2c 2
         }
