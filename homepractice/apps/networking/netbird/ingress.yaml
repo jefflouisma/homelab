@@ -4,9 +4,9 @@ metadata:
   name: netbird-dashboard
   namespace: netbird
   annotations:
-    cert-manager.io/issuer-group: certmanager.step.sm
-    cert-manager.io/issuer-kind: StepClusterIssuer
-    cert-manager.io/issuer: step-issuer
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: stepca
 spec:
   ingressClassName: traefik
   tls:
@@ -31,9 +31,9 @@ metadata:
   name: netbird-api
   namespace: netbird
   annotations:
-    cert-manager.io/issuer-group: certmanager.step.sm
-    cert-manager.io/issuer-kind: StepClusterIssuer
-    cert-manager.io/issuer: step-issuer
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: stepca
 spec:
   ingressClassName: traefik
   tls:
@@ -58,9 +58,9 @@ metadata:
   name: netbird-signal
   namespace: netbird
   annotations:
-    cert-manager.io/issuer-group: certmanager.step.sm
-    cert-manager.io/issuer-kind: StepClusterIssuer
-    cert-manager.io/issuer: step-issuer
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: stepca
 spec:
   ingressClassName: traefik
   tls:
