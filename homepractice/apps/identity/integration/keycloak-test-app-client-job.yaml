@@ -69,6 +69,8 @@ spec:
               fi
               
               # Create/update client
+              # IMPORTANT: Use hostname-based URIs for proper OIDC redirects
+              # The test-app is accessed via https://testapp.practice.local
               curl -s -X ${METHOD} "${URL}" \
                 -H "Authorization: Bearer ${TOKEN}" \
                 -H "Content-Type: application/json" \
@@ -82,23 +84,20 @@ spec:
                   "implicitFlowEnabled": false,
                   "directAccessGrantsEnabled": true,
                   "serviceAccountsEnabled": false,
+                  "frontchannelLogout": true,
                   "protocol": "openid-connect",
-                  "rootUrl": "http://192.168.1.220",
+                  "rootUrl": "https://testapp.practice.local",
                   "baseUrl": "/",
                   "redirectUris": [
-                    "http://192.168.1.220/*",
-                    "http://10.10.10.220/*",
-                    "http://localhost:8080/*"
+                    "https://testapp.practice.local/*"
                   ],
                   "webOrigins": [
-                    "http://192.168.1.220",
-                    "http://10.10.10.220",
-                    "http://localhost:8080",
-                    "+"
+                    "https://testapp.practice.local"
                   ],
                   "attributes": {
                     "pkce.code.challenge.method": "S256",
-                    "post.logout.redirect.uris": "http://192.168.1.220/*##http://10.10.10.220/*"
+                    "post.logout.redirect.uris": "https://testapp.practice.local/*",
+                    "backchannel.logout.session.required": "true"
                   },
                   "defaultClientScopes": [
                     "web-origins",

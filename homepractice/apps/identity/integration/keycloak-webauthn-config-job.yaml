@@ -94,72 +94,127 @@ spec:
                 }'
               echo "✅ WebAuthn Passwordless policy configured"
               
-              # Step 3: Get existing browser flow to duplicate
+              # Step 3: Create Passwordless First authentication flow
+              # This flow structure:
+              #   Cookie (ALTERNATIVE) - for existing sessions
+              #   Username Form (REQUIRED) - identify user first
+              #   Auth Choice (REQUIRED) - subflow for auth method
+              #     ├── WebAuthn Passwordless (ALTERNATIVE) - passkey option
+              #     └── Password Form (ALTERNATIVE) - password fallback
               echo ""
-              echo "Step 3: Creating passwordless browser flow..."
+              echo "Step 3: Creating Passwordless First authentication flow..."
               
-              # Check if flow already exists
-              FLOW_EXISTS=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
+              # Delete old flow if exists
+              OLD_FLOW=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
                 "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows" | \
-                jq -r '.[] | select(.alias=="browser-webauthn-passwordless") | .id')
+                jq -r '.[] | select(.alias=="Passwordless First") | .id')
+              if [ -n "$OLD_FLOW" ]; then
+                curl -s -X DELETE "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/$OLD_FLOW" \
+                  -H "Authorization: Bearer ${TOKEN}"
+                echo "Deleted existing Passwordless First flow"
+              fi
               
-              if [ -n "$FLOW_EXISTS" ]; then
-                echo "Flow 'browser-webauthn-passwordless' already exists"
-              else
-                # Copy browser flow
-                curl -s -X POST "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/browser/copy" \
+              # Create new flow
+              curl -s -X POST "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"alias":"Passwordless First","providerId":"basic-flow","topLevel":true}'
+              echo "Created Passwordless First flow"
+              
+              # Step 4: Add executions to the flow
+              echo ""
+              echo "Step 4: Adding authenticators to flow..."
+              
+              # Add cookie authenticator
+              curl -s -X POST "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/Passwordless%20First/executions/execution" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"provider":"auth-cookie"}'
+              
+              # Add username form
+              curl -s -X POST "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/Passwordless%20First/executions/execution" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"provider":"auth-username-form"}'
+              
+              # Add auth choice subflow
+              curl -s -X POST "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/Passwordless%20First/executions/flow" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"alias":"Auth Choice","type":"basic-flow"}'
+              
+              # Add WebAuthn Passwordless to subflow
+              curl -s -X POST "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/Auth%20Choice/executions/execution" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"provider":"webauthn-authenticator-passwordless"}'
+              
+              # Add password form to subflow
+              curl -s -X POST "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/Auth%20Choice/executions/execution" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"provider":"auth-password-form"}'
+              echo "✅ Authenticators added"
+              
+              # Step 5: Set execution requirements
+              echo ""
+              echo "Step 5: Setting execution requirements..."
+              EXECS=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
+                "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/Passwordless%20First/executions")
+              
+              # Cookie -> ALTERNATIVE
+              echo "$EXECS" | jq -r '.[] | select(.providerId=="auth-cookie") | .id' | while read ID; do
+                curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/Passwordless%20First/executions" \
                   -H "Authorization: Bearer ${TOKEN}" \
                   -H "Content-Type: application/json" \
-                  -d '{"newName": "browser-webauthn-passwordless"}'
-                echo "Created browser-webauthn-passwordless flow"
-              fi
+                  -d "{\"id\":\"$ID\",\"requirement\":\"ALTERNATIVE\"}"
+              done
               
-              # Get the new flow ID
-              FLOW_ID=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
-                "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows" | \
-                jq -r '.[] | select(.alias=="browser-webauthn-passwordless") | .id')
+              # Username Form -> REQUIRED
+              echo "$EXECS" | jq -r '.[] | select(.providerId=="auth-username-form") | .id' | while read ID; do
+                curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/Passwordless%20First/executions" \
+                  -H "Authorization: Bearer ${TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"id\":\"$ID\",\"requirement\":\"REQUIRED\"}"
+              done
               
-              echo "Flow ID: $FLOW_ID"
+              # Auth Choice subflow -> REQUIRED
+              echo "$EXECS" | jq -r '.[] | select(.displayName=="Auth Choice") | .id' | while read ID; do
+                curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/Passwordless%20First/executions" \
+                  -H "Authorization: Bearer ${TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"id\":\"$ID\",\"requirement\":\"REQUIRED\"}"
+              done
               
-              # Step 4: Add WebAuthn Passwordless execution to the flow
+              # WebAuthn Passwordless -> ALTERNATIVE
+              echo "$EXECS" | jq -r '.[] | select(.providerId=="webauthn-authenticator-passwordless") | .id' | while read ID; do
+                curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/Passwordless%20First/executions" \
+                  -H "Authorization: Bearer ${TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"id\":\"$ID\",\"requirement\":\"ALTERNATIVE\"}"
+              done
+              
+              # Password Form -> ALTERNATIVE
+              echo "$EXECS" | jq -r '.[] | select(.providerId=="auth-password-form") | .id' | while read ID; do
+                curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/Passwordless%20First/executions" \
+                  -H "Authorization: Bearer ${TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"id\":\"$ID\",\"requirement\":\"ALTERNATIVE\"}"
+              done
+              echo "✅ Execution requirements set"
+              
+              # Step 6: Bind flow as browser flow
               echo ""
-              echo "Step 4: Adding WebAuthn Passwordless authenticator..."
-              
-              # Get executions for the flow
-              EXECUTIONS=$(curl -s -H "Authorization: Bearer ${TOKEN}" \
-                "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/browser-webauthn-passwordless/executions")
-              
-              # Check if WebAuthn passwordless already in flow
-              WEBAUTHN_EXISTS=$(echo "$EXECUTIONS" | jq -r '.[] | select(.providerId=="webauthn-authenticator-passwordless") | .id')
-              
-              if [ -z "$WEBAUTHN_EXISTS" ]; then
-                # Find the forms subflow to add WebAuthn to
-                FORMS_FLOW_ID=$(echo "$EXECUTIONS" | jq -r '.[] | select(.displayName | contains("forms")) | .flowId' | head -1)
-                
-                if [ -n "$FORMS_FLOW_ID" ] && [ "$FORMS_FLOW_ID" != "null" ]; then
-                  # Add WebAuthn Passwordless to forms subflow
-                  curl -s -X POST "${KEYCLOAK_URL}/admin/realms/practice/authentication/flows/browser-webauthn-passwordless%20forms/executions/execution" \
-                    -H "Authorization: Bearer ${TOKEN}" \
-                    -H "Content-Type: application/json" \
-                    -d '{"provider": "webauthn-authenticator-passwordless"}'
-                  echo "Added WebAuthn Passwordless authenticator"
-                fi
-              else
-                echo "WebAuthn Passwordless already in flow"
-              fi
-              
-              # Step 5: Bind the flow as browser flow
-              echo ""
-              echo "Step 5: Binding flow as browser authentication..."
+              echo "Step 6: Binding Passwordless First as browser flow..."
               curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice" \
                 -H "Authorization: Bearer ${TOKEN}" \
                 -H "Content-Type: application/json" \
-                -d "{\"browserFlow\": \"browser-webauthn-passwordless\"}"
+                -d '{"browserFlow":"Passwordless First"}'
               echo "✅ Browser flow bound"
               
-              # Step 6: Add UPDATE_PASSWORD required action for first login
+              # Step 7: Enable UPDATE_PASSWORD required action for first login
               echo ""
-              echo "Step 6: Enabling UPDATE_PASSWORD required action..."
+              echo "Step 7: Enabling UPDATE_PASSWORD required action..."
               curl -s -X PUT "${KEYCLOAK_URL}/admin/realms/practice/authentication/required-actions/UPDATE_PASSWORD" \
                 -H "Authorization: Bearer ${TOKEN}" \
                 -H "Content-Type: application/json" \
@@ -178,8 +233,16 @@ spec:
               echo "WebAuthn Configuration Complete"
               echo "=========================================="
               echo ""
-              echo "User flow:"
-              echo "1. Login with temp password 'gitready'"
+              echo "Authentication Flow Structure:"
+              echo "  Passwordless First (browser flow)"
+              echo "  ├── Cookie (ALTERNATIVE)"
+              echo "  ├── Username Form (REQUIRED)"
+              echo "  └── Auth Choice (REQUIRED)"
+              echo "      ├── WebAuthn Passwordless (ALTERNATIVE)"
+              echo "      └── Password Form (ALTERNATIVE)"
+              echo ""
+              echo "User onboarding flow:"
+              echo "1. Login with temp password"
               echo "2. Forced to change password"
               echo "3. Prompted to register WebAuthn (passkey)"
-              echo "4. Future logins use WebAuthn only"
+              echo "4. Future logins show passkey first, password as fallback"
