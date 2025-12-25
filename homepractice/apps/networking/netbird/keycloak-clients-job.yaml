@@ -79,9 +79,9 @@ spec:
                     "clientId": "netbird-dashboard",
                     "name": "NetBird Dashboard",
                     "enabled": true,
-                    "publicClient": false,
+                    "publicClient": true,
                     "standardFlowEnabled": true,
-                    "directAccessGrantsEnabled": false,
+                    "directAccessGrantsEnabled": true,
                     "serviceAccountsEnabled": false,
                     "protocol": "openid-connect",
                     "rootUrl": "https://netbird.practice.local",
@@ -92,11 +92,9 @@ spec:
                     "webOrigins": [
                       "https://netbird.practice.local"
                     ],
-                    "defaultClientScopes": [
-                      "openid",
-                      "profile",
-                      "email"
-                    ]
+                    "attributes": {
+                      "pkce.code.challenge.method": "S256"
+                    }
                   }'
                 echo "✅ Created netbird-dashboard client"
               else
