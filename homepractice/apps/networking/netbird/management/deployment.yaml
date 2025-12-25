@@ -22,7 +22,7 @@ spec:
             - sh
             - -c
             - |
-              until nc -z netbird-postgresql 5432; do
+              until nc -z identity-postgres-postgresql.identity.svc.cluster.local 5432; do
                 echo "Waiting for PostgreSQL..."
                 sleep 2
               done
@@ -46,12 +46,7 @@ spec:
             - name: NETBIRD_STORE_ENGINE
               value: "postgres"
             - name: NETBIRD_STORE_ENGINE_POSTGRES_DSN
-              value: "postgresql://netbird:$(POSTGRES_PASSWORD)@netbird-postgresql:5432/netbird?sslmode=disable"
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: netbird-postgres-secret
-                  key: POSTGRES_PASSWORD
+              value: "postgresql://netbird:NetBirdDB2024!@identity-postgres-postgresql.identity.svc.cluster.local:5432/netbird?sslmode=disable"
             - name: NETBIRD_DATASTORE_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:

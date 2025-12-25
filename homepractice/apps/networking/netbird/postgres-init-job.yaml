@@ -1,0 +1,79 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: netbird-postgres-init
+  namespace: netbird
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: postgres:16-alpine
+          env:
+            - name: PGHOST
+              value: "identity-postgres-postgresql.identity.svc.cluster.local"
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: "postgres"
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: identity-postgres-secret
+                  key: postgres-password
+                  optional: true
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              
+              echo "=========================================="
+              echo "Initializing NetBird Database"
+              echo "=========================================="
+              
+              # Wait for PostgreSQL to be ready
+              echo "Waiting for PostgreSQL..."
+              until pg_isready -h $PGHOST -p $PGPORT -U $PGUSER; do
+                sleep 2
+              done
+              echo "PostgreSQL is ready"
+              
+              # Check if netbird database exists
+              if psql -h $PGHOST -U $PGUSER -lqt | cut -d \| -f 1 | grep -qw netbird; then
+                echo "Database 'netbird' already exists"
+              else
+                echo "Creating database 'netbird'..."
+                psql -h $PGHOST -U $PGUSER -c "CREATE DATABASE netbird;"
+                echo "Database created"
+              fi
+              
+              # Check if netbird user exists
+              if psql -h $PGHOST -U $PGUSER -tAc "SELECT 1 FROM pg_roles WHERE rolname='netbird'" | grep -q 1; then
+                echo "User 'netbird' already exists"
+              else
+                echo "Creating user 'netbird'..."
+                psql -h $PGHOST -U $PGUSER -c "CREATE USER netbird WITH PASSWORD 'NetBirdDB2024!';"
+                echo "User created"
+              fi
+              
+              # Grant privileges
+              echo "Granting privileges..."
+              psql -h $PGHOST -U $PGUSER -c "GRANT ALL PRIVILEGES ON DATABASE netbird TO netbird;"
+              psql -h $PGHOST -U $PGUSER -d netbird -c "GRANT ALL ON SCHEMA public TO netbird;"
+              
+              echo ""
+              echo "=========================================="
+              echo "NetBird Database Initialized"
+              echo "=========================================="
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: identity-postgres-secret
+  namespace: netbird
+type: Opaque
+stringData:
+  postgres-password: "PostgresAdmin2024!"

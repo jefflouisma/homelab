@@ -31,11 +31,12 @@ Mobile/Laptop (NetBird Client)
 
 | Component | Image | Purpose |
 |-----------|-------|---------|
-| postgresql | postgres:15-alpine | State storage |
 | coturn | coturn/coturn:4.6.2-alpine | TURN/STUN relay for NAT traversal |
 | management | netbirdio/management:latest | Control plane API |
 | signal | netbirdio/signal:latest | WebRTC signaling |
 | dashboard | netbirdio/dashboard:latest | Web UI |
+
+**Note:** Uses existing PostgreSQL from `identity` namespace (`identity-postgres-postgresql.identity.svc.cluster.local`).
 
 ## Keycloak OIDC Clients
 
