@@ -91,22 +91,18 @@ dns:
   # All practice.local domains resolve to OPNsense WAN IP (192.168.1.40)
   # OPNsense NAT with reflection forwards to Traefik (10.10.10.230)
   rewrites:
-    # Wildcard for all practice.local subdomains
-    - domain: '*.practice.local'
-      answer: 192.168.1.40
-    # Explicit entries for common services
-    - domain: keycloak.practice.local
-      answer: 192.168.1.40
-    - domain: testapp.practice.local
-      answer: 192.168.1.40
-    - domain: ca.practice.local
-      answer: 192.168.1.40
-    # K3s node (direct access if needed)
-    - domain: k3s.practice.local
-      answer: 192.168.1.40
-    # OPNsense itself
-    - domain: perimeter-fw.practice.local
-      answer: 192.168.1.40
+    - domain: "*.practice.local"
+      answer: "192.168.1.40"
+    - domain: "keycloak.practice.local"
+      answer: "192.168.1.40"
+    - domain: "testapp.practice.local"
+      answer: "192.168.1.40"
+    - domain: "ca.practice.local"
+      answer: "192.168.1.40"
+    - domain: "k3s.practice.local"
+      answer: "192.168.1.40"
+    - domain: "perimeter-fw.practice.local"
+      answer: "192.168.1.40"
 
 # Filtering (ad blocking)
 filtering:
