@@ -6,6 +6,7 @@ namespace: netbird
 resources:
   - namespace.yaml
   - secrets.yaml
+  - step-ca-cert.yaml
   - postgres-init-job.yaml
   - coturn/deployment.yaml
   - management/configmap.yaml

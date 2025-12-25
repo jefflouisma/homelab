@@ -76,4 +76,4 @@ metadata:
   namespace: netbird
 type: Opaque
 stringData:
-  postgres-password: "PostgresAdmin2024!"
+  postgres-password: "IdentityPostgres2024!"

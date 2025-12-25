@@ -27,6 +27,43 @@ spec:
                 sleep 2
               done
               echo "PostgreSQL is ready"
+        - name: setup-ca
+          image: alpine:3.19
+          env:
+            - name: IDP_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: netbird-secrets
+                  key: IDP_CLIENT_SECRET
+            - name: TURN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: netbird-secrets
+                  key: TURN_PASSWORD
+          command:
+            - sh
+            - -c
+            - |
+              apk add --no-cache jq
+              cp /etc/ssl/certs/ca-certificates.crt /certs/ca-certificates.crt
+              cat /step-ca/root_ca.crt >> /certs/ca-certificates.crt
+              echo "Added step-ca root certificate"
+              
+              # Inject secrets into config
+              jq --arg secret "$IDP_CLIENT_SECRET" --arg turn "$TURN_PASSWORD" \
+                '.IdpManagerConfig.ClientConfig.ClientSecret = $secret | .TURNConfig.Turns[0].Password = $turn' \
+                /config-ro/management.json > /config/management.json
+              chmod 644 /config/management.json
+              echo "Config prepared with secrets"
+          volumeMounts:
+            - name: step-ca-cert
+              mountPath: /step-ca
+            - name: ca-certs
+              mountPath: /certs
+            - name: config-ro
+              mountPath: /config-ro
+            - name: config
+              mountPath: /config
       containers:
         - name: management
           image: netbirdio/management:latest
@@ -52,12 +89,18 @@ spec:
                 secretKeyRef:
                   name: netbird-secrets
                   key: DATASTORE_ENCRYPTION_KEY
-          envFrom:
-            - configMapRef:
-                name: netbird-management-config
+            - name: SSL_CERT_FILE
+              value: "/certs/ca-certificates.crt"
+            - name: NETBIRD_IDP_MGMT_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: netbird-secrets
+                  key: IDP_CLIENT_SECRET
           volumeMounts:
             - name: config
               mountPath: /etc/netbird
+            - name: ca-certs
+              mountPath: /certs
           resources:
             requests:
               memory: "128Mi"
@@ -66,22 +109,27 @@ spec:
               memory: "512Mi"
               cpu: "500m"
           livenessProbe:
-            httpGet:
-              path: /api/accounts
+            tcpSocket:
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 5
           readinessProbe:
-            httpGet:
-              path: /api/accounts
+            tcpSocket:
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 5
       volumes:
-        - name: config
+        - name: config-ro
           configMap:
             name: netbird-management-config
+        - name: config
+          emptyDir: {}
+        - name: step-ca-cert
+          configMap:
+            name: step-ca-root-cert
+        - name: ca-certs
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
