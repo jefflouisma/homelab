@@ -9,9 +9,12 @@ all:
           ansible_user: root
           ansible_password: "opnsense"
           ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o PubkeyAuthentication=no -o ProxyJump=root@192.168.1.30'
-          # API credentials for ansibleguy.opnsense
+          # API credentials for ansibleguy.opnsense and REST API
           opn_api_key: "C9HdbF5A8zWsw+ZV1fzQ0aDbgQlaWEIGbwh7Cq7kq/hSz+rvpxNQa5vUylm3zi8an9UdNVPfzJiHqKtr"
           opn_api_secret: "pHKan7aagfg6F4H8zG8Vnja97n0pIaz4MexuetCmcDq/Qy9v3Dk1JByi7p4Tb0SWEJXd02RKJUNtHZoZ"
+          # Alias for netbird-opnsense playbook
+          opnsense_api_key: "{{ opn_api_key }}"
+          opnsense_api_secret: "{{ opn_api_secret }}"
     
     k3s:
       hosts:

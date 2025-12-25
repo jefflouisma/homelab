@@ -42,9 +42,63 @@ Mobile/Laptop (NetBird Client)
 
 Created automatically by `keycloak-clients-job.yaml`:
 
-1. **netbird-dashboard** - Browser login (confidential client)
+1. **netbird-dashboard** - Browser login (public client with PKCE)
 2. **netbird-backend** - Service account with `view-users` role
 3. **netbird-client** - Device/CLI (public client with PKCE + device flow)
+
+## GitOps Workflow
+
+### Limitation: NetBird API Authentication
+
+NetBird Management API **only accepts user tokens** from OIDC login flows - service account tokens (`client_credentials` grant) are not supported. This means setup keys must be created manually via the dashboard.
+
+### Step 1: Create Setup Keys (Manual - Dashboard)
+
+1. Login to https://netbird.practice.local
+2. Go to **Setup Keys** → **Create Setup Key**
+3. Create these keys:
+
+| Name | Type | Auto-Groups | Purpose |
+|------|------|-------------|---------|
+| `opnsense-router` | Reusable | routers | OPNsense gateway |
+| `server-enrollment` | Reusable | servers | Server peers |
+| `client-enrollment` | Reusable | clients | End-user devices |
+
+4. Copy the setup key values
+
+### Step 2: Configure OPNsense (Ansible - Automated)
+
+```bash
+cd homepractice/ansible
+
+# Run playbook with setup key from dashboard
+ansible-playbook -i inventory.yml playbooks/netbird-opnsense.yml \
+  -e "netbird_setup_key=<SETUP-KEY-FROM-DASHBOARD>"
+```
+
+Or store key in Kubernetes secret first:
+```bash
+# Store setup key as secret
+kubectl create secret generic netbird-setup-keys -n netbird \
+  --from-literal=opnsense-router="<SETUP-KEY>"
+
+# Then in playbook, retrieve from secret
+SETUP_KEY=$(kubectl get secret netbird-setup-keys -n netbird \
+  -o jsonpath='{.data.opnsense-router}' | base64 -d)
+```
+
+### What IS Automated (GitOps)
+
+- ✅ NetBird control plane (Helm/Kustomize)
+- ✅ Keycloak OIDC clients (Job)
+- ✅ PostgreSQL database (Job)
+- ✅ OPNsense plugin configuration (Ansible)
+- ✅ DNS entries (AdGuard Home)
+
+### What Requires Manual Steps
+
+- ⚠️ Setup key creation (dashboard only - NetBird limitation)
+- ⚠️ Initial OPNsense interface assignment (wt0 → NETBIRD)
 
 ## DNS Entries Required
 
