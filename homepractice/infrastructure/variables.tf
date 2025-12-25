@@ -108,5 +108,5 @@ variable "debian_lxc_template_id" {
 variable "adguard_ip" {
   description = "Static IP for AdGuard Home DNS server"
   type        = string
-  default     = "192.168.1.53"
+  default     = "192.168.1.10"
 }

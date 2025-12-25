@@ -10,7 +10,7 @@ GitOps-managed DNS server for the HomePractice environment.
 │                                                                 │
 │  ┌──────────────┐     DNS      ┌─────────────────┐             │
 │  │ Home Devices │ ───────────► │ AdGuard Home    │             │
-│  │ (phones, PCs)│              │ 192.168.1.53    │             │
+│  │ (phones, PCs)│              │ 192.168.1.10    │             │
 │  └──────────────┘              └────────┬────────┘             │
 │                                         │                       │
 │                    ┌────────────────────┴────────────────┐     │
@@ -64,24 +64,24 @@ terraform apply
 
 ### Verify
 
-1. Access Web UI: http://192.168.1.53:3000
+1. Access Web UI: http://192.168.1.10:3000
    - Default login: admin / admin (change on first login)
 
 2. Test DNS resolution:
    ```bash
    # From any device on 192.168.1.X
-   nslookup keycloak.practice.local 192.168.1.53
-   nslookup google.com 192.168.1.53
+   nslookup keycloak.practice.local 192.168.1.10
+   nslookup google.com 192.168.1.10
    ```
 
 ## Configure Home Devices
 
 ### Option A: Router DHCP (Recommended)
-Set 192.168.1.53 as the DNS server in your home router's DHCP settings.
+Set 192.168.1.10 as the DNS server in your home router's DHCP settings.
 All devices will automatically use AdGuard Home.
 
 ### Option B: Per-Device
-Manually set DNS to 192.168.1.53 on individual devices.
+Manually set DNS to 192.168.1.10 on individual devices.
 
 ## GitOps Configuration
 
@@ -100,16 +100,16 @@ Key configuration sections:
 
 ### Check AdGuard Home status
 ```bash
-ssh root@192.168.1.53 systemctl status AdGuardHome
+ssh root@192.168.1.10 systemctl status AdGuardHome
 ```
 
 ### View logs
 ```bash
-ssh root@192.168.1.53 journalctl -u AdGuardHome -f
+ssh root@192.168.1.10 journalctl -u AdGuardHome -f
 ```
 
 ### Test upstream connectivity
 ```bash
-ssh root@192.168.1.53 dig @192.168.1.40 keycloak.practice.local
-ssh root@192.168.1.53 dig @192.168.1.254 google.com
+ssh root@192.168.1.10 dig @192.168.1.40 keycloak.practice.local
+ssh root@192.168.1.10 dig @192.168.1.254 google.com
 ```
