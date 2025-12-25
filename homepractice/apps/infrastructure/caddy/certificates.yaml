@@ -1,0 +1,70 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: keycloak-tls
+  namespace: caddy
+spec:
+  secretName: keycloak-tls
+  issuerRef:
+    group: certmanager.step.sm
+    kind: StepClusterIssuer
+    name: step-issuer
+  dnsNames:
+    - keycloak.practice.local
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: testapp-tls
+  namespace: caddy
+spec:
+  secretName: testapp-tls
+  issuerRef:
+    group: certmanager.step.sm
+    kind: StepClusterIssuer
+    name: step-issuer
+  dnsNames:
+    - testapp.practice.local
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: netbird-tls
+  namespace: caddy
+spec:
+  secretName: netbird-tls
+  issuerRef:
+    group: certmanager.step.sm
+    kind: StepClusterIssuer
+    name: step-issuer
+  dnsNames:
+    - netbird.practice.local
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: netbird-api-tls
+  namespace: caddy
+spec:
+  secretName: netbird-api-tls
+  issuerRef:
+    group: certmanager.step.sm
+    kind: StepClusterIssuer
+    name: step-issuer
+  dnsNames:
+    - netbird-api.practice.local
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: netbird-signal-tls
+  namespace: caddy
+spec:
+  secretName: netbird-signal-tls
+  issuerRef:
+    group: certmanager.step.sm
+    kind: StepClusterIssuer
+    name: step-issuer
+  dnsNames:
+    - netbird-signal.practice.local

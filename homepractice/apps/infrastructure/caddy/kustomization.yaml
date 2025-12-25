@@ -6,6 +6,7 @@ namespace: caddy
 resources:
   - deployment.yaml
   - step-ca-root-configmap.yaml
+  - certificates.yaml
 
 commonLabels:
   app.kubernetes.io/part-of: caddy

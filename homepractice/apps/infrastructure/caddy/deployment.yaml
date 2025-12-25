@@ -12,9 +12,6 @@ metadata:
 data:
   Caddyfile: |
     {
-      email admin@practice.local
-      acme_ca https://step-ca-step-certificates.step-ca.svc.cluster.local/acme/acme/directory
-      acme_ca_root /etc/caddy/certs/root_ca.crt
       log {
         level INFO
       }
@@ -22,21 +19,25 @@ data:
 
     # Keycloak
     keycloak.practice.local {
+      tls /etc/caddy/tls/keycloak/tls.crt /etc/caddy/tls/keycloak/tls.key
       reverse_proxy keycloak.identity.svc.cluster.local:80
     }
 
     # Test App
     testapp.practice.local {
+      tls /etc/caddy/tls/testapp/tls.crt /etc/caddy/tls/testapp/tls.key
       reverse_proxy test-app.test-app.svc.cluster.local:80
     }
 
     # NetBird Dashboard
     netbird.practice.local {
+      tls /etc/caddy/tls/netbird/tls.crt /etc/caddy/tls/netbird/tls.key
       reverse_proxy netbird-dashboard.netbird.svc.cluster.local:80
     }
 
     # NetBird Management API (HTTP + gRPC)
     netbird-api.practice.local {
+      tls /etc/caddy/tls/netbird-api/tls.crt /etc/caddy/tls/netbird-api/tls.key
       reverse_proxy netbird-management.netbird.svc.cluster.local:8080 {
         transport http {
           versions h2c 2
@@ -46,6 +47,7 @@ data:
 
     # NetBird Signal (gRPC)
     netbird-signal.practice.local {
+      tls /etc/caddy/tls/netbird-signal/tls.crt /etc/caddy/tls/netbird-signal/tls.key
       reverse_proxy netbird-signal.netbird.svc.cluster.local:8080 {
         transport http {
           versions h2c 2
@@ -98,6 +100,21 @@ spec:
             - name: step-ca-root
               mountPath: /etc/caddy/certs
               readOnly: true
+            - name: keycloak-tls
+              mountPath: /etc/caddy/tls/keycloak
+              readOnly: true
+            - name: testapp-tls
+              mountPath: /etc/caddy/tls/testapp
+              readOnly: true
+            - name: netbird-tls
+              mountPath: /etc/caddy/tls/netbird
+              readOnly: true
+            - name: netbird-api-tls
+              mountPath: /etc/caddy/tls/netbird-api
+              readOnly: true
+            - name: netbird-signal-tls
+              mountPath: /etc/caddy/tls/netbird-signal
+              readOnly: true
           resources:
             requests:
               memory: "64Mi"
@@ -126,6 +143,21 @@ spec:
         - name: step-ca-root
           configMap:
             name: step-ca-root-ca
+        - name: keycloak-tls
+          secret:
+            secretName: keycloak-tls
+        - name: testapp-tls
+          secret:
+            secretName: testapp-tls
+        - name: netbird-tls
+          secret:
+            secretName: netbird-tls
+        - name: netbird-api-tls
+          secret:
+            secretName: netbird-api-tls
+        - name: netbird-signal-tls
+          secret:
+            secretName: netbird-signal-tls
 ---
 apiVersion: v1
 kind: Service
