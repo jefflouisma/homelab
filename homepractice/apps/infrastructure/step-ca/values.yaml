@@ -48,11 +48,14 @@ inject:
           type: badgerv2
           dataSource: /home/step/db
         authority:
+          claims:
+            maxTLSCertDuration: 8760h      # 1 year global max
+            defaultTLSCertDuration: 2160h  # 90 days default
           provisioners:
             - type: ACME
               name: acme
               claims:
-                maxTLSCertDuration: 2160h
+                maxTLSCertDuration: 8760h
                 defaultTLSCertDuration: 720h
         tls:
           cipherSuites:

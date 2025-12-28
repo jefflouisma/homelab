@@ -6,6 +6,8 @@ metadata:
   namespace: caddy
 spec:
   secretName: keycloak-tls
+  duration: 8760h    # 1 year
+  renewBefore: 720h  # 30 days
   issuerRef:
     group: certmanager.step.sm
     kind: StepClusterIssuer
@@ -20,6 +22,8 @@ metadata:
   namespace: caddy
 spec:
   secretName: testapp-tls
+  duration: 8760h    # 1 year
+  renewBefore: 720h  # 30 days
   issuerRef:
     group: certmanager.step.sm
     kind: StepClusterIssuer
@@ -34,6 +38,8 @@ metadata:
   namespace: caddy
 spec:
   secretName: netbird-tls
+  duration: 8760h    # 1 year
+  renewBefore: 720h  # 30 days
   issuerRef:
     group: certmanager.step.sm
     kind: StepClusterIssuer
@@ -48,6 +54,8 @@ metadata:
   namespace: caddy
 spec:
   secretName: netbird-api-tls
+  duration: 8760h    # 1 year
+  renewBefore: 720h  # 30 days
   issuerRef:
     group: certmanager.step.sm
     kind: StepClusterIssuer
@@ -62,6 +70,8 @@ metadata:
   namespace: caddy
 spec:
   secretName: netbird-signal-tls
+  duration: 8760h    # 1 year
+  renewBefore: 720h  # 30 days
   issuerRef:
     group: certmanager.step.sm
     kind: StepClusterIssuer
