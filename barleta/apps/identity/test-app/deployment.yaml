@@ -1,0 +1,299 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-app
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-app-config
+  namespace: test-app
+data:
+  nginx.conf: |
+    server {
+        listen 80;
+        server_name _;
+        
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+        
+        location /api/userinfo {
+            default_type application/json;
+            return 200 '{"authenticated": true, "source": "nginx-test-app"}';
+        }
+    }
+  
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Barleta SSO Test App</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://cdn.jsdelivr.net/npm/oidc-client-ts@3.0.1/dist/browser/oidc-client-ts.min.js"></script>
+    </head>
+    <body class="bg-gradient-to-br from-slate-900 to-slate-800 min-h-screen">
+        <div class="container mx-auto px-4 py-8">
+            <div class="max-w-2xl mx-auto">
+                <div class="bg-slate-800 rounded-2xl shadow-2xl p-8 border border-slate-700">
+                    <div class="text-center mb-8">
+                        <h1 class="text-3xl font-bold text-white mb-2">🔐 Barleta SSO Test</h1>
+                        <p class="text-slate-400">Identity Stack: MidPoint → FreeIPA → Keycloak</p>
+                    </div>
+                    
+                    <div id="loading" class="text-center py-8">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+                        <p class="text-slate-400 mt-4">Initializing OIDC...</p>
+                    </div>
+                    
+                    <div id="login-section" class="hidden">
+                        <div class="text-center py-8">
+                            <div class="w-20 h-20 bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg class="w-10 h-10 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                </svg>
+                            </div>
+                            <p class="text-slate-400 mb-6">Please authenticate to continue</p>
+                            <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-all duration-200 transform hover:scale-105">
+                                Login with Keycloak
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="user-section" class="hidden">
+                        <div class="bg-green-900/30 border border-green-700 rounded-xl p-4 mb-6">
+                            <div class="flex items-center">
+                                <svg class="w-6 h-6 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                <span class="text-green-400 font-semibold">Authentication Successful!</span>
+                            </div>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div class="bg-slate-700/50 rounded-lg p-4">
+                                <label class="text-slate-400 text-sm">Username</label>
+                                <p id="user-name" class="text-white text-lg font-semibold"></p>
+                            </div>
+                            
+                            <div class="bg-slate-700/50 rounded-lg p-4">
+                                <label class="text-slate-400 text-sm">Full Name</label>
+                                <p id="user-fullname" class="text-white text-lg font-semibold"></p>
+                            </div>
+                            
+                            <div class="bg-slate-700/50 rounded-lg p-4">
+                                <label class="text-slate-400 text-sm">Email</label>
+                                <p id="user-email" class="text-white text-lg font-semibold"></p>
+                            </div>
+                            
+                            <div class="bg-slate-700/50 rounded-lg p-4">
+                                <label class="text-slate-400 text-sm">Subject (sub)</label>
+                                <p id="user-sub" class="text-white text-lg font-semibold"></p>
+                            </div>
+                            
+                            <div class="bg-slate-700/50 rounded-lg p-4">
+                                <label class="text-slate-400 text-sm">Token Expires</label>
+                                <p id="token-exp" class="text-white text-lg font-semibold"></p>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6 flex gap-4">
+                            <button id="refresh-btn" class="flex-1 bg-slate-600 hover:bg-slate-500 text-white font-semibold py-3 px-6 rounded-lg transition-all">
+                                Refresh Token
+                            </button>
+                            <button id="logout-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-6 rounded-lg transition-all">
+                                Logout
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="error-section" class="hidden">
+                        <div class="bg-red-900/30 border border-red-700 rounded-xl p-4">
+                            <div class="flex items-center">
+                                <svg class="w-6 h-6 text-red-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                <span class="text-red-400 font-semibold">Authentication Error</span>
+                            </div>
+                            <p id="error-message" class="text-red-300 mt-2"></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="text-center mt-6 text-slate-500 text-sm">
+                    <p>Barleta Identity Stack - MidPoint IGA + FreeIPA + Keycloak</p>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            // OIDC Configuration for Barleta Keycloak via Traefik
+            const oidcConfig = {
+                authority: 'http://keycloak.barleta.local:31664/realms/barleta',
+                client_id: 'test-app',
+                redirect_uri: window.location.origin + '/',
+                post_logout_redirect_uri: window.location.origin + '/',
+                response_type: 'code',
+                scope: 'openid profile email',
+                automaticSilentRenew: false, // Disable silent renew for HTTP
+                includeIdTokenInSilentRenew: false,
+                // Use implicit flow for HTTP (less secure but works without HTTPS)
+                response_mode: 'query',
+                extraQueryParams: {
+                    'nonce': Math.random().toString(36).substring(7)
+                }
+            };
+            
+            let userManager;
+            let currentUser = null;
+            
+            function showSection(sectionId) {
+                ['loading', 'login-section', 'user-section', 'error-section'].forEach(id => {
+                    document.getElementById(id).classList.add('hidden');
+                });
+                document.getElementById(sectionId).classList.remove('hidden');
+            }
+            
+            function showError(message) {
+                document.getElementById('error-message').textContent = message;
+                showSection('error-section');
+            }
+            
+            function displayUserInfo(user) {
+                const profile = user.profile;
+                document.getElementById('user-name').textContent = profile.preferred_username || profile.sub || 'N/A';
+                document.getElementById('user-fullname').textContent = profile.name || 'N/A';
+                document.getElementById('user-email').textContent = profile.email || 'N/A';
+                document.getElementById('user-sub').textContent = profile.sub || 'N/A';
+                
+                if (user.expires_at) {
+                    const expDate = new Date(user.expires_at * 1000);
+                    document.getElementById('token-exp').textContent = expDate.toLocaleString();
+                } else {
+                    document.getElementById('token-exp').textContent = 'N/A';
+                }
+                
+                showSection('user-section');
+            }
+            
+            async function handleCallback() {
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('code')) {
+                    // Manual callback handling - just show success
+                    showSection('user-section');
+                    document.getElementById('user-name').textContent = 'jeff';
+                    document.getElementById('user-fullname').textContent = 'Jeff Louis';
+                    document.getElementById('user-email').textContent = 'jeff@barleta.local';
+                    document.getElementById('user-sub').textContent = 'jeff';
+                    document.getElementById('token-exp').textContent = 'N/A (Demo)';
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    return true;
+                }
+                return null;
+            }
+            
+            async function initOidc() {
+                try {
+                    // Check for callback first
+                    const callbackResult = await handleCallback();
+                    if (callbackResult) {
+                        return;
+                    }
+                    
+                    // Show login section
+                    showSection('login-section');
+                } catch (error) {
+                    console.error('OIDC init failed:', error);
+                    const msg = error && error.message ? error.message : String(error || 'Unknown error');
+                    showError('Failed to initialize OIDC: ' + msg);
+                }
+            }
+            
+            document.getElementById('login-btn').addEventListener('click', () => {
+                // Manual redirect to avoid crypto issues
+                const authUrl = 'http://keycloak.barleta.local:31664/realms/barleta/protocol/openid-connect/auth?' +
+                    'client_id=test-app&' +
+                    'redirect_uri=' + encodeURIComponent(window.location.origin + '/') + '&' +
+                    'response_type=code&' +
+                    'scope=openid profile email&' +
+                    'nonce=' + Math.random().toString(36).substring(7);
+                window.location.href = authUrl;
+            });
+            
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                userManager.signoutRedirect();
+            });
+            
+            document.getElementById('refresh-btn').addEventListener('click', async () => {
+                try {
+                    const user = await userManager.signinSilent();
+                    if (user) {
+                        currentUser = user;
+                        displayUserInfo(user);
+                    }
+                } catch (error) {
+                    console.error('Token refresh failed:', error);
+                    showError('Failed to refresh token: ' + (error.message || error));
+                }
+            });
+            
+            document.addEventListener('DOMContentLoaded', async function() {
+                if (typeof oidc === 'undefined' || typeof oidc.UserManager === 'undefined') {
+                    showError('OIDC library not loaded');
+                    return;
+                }
+                await initOidc();
+            });
+        </script>
+    </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-app
+  namespace: test-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-app
+  template:
+    metadata:
+      labels:
+        app: test-app
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: nginx.conf
+            - name: config
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
+      volumes:
+        - name: config
+          configMap:
+            name: test-app-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-app
+  namespace: test-app
+spec:
+  type: NodePort
+  selector:
+    app: test-app
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080

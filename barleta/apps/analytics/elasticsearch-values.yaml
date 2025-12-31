@@ -1,0 +1,26 @@
+# Elasticsearch values for DataHub
+replicas: 1
+minimumMasterNodes: 1
+
+esConfig:
+  elasticsearch.yml: |
+    xpack.security.enabled: false
+    xpack.security.transport.ssl.enabled: false
+    xpack.security.http.ssl.enabled: false
+    discovery.type: single-node
+
+persistence:
+  enabled: true
+
+volumeClaimTemplate:
+  resources:
+    requests:
+      storage: 10Gi
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 1000m
+    memory: 2Gi

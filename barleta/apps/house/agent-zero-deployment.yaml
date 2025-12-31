@@ -1,0 +1,88 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agent-zero-data
+  namespace: house
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-zero
+  namespace: house
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-zero
+  template:
+    metadata:
+      labels:
+        app: agent-zero
+    spec:
+      containers:
+        - name: agent-zero
+          image: agent0ai/agent-zero:latest
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: data
+              mountPath: /a0/usr
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 4000m
+              memory: 8Gi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agent-zero-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-zero
+  namespace: house
+spec:
+  selector:
+    app: agent-zero
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: agent-zero
+  namespace: house
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`agent-zero.barleta.local`)
+      kind: Rule
+      services:
+        - name: agent-zero
+          port: 80

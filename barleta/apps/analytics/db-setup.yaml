@@ -1,0 +1,60 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: analytics-db-setup
+  namespace: identity
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: db-setup
+          image: postgres:15-alpine
+          env:
+            - name: PGHOST
+              value: postgresql.identity.svc.cluster.local
+            - name: PGUSER
+              value: postgres
+            - name: PGPASSWORD
+              value: Barleta2024!
+            - name: PGDATABASE
+              value: midpoint
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Creating analytics schemas and databases..."
+              
+              # Create analytics schemas in midpoint database
+              psql -c "CREATE SCHEMA IF NOT EXISTS raw_uci;"
+              psql -c "CREATE SCHEMA IF NOT EXISTS raw_olist;"
+              psql -c "CREATE SCHEMA IF NOT EXISTS raw_instacart;"
+              psql -c "CREATE SCHEMA IF NOT EXISTS raw_retailrocket;"
+              psql -c "CREATE SCHEMA IF NOT EXISTS staging;"
+              psql -c "CREATE SCHEMA IF NOT EXISTS marts;"
+              psql -c "CREATE SCHEMA IF NOT EXISTS metrics;"
+              
+              # Create analytics user
+              psql -c "DO \$\$ BEGIN CREATE USER analytics WITH PASSWORD 'Analytics2024!'; EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;"
+              psql -c "GRANT ALL PRIVILEGES ON SCHEMA raw_uci, raw_olist, raw_instacart, raw_retailrocket, staging, marts, metrics TO analytics;"
+              psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA raw_uci GRANT ALL ON TABLES TO analytics;"
+              psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA staging GRANT ALL ON TABLES TO analytics;"
+              psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA marts GRANT ALL ON TABLES TO analytics;"
+              psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA metrics GRANT ALL ON TABLES TO analytics;"
+              
+              # Create Airflow database
+              psql -c "SELECT 1 FROM pg_database WHERE datname = 'airflow'" | grep -q 1 || psql -c "CREATE DATABASE airflow;"
+              psql -c "DO \$\$ BEGIN CREATE USER airflow WITH PASSWORD 'Airflow2024!'; EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;"
+              psql -c "GRANT ALL PRIVILEGES ON DATABASE airflow TO airflow;"
+              psql -d airflow -c "GRANT ALL ON SCHEMA public TO airflow;"
+              
+              # Create Superset database
+              psql -c "SELECT 1 FROM pg_database WHERE datname = 'superset'" | grep -q 1 || psql -c "CREATE DATABASE superset;"
+              psql -c "DO \$\$ BEGIN CREATE USER superset WITH PASSWORD 'Superset2024!'; EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;"
+              psql -c "GRANT ALL PRIVILEGES ON DATABASE superset TO superset;"
+              psql -d superset -c "GRANT ALL ON SCHEMA public TO superset;"
+              
+              echo "Database setup complete!"

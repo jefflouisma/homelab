@@ -1,0 +1,124 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: metabase-secret
+  namespace: analytics
+type: Opaque
+stringData:
+  MB_DB_PASS: "Metabase2024!"
+  MB_LDAP_PASSWORD: "Barleta2024!"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metabase-config
+  namespace: analytics
+data:
+  MB_DB_TYPE: "postgres"
+  MB_DB_HOST: "postgresql.identity.svc.cluster.local"
+  MB_DB_PORT: "5432"
+  MB_DB_DBNAME: "metabase"
+  MB_DB_USER: "metabase"
+  MB_SITE_URL: "http://metabase.barleta.local:31664"
+  # LDAP Configuration for FreeIPA
+  MB_LDAP_ENABLED: "true"
+  MB_LDAP_HOST: "192.168.1.212"
+  MB_LDAP_PORT: "389"
+  MB_LDAP_SECURITY: "none"
+  MB_LDAP_BIND_DN: "uid=admin,cn=users,cn=accounts,dc=barleta,dc=local"
+  MB_LDAP_USER_BASE: "cn=users,cn=accounts,dc=barleta,dc=local"
+  MB_LDAP_USER_FILTER: "(uid={login})"
+  MB_LDAP_ATTRIBUTE_EMAIL: "mail"
+  MB_LDAP_ATTRIBUTE_FIRSTNAME: "givenName"
+  MB_LDAP_ATTRIBUTE_LASTNAME: "sn"
+  MB_LDAP_GROUP_SYNC: "true"
+  MB_LDAP_GROUP_BASE: "cn=groups,cn=accounts,dc=barleta,dc=local"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metabase
+  namespace: analytics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metabase
+  template:
+    metadata:
+      labels:
+        app: metabase
+    spec:
+      initContainers:
+        - name: wait-for-db
+          image: postgres:15-alpine
+          command: ['sh', '-c', 'until pg_isready -h postgresql.identity.svc.cluster.local -p 5432; do echo waiting for database; sleep 2; done;']
+      containers:
+        - name: metabase
+          image: metabase/metabase:v0.48.0
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: metabase-config
+          env:
+            - name: MB_DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: metabase-secret
+                  key: MB_DB_PASS
+            - name: MB_LDAP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: metabase-secret
+                  key: MB_LDAP_PASSWORD
+            - name: JAVA_OPTS
+              value: "-Xmx1g"
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 500m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metabase
+  namespace: analytics
+spec:
+  selector:
+    app: metabase
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: metabase
+  namespace: analytics
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`metabase.barleta.local`)
+      kind: Rule
+      services:
+        - name: metabase
+          port: 3000

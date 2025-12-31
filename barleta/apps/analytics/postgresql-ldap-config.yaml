@@ -1,0 +1,88 @@
+---
+# PostgreSQL LDAP Configuration for FreeIPA
+# This ConfigMap contains the pg_hba.conf entries for LDAP authentication
+# FreeIPA is at 192.168.1.212
+#
+# To apply this configuration:
+# 1. Edit the PostgreSQL ConfigMap or StatefulSet
+# 2. Add these pg_hba.conf entries
+# 3. Restart PostgreSQL
+#
+# IMPORTANT: Service accounts are preserved by placing them BEFORE LDAP rules
+# PostgreSQL matches rules top-to-bottom, first match wins
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgresql-ldap-hba
+  namespace: identity
+data:
+  pg_hba_ldap.conf: |
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+    
+    # =============================================================
+    # SERVICE ACCOUNTS - These MUST come FIRST (before LDAP rules)
+    # =============================================================
+    
+    # Local connections for postgres superuser
+    local   all             postgres                                peer
+    
+    # Service account: MidPoint
+    host    midpoint        midpoint        10.0.0.0/8              scram-sha-256
+    host    midpoint        midpoint        192.168.0.0/16          scram-sha-256
+    
+    # Service account: Keycloak
+    host    keycloak        keycloak        10.0.0.0/8              scram-sha-256
+    host    keycloak        keycloak        192.168.0.0/16          scram-sha-256
+    
+    # Service account: Airflow
+    host    airflow         airflow         10.0.0.0/8              scram-sha-256
+    host    airflow         airflow         192.168.0.0/16          scram-sha-256
+    
+    # Service account: Superset
+    host    superset        superset        10.0.0.0/8              scram-sha-256
+    host    superset        superset        192.168.0.0/16          scram-sha-256
+    
+    # Service account: Metabase
+    host    metabase        metabase        10.0.0.0/8              scram-sha-256
+    host    metabase        metabase        192.168.0.0/16          scram-sha-256
+    
+    # Service account: DataHub
+    host    datahub         datahub         10.0.0.0/8              scram-sha-256
+    host    datahub         datahub         192.168.0.0/16          scram-sha-256
+    
+    # Service account: Analytics (general purpose)
+    host    all             analytics       10.0.0.0/8              scram-sha-256
+    host    all             analytics       192.168.0.0/16          scram-sha-256
+    
+    # =============================================================
+    # LDAP AUTHENTICATION - For human users via FreeIPA
+    # =============================================================
+    
+    # LDAP authentication for all other users
+    # FreeIPA server: 192.168.1.212
+    # Base DN: cn=users,cn=accounts,dc=barleta,dc=local
+    host    all             all             0.0.0.0/0               ldap ldapserver=192.168.1.212 ldapbasedn="cn=users,cn=accounts,dc=barleta,dc=local" ldapsearchattribute="uid"
+    
+    # =============================================================
+    # DEFAULT DENY - Reject everything else
+    # =============================================================
+    host    all             all             0.0.0.0/0               reject
+---
+# Instructions for applying LDAP to existing PostgreSQL
+# 
+# Option 1: Modify the Bitnami PostgreSQL Helm values
+# Add to values.yaml:
+#   primary:
+#     pgHbaConfiguration: |
+#       <contents of pg_hba_ldap.conf above>
+#
+# Option 2: Manual configuration
+# 1. kubectl exec -it postgresql-0 -n identity -- bash
+# 2. Edit /opt/bitnami/postgresql/conf/pg_hba.conf
+# 3. pg_ctl reload -D /bitnami/postgresql/data
+#
+# Option 3: Create PostgreSQL roles for LDAP users
+# For each FreeIPA user that needs database access:
+#   CREATE ROLE <username> LOGIN;
+#   GRANT <appropriate_role> TO <username>;

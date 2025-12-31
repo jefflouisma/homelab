@@ -1,0 +1,121 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: house
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: homeassistant-config
+  namespace: house
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homeassistant-config
+  namespace: house
+data:
+  configuration.yaml: |
+    homeassistant:
+      name: Home
+      unit_system: imperial
+      time_zone: America/Los_Angeles
+      
+    http:
+      use_x_forwarded_for: true
+      trusted_proxies:
+        - 10.0.0.0/8
+        - 192.168.0.0/16
+    
+    frontend:
+      themes: !include_dir_merge_named themes
+    
+    automation: !include automations.yaml
+    script: !include scripts.yaml
+    scene: !include scenes.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homeassistant
+  namespace: house
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: homeassistant
+  template:
+    metadata:
+      labels:
+        app: homeassistant
+    spec:
+      containers:
+        - name: homeassistant
+          image: ghcr.io/home-assistant/home-assistant:stable
+          ports:
+            - containerPort: 8123
+          env:
+            - name: TZ
+              value: "America/Los_Angeles"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8123
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8123
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: homeassistant-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homeassistant
+  namespace: house
+spec:
+  selector:
+    app: homeassistant
+  ports:
+    - port: 8123
+      targetPort: 8123
+  type: ClusterIP
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: homeassistant
+  namespace: house
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`homeassistant.barleta.local`)
+      kind: Rule
+      services:
+        - name: homeassistant
+          port: 8123

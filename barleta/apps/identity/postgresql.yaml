@@ -32,6 +32,30 @@ spec:
             limits:
               cpu: 1000m
               memory: 1Gi
+          # LDAP Authentication via FreeIPA (192.168.1.212)
+          # Service accounts come FIRST, then LDAP for human users
+          pgHbaConfiguration: |
+            # Local connections for postgres superuser
+            local   all             postgres                                peer
+            # Service accounts (must come before LDAP)
+            host    midpoint        midpoint        10.0.0.0/8              scram-sha-256
+            host    midpoint        midpoint        192.168.0.0/16          scram-sha-256
+            host    keycloak        keycloak        10.0.0.0/8              scram-sha-256
+            host    keycloak        keycloak        192.168.0.0/16          scram-sha-256
+            host    airflow         airflow         10.0.0.0/8              scram-sha-256
+            host    airflow         airflow         192.168.0.0/16          scram-sha-256
+            host    superset        superset        10.0.0.0/8              scram-sha-256
+            host    superset        superset        192.168.0.0/16          scram-sha-256
+            host    metabase        metabase        10.0.0.0/8              scram-sha-256
+            host    metabase        metabase        192.168.0.0/16          scram-sha-256
+            host    datahub         datahub         10.0.0.0/8              scram-sha-256
+            host    datahub         datahub         192.168.0.0/16          scram-sha-256
+            host    all             analytics       10.0.0.0/8              scram-sha-256
+            host    all             analytics       192.168.0.0/16          scram-sha-256
+            host    all             postgres        10.0.0.0/8              scram-sha-256
+            host    all             postgres        192.168.0.0/16          scram-sha-256
+            # LDAP for human users via FreeIPA
+            host    all             all             0.0.0.0/0               ldap ldapserver=192.168.1.212 ldapbasedn="cn=users,cn=accounts,dc=barleta,dc=local" ldapsearchattribute="uid"
         metrics:
           enabled: false
   destination:

@@ -1,0 +1,89 @@
+# Apache Airflow Helm Values for Barleta Analytics
+executor: KubernetesExecutor
+
+webserverSecretKeySecretName: airflow-webserver-secret
+
+# Web server configuration
+webserver:
+  replicas: 1
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  service:
+    type: ClusterIP
+    ports:
+      - name: airflow-ui
+        port: 8080
+
+# Keycloak Auth Manager Configuration (Airflow 3.x)
+config:
+  core:
+    auth_manager: airflow.providers.keycloak.auth_manager.keycloak_auth_manager.KeycloakAuthManager
+  keycloak_auth_manager:
+    client_id: airflow
+    client_secret: cQ5cTszTYKs90SkX6zpfB0Zq1MoD8vjM
+    realm: barleta
+    server_url: http://keycloak.identity.svc.cluster.local:8080
+
+# Install Keycloak provider via pip at startup
+extraEnv: |
+  - name: _PIP_ADDITIONAL_REQUIREMENTS
+    value: "apache-airflow-providers-keycloak"
+
+# Scheduler configuration  
+scheduler:
+  replicas: 1
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+# Use existing PostgreSQL from identity namespace
+postgresql:
+  enabled: false
+
+data:
+  metadataSecretName: airflow-metadata-secret
+
+# Redis for CeleryExecutor (disabled for KubernetesExecutor)
+redis:
+  enabled: false
+
+# DAGs configuration
+dags:
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClassName: longhorn
+  gitSync:
+    enabled: false
+
+# Triggerer for deferrable operators
+triggerer:
+  enabled: true
+  replicas: 1
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# User creation via Keycloak SSO
+createUserJob:
+  useHelmHooks: false
+
+# Flower disabled (not needed for KubernetesExecutor)
+flower:
+  enabled: false
+
+# Extra secrets for database connection
+extraSecrets:
+  airflow-metadata-secret:
+    stringData: |
+      connection: postgresql://airflow:Airflow2024!@postgresql.identity.svc.cluster.local:5432/airflow

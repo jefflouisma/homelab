@@ -1,0 +1,70 @@
+# DataHub Helm Values with Keycloak SSO
+# Uses pre-deployed prerequisites (Elasticsearch, MySQL, Kafka)
+
+global:
+  elasticsearch:
+    host: elasticsearch-master
+    port: "9200"
+  kafka:
+    bootstrap:
+      server: prerequisites-kafka:9092
+  sql:
+    datasource:
+      # host must be in host:port format for wait script
+      host: "prerequisites-mysql:3306"
+      # hostForMysqlClient is hostname only (no port)
+      hostForMysqlClient: "prerequisites-mysql"
+      port: "3306"
+      url: "jdbc:mysql://prerequisites-mysql:3306/datahub?verifyServerCertificate=false&useSSL=true&useUnicode=yes&characterEncoding=UTF-8&enabledTLSProtocols=TLSv1.2"
+      driver: "com.mysql.cj.jdbc.Driver"
+      username: root
+      password:
+        secretRef: mysql-secrets
+        secretKey: mysql-root-password
+
+datahub-frontend:
+  enabled: true
+  extraEnvs:
+    - name: AUTH_OIDC_ENABLED
+      value: "true"
+    - name: AUTH_OIDC_CLIENT_ID
+      value: "datahub"
+    - name: AUTH_OIDC_CLIENT_SECRET
+      value: "datahub-secret-2024"
+    - name: AUTH_OIDC_DISCOVERY_URI
+      value: "http://keycloak.identity.svc.cluster.local:8080/realms/barleta/.well-known/openid-configuration"
+    - name: AUTH_OIDC_BASE_URL
+      value: "http://datahub.barleta.local:31664"
+    - name: AUTH_OIDC_SCOPE
+      value: "openid profile email"
+    - name: AUTH_OIDC_USER_NAME_CLAIM
+      value: "preferred_username"
+    - name: AUTH_OIDC_JIT_PROVISIONING_ENABLED
+      value: "true"
+
+datahub-gms:
+  enabled: true
+
+# Disable bundled components (using prerequisites)
+mysql:
+  enabled: false
+
+elasticsearch:
+  enabled: false
+
+# Setup jobs
+elasticsearchSetupJob:
+  enabled: true
+
+mysqlSetupJob:
+  enabled: true
+
+kafkaSetupJob:
+  enabled: true
+
+# Disable optional components
+datahub-ingestion-cron:
+  enabled: false
+
+datahub-actions:
+  enabled: false

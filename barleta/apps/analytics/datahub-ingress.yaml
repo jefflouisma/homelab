@@ -1,0 +1,15 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: datahub
+  namespace: analytics
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`datahub.barleta.local`)
+      kind: Rule
+      services:
+        - name: datahub-datahub-frontend
+          port: 9002

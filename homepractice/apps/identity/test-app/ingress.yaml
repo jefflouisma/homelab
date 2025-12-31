@@ -1,2 +1,0 @@
-# Test App routing is handled by Caddy reverse proxy
-# No Kubernetes Ingress needed - Caddy manages TLS and routing

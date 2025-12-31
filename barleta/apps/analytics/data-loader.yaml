@@ -1,0 +1,74 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: uci-data-loader
+  namespace: analytics
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: loader
+          image: python:3.11-slim
+          env:
+            - name: PGHOST
+              value: postgresql.identity.svc.cluster.local
+            - name: PGUSER
+              value: analytics
+            - name: PGPASSWORD
+              value: Analytics2024!
+            - name: PGDATABASE
+              value: midpoint
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "Installing dependencies..."
+              apt-get update && apt-get install -y wget --no-install-recommends
+              pip install --quiet pandas openpyxl psycopg2-binary sqlalchemy
+              
+              echo "Downloading UCI Online Retail dataset..."
+              cd /tmp
+              wget -O "OnlineRetail.xlsx" "https://archive.ics.uci.edu/ml/machine-learning-databases/00352/Online%20Retail.xlsx"
+              
+              echo "Loading data into PostgreSQL..."
+              python3 << 'EOF'
+              import pandas as pd
+              from sqlalchemy import create_engine, text
+              import os
+              
+              # Read the Excel file
+              print("Reading Excel file...")
+              df = pd.read_excel('/tmp/OnlineRetail.xlsx')
+              
+              # Rename columns to snake_case
+              df.columns = ['invoice_no', 'stock_code', 'description', 'quantity', 
+                            'invoice_date', 'unit_price', 'customer_id', 'country']
+              
+              # Clean data
+              print(f"Loaded {len(df)} rows")
+              df = df.dropna(subset=['customer_id'])
+              print(f"After removing null customers: {len(df)} rows")
+              
+              # Convert customer_id to string
+              df['customer_id'] = df['customer_id'].astype(int).astype(str)
+              
+              # Create database connection
+              conn_str = f"postgresql://{os.environ['PGUSER']}:{os.environ['PGPASSWORD']}@{os.environ['PGHOST']}:5432/{os.environ['PGDATABASE']}"
+              engine = create_engine(conn_str)
+              
+              # Load to database
+              print("Loading to raw_uci.transactions...")
+              df.to_sql('transactions', engine, schema='raw_uci', if_exists='replace', index=False)
+              
+              # Verify
+              with engine.connect() as conn:
+                  result = conn.execute(text("SELECT COUNT(*) FROM raw_uci.transactions"))
+                  count = result.scalar()
+                  print(f"Successfully loaded {count} rows to raw_uci.transactions")
+              
+              print("Data loading complete!")
+              EOF

@@ -1,0 +1,109 @@
+name: Deploy Barleta to Harvester
+
+on:
+  push:
+    branches: [main]
+    paths: ['barleta/**']
+  pull_request:
+    branches: [main]
+    paths: ['barleta/**']
+  workflow_dispatch:
+
+env:
+  HARVESTER_NODE: 192.168.1.10
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive barleta/infrastructure
+
+      - name: Terraform Init
+        run: terraform -chdir=barleta/infrastructure init
+
+      - name: Terraform Validate
+        run: terraform -chdir=barleta/infrastructure validate
+
+  deploy-infrastructure:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6
+          terraform_wrapper: false
+
+      - name: Add SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HARVESTER_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.HARVESTER_NODE }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Infrastructure
+        run: |
+          cd barleta/infrastructure
+          terraform init
+          terraform apply -auto-approve -var-file=terraform.tfvars
+
+  deploy-kubernetes:
+    needs: deploy-infrastructure
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.3'
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Deploy Platform Services
+        run: |
+          kubectl apply -f barleta/platform/cert-manager.yaml
+          kubectl apply -f barleta/platform/traefik.yaml
+          kubectl apply -f barleta/platform/argocd.yaml
+
+      - name: Wait for ArgoCD
+        run: |
+          kubectl wait --for=condition=available deployment/argocd-server -n argocd --timeout=300s
+
+      - name: Deploy Identity Stack
+        run: |
+          kubectl apply -f barleta/apps/identity/postgresql.yaml
+          kubectl apply -f barleta/apps/identity/keycloak.yaml
+          kubectl apply -f barleta/apps/identity/midpoint.yaml
+
+      - name: Deploy Test App
+        run: |
+          kubectl apply -f barleta/apps/identity/test-app/deployment.yaml
+          kubectl apply -f barleta/apps/identity/traefik-routes.yaml
+
+      - name: Verify Deployment
+        run: |
+          echo "=== Checking pods ==="
+          kubectl get pods -A
+          echo ""
+          echo "=== Checking services ==="
+          kubectl get svc -A

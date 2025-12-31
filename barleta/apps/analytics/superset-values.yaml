@@ -1,0 +1,95 @@
+# Apache Superset Helm Values for Barleta Analytics
+replicaCount: 1
+
+# Image configuration
+image:
+  repository: apache/superset
+  tag: "3.1.0"
+  pullPolicy: IfNotPresent
+
+# Resource limits
+resources:
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8088
+
+# Use existing PostgreSQL
+postgresql:
+  enabled: false
+
+# External database configuration
+supersetNode:
+  connections:
+    db_host: postgresql.identity.svc.cluster.local
+    db_port: 5432
+    db_user: superset
+    db_pass: Superset2024!
+    db_name: superset
+
+# Redis for caching
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
+# Init job
+init:
+  createAdmin: true
+  adminUser:
+    username: admin
+    firstname: Admin
+    lastname: User
+    email: admin@barleta.local
+    password: admin
+
+# Bootstrap script for Keycloak OIDC
+configOverrides:
+  secret: |
+    SECRET_KEY = 'SupersetSecret2024!'
+  
+  enable_oauth: |
+    from flask_appbuilder.security.manager import AUTH_OAUTH
+    AUTH_TYPE = AUTH_OAUTH
+    
+    OAUTH_PROVIDERS = [
+        {
+            'name': 'keycloak',
+            'icon': 'fa-key',
+            'token_key': 'access_token',
+            'remote_app': {
+                'client_id': 'superset',
+                'client_secret': 'superset-secret',
+                'api_base_url': 'http://keycloak.identity.svc.cluster.local:8080/realms/barleta/protocol/openid-connect',
+                'access_token_url': 'http://keycloak.identity.svc.cluster.local:8080/realms/barleta/protocol/openid-connect/token',
+                'authorize_url': 'http://keycloak.barleta.local:31664/realms/barleta/protocol/openid-connect/auth',
+                'client_kwargs': {
+                    'scope': 'openid profile email'
+                },
+            }
+        }
+    ]
+    
+    # Map Keycloak roles to Superset roles
+    AUTH_ROLE_ADMIN = 'Admin'
+    AUTH_ROLE_PUBLIC = 'Public'
+    AUTH_USER_REGISTRATION = True
+    AUTH_USER_REGISTRATION_ROLE = 'Gamma'
+
+# Extra environment variables
+extraEnv:
+  - name: SUPERSET_SECRET_KEY
+    value: "SupersetSecret2024!"

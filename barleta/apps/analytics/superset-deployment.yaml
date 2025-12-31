@@ -1,0 +1,101 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: superset-secret
+  namespace: analytics
+type: Opaque
+stringData:
+  SUPERSET_SECRET_KEY: "SupersetBarleta2024SecretKeyLongEnough!"
+  DATABASE_URI: "postgresql://superset:Superset2024!@postgresql.identity.svc.cluster.local:5432/superset"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: superset
+  namespace: analytics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: superset
+  template:
+    metadata:
+      labels:
+        app: superset
+    spec:
+      initContainers:
+        - name: superset-init
+          image: apache/superset:3.1.0
+          command:
+            - /bin/bash
+            - -c
+            - |
+              pip install authlib
+              superset db upgrade
+              superset fab create-admin --username admin --firstname Admin --lastname User --email admin@barleta.local --password admin || true
+              superset init
+          env:
+            - name: SUPERSET_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: superset-secret
+                  key: SUPERSET_SECRET_KEY
+            - name: SQLALCHEMY_DATABASE_URI
+              valueFrom:
+                secretKeyRef:
+                  name: superset-secret
+                  key: DATABASE_URI
+      containers:
+        - name: superset
+          image: apache/superset:3.1.0
+          command: ["/bin/sh", "-c", "pip install authlib && gunicorn --bind 0.0.0.0:8088 --workers 2 --timeout 120 'superset.app:create_app()'"]
+          ports:
+            - containerPort: 8088
+          env:
+            - name: SUPERSET_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: superset-secret
+                  key: SUPERSET_SECRET_KEY
+            - name: SQLALCHEMY_DATABASE_URI
+              valueFrom:
+                secretKeyRef:
+                  name: superset-secret
+                  key: DATABASE_URI
+            - name: SUPERSET_CONFIG_PATH
+              value: /app/pythonpath/superset_config.py
+          volumeMounts:
+            - name: superset-config
+              mountPath: /app/pythonpath/superset_config.py
+              subPath: superset_config.py
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 500m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8088
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: superset-config
+          configMap:
+            name: superset-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: superset
+  namespace: analytics
+spec:
+  selector:
+    app: superset
+  ports:
+    - port: 8088
+      targetPort: 8088
+  type: ClusterIP
