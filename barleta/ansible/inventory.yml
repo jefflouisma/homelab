@@ -1,0 +1,43 @@
+---
+# Barleta Ansible Inventory
+all:
+  children:
+    harvester:
+      hosts:
+        harvester-node:
+          ansible_host: "192.168.1.10"
+          ansible_user: rancher
+          ansible_ssh_private_key_file: ../../id_rsa
+        harvester-mgmt:
+          ansible_host: "192.168.1.152"
+          ansible_user: rancher
+          ansible_ssh_private_key_file: ../../id_rsa
+    
+    identity:
+      hosts:
+        freeipa:
+          ansible_host: "192.168.1.212"  # Adjust after deployment
+          ansible_user: fedora
+          ansible_ssh_private_key_file: ../../id_rsa
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    
+    dns:
+      hosts:
+        adguard:
+          ansible_host: "192.168.1.10"
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ../../id_rsa
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+
+  vars:
+    # SSH key from project root
+    ssh_private_key: "../../id_rsa"
+    ssh_public_key: "../../id_rsa.pub"
+    
+    # ArgoCD deploy key
+    argocd_deploy_key: "../../argocd-deploy-key"
+    
+    # GitHub App credentials
+    github_app_id: "2512413"
+    github_app_installation_id: "100583737"
+    github_app_private_key_file: "../../g913-k8s-prod-arc.2025-12-21.private-key.pem"

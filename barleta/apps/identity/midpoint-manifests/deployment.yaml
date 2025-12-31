@@ -1,0 +1,118 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: midpoint
+  namespace: identity
+  labels:
+    app: midpoint
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: midpoint
+  template:
+    metadata:
+      labels:
+        app: midpoint
+    spec:
+      containers:
+        - name: midpoint
+          image: evolveum/midpoint:4.8.4-alpine
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: MP_SET_midpoint_repository_database
+              value: postgresql
+            - name: MP_SET_midpoint_repository_jdbcUrl
+              value: jdbc:postgresql://postgresql.identity.svc.cluster.local:5432/midpoint
+            - name: MP_SET_midpoint_repository_jdbcUsername
+              value: postgres
+            - name: MP_SET_midpoint_repository_jdbcPassword
+              valueFrom:
+                secretKeyRef:
+                  name: midpoint-db-secret
+                  key: password
+            - name: MP_SET_midpoint_administrator_initialPassword
+              valueFrom:
+                secretKeyRef:
+                  name: midpoint-admin-secret
+                  key: password
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          volumeMounts:
+            - name: midpoint-home
+              mountPath: /opt/midpoint/var
+          livenessProbe:
+            httpGet:
+              path: /midpoint/actuator/health
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /midpoint/actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+      volumes:
+        - name: midpoint-home
+          persistentVolumeClaim:
+            claimName: midpoint-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: midpoint-data
+  namespace: identity
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: harvester-longhorn
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: midpoint
+  namespace: identity
+spec:
+  selector:
+    app: midpoint
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: midpoint
+  namespace: identity
+  annotations:
+    cert-manager.io/cluster-issuer: selfsigned-issuer
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - midpoint.barleta.local
+      secretName: midpoint-tls
+  rules:
+    - host: midpoint.barleta.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: midpoint
+                port:
+                  number: 8080

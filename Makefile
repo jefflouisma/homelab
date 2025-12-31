@@ -1,17 +1,22 @@
 # Homelab V2 - IaC Orchestration
-# Usage: make <target> ENV=<homepractice|homeprod>
+# Usage: make <target> ENV=<barleta|homepractice|homeprod>
 
-ENV ?= homepractice
+ENV ?= barleta
 ANSIBLE_DIR = $(ENV)/ansible
 TF_INFRA_DIR = $(ENV)/infrastructure
 TF_K8S_DIR = $(ENV)/kubernetes
 
-.PHONY: help init plan apply destroy configure-network bootstrap-k3s deploy-k8s full-deploy clean
+.PHONY: help init plan apply destroy configure-network bootstrap-k3s deploy-k8s full-deploy clean backup
 
 help:
 	@echo "Homelab V2 - Infrastructure as Code"
 	@echo ""
-	@echo "Usage: make <target> ENV=<homepractice|homeprod>"
+	@echo "Usage: make <target> ENV=<barleta|homepractice|homeprod>"
+	@echo ""
+	@echo "Environments:"
+	@echo "  barleta      - NEW: Harvester-based environment (default)"
+	@echo "  homepractice - DEPRECATED: Proxmox K3s environment"
+	@echo "  homeprod     - DEPRECATED: Proxmox K3s production"
 	@echo ""
 	@echo "Targets:"
 	@echo "  init              - Initialize Terraform"
@@ -23,6 +28,7 @@ help:
 	@echo "  deploy-k8s        - Deploy Kubernetes layer (Terraform)"
 	@echo "  setup-vpn         - Configure WireGuard VPN (Ansible)"
 	@echo "  full-deploy       - Full deployment pipeline"
+	@echo "  backup            - Run Phase 0 backup script"
 	@echo "  clean             - Clean temporary files"
 
 # Terraform Infrastructure
@@ -70,6 +76,10 @@ full-deploy: apply
 	@echo "=== Deployment Complete ==="
 	@echo "Environment: $(ENV)"
 	@echo "Kubeconfig: ./kubeconfig-$(ENV).yaml"
+
+# Phase 0 Backup
+backup:
+	./scripts/phase0-backup.sh
 
 clean:
 	find . -name "*.tfstate.backup" -delete

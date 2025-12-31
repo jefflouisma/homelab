@@ -1,0 +1,17 @@
+---
+# Self-signed ClusterIssuer for internal certificates
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+# CA Issuer (optional - for proper CA chain)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: barleta-ca-issuer
+spec:
+  ca:
+    secretName: barleta-ca-secret

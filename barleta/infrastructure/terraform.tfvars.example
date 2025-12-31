@@ -1,0 +1,24 @@
+# Barleta Infrastructure - Terraform Variables Example
+# Copy to terraform.tfvars and customize
+
+# Harvester kubeconfig (download from Harvester UI: Support → Download Kubeconfig)
+harvester_kubeconfig = "~/.kube/harvester.yaml"
+
+# Network configuration
+cluster_network_name = "mgmt"
+vlan_id              = 0  # Set to VLAN ID if using VLANs
+
+# IP Configuration (Home network)
+gateway     = "192.168.1.254"
+dns_servers = ["192.168.1.254", "8.8.8.8"]
+
+# Harvester Details (v1.7.0 installed)
+# Node IP: 192.168.1.10
+# Management UI: https://192.168.1.152
+
+# VM IPs (CIDR notation)
+freeipa_ip = "192.168.1.212/24"
+adguard_ip = "192.168.1.11/24"  # Changed from .10 (now Harvester node)
+
+# Deploy AdGuard as VM (set to false to run as K8s container)
+deploy_adguard_vm = true

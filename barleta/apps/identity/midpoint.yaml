@@ -1,0 +1,24 @@
+---
+# MidPoint IGA (Fresh Deployment)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: midpoint
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jefflouisma/homelab.git
+    targetRevision: main
+    path: barleta/apps/identity/midpoint-manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: identity
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
