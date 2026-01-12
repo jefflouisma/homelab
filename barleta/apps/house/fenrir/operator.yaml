@@ -12,7 +12,7 @@ kind: ClusterRole
 metadata:
   name: fenrir-operator
 rules:
-  - apiGroups: ["wolf.games-on-whales.io"]
+  - apiGroups: ["direwolf.games-on-whales.github.io"]
     resources: ["apps", "sessions", "pairings", "users"]
     verbs: ["*"]
   - apiGroups: [""]
