@@ -1,99 +1,6 @@
 # Fenrir Game Applications
 # Apps for Moonlight clients using the Direwolf API
 ---
-# Simple Firefox browser for testing
-apiVersion: direwolf.games-on-whales.github.io/v1alpha1
-kind: App
-metadata:
-  name: firefox
-  namespace: house
-spec:
-  id: 1
-  title: "Firefox"
-  isHDRSupported: false
-  # Minimal 1x1 transparent WebP placeholder (base64)
-  appAssetWebP: "UklGRlAAAABXRUJQVlA4IEQAAADwAQCdASoBAAEAAkA4JZQCdAEO/hOMAAD+9f/e/fn3/vf+7/3v/e/94AAAAAAA"
-  template:
-    spec:
-      containers:
-        # Firefox browser
-        - name: firefox
-          image: ghcr.io/games-on-whales/firefox:stable
-          env:
-            - name: XDG_RUNTIME_DIR
-              value: /tmp/runtime
-            - name: WAYLAND_DISPLAY
-              value: wayland-0
-            - name: PULSE_SERVER
-              value: unix:/tmp/pulse/native
-          volumeMounts:
-            - name: runtime
-              mountPath: /tmp/runtime
-            - name: pulse
-              mountPath: /tmp/pulse
-          resources:
-            requests:
-              cpu: "500m"
-              memory: 1Gi
-            limits:
-              cpu: "2"
-              memory: 4Gi
-        
-        # Wolf - Wayland compositor + GameStream encoder
-        - name: wolf
-          image: ghcr.io/games-on-whales/wolf:stable
-          env:
-            - name: XDG_RUNTIME_DIR
-              value: /tmp/runtime
-          securityContext:
-            privileged: true
-          ports:
-            - containerPort: 47984
-              name: https
-            - containerPort: 47989
-              name: http
-            - containerPort: 48010
-              name: rtsp
-          volumeMounts:
-            - name: runtime
-              mountPath: /tmp/runtime
-            - name: wolf-config
-              mountPath: /etc/wolf
-          resources:
-            requests:
-              cpu: "500m"
-              memory: 512Mi
-            limits:
-              cpu: "2"
-              memory: 2Gi
-        
-        # PulseAudio - Audio routing
-        - name: pulseaudio
-          image: ghcr.io/games-on-whales/pulseaudio:latest
-          volumeMounts:
-            - name: pulse
-              mountPath: /tmp/pulse
-          resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 200m
-              memory: 128Mi
-      
-      volumes:
-        - name: runtime
-          emptyDir:
-            medium: Memory
-        - name: pulse
-          emptyDir:
-            medium: Memory
-        - name: wolf-config
-          configMap:
-            name: wolf-session-config
-      
-      restartPolicy: Always
----
 # RetroArch multi-system emulator
 apiVersion: direwolf.games-on-whales.github.io/v1alpha1
 kind: App
@@ -101,7 +8,7 @@ metadata:
   name: retroarch
   namespace: house
 spec:
-  id: 2
+  id: 1
   title: "RetroArch"
   isHDRSupported: false
   # Minimal 1x1 transparent WebP placeholder (base64)
@@ -184,3 +91,26 @@ spec:
           emptyDir: {}
       
       restartPolicy: Always
+---
+# Wolf config for session pods
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wolf-session-config
+  namespace: house
+data:
+  wolf.conf: |
+    # Wolf configuration for game streaming
+    [server]
+    port = 47989
+    https_port = 47984
+    
+    [encoder]
+    # Use software encoder if no GPU
+    encoder = nvenc
+    fallback_encoder = vaapi
+    
+    [display]
+    width = 1920
+    height = 1080
+    fps = 60
