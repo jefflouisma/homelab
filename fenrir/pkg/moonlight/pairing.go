@@ -109,6 +109,17 @@ func (m *PairingManager) Unpair(cacheKey string) error {
 	return nil
 }
 
+// GetPendingSecrets returns all currently pending pairing secrets
+// These are the secrets that are waiting for PIN entry
+func (m *PairingManager) GetPendingSecrets() []string {
+	secrets := make([]string, 0)
+	m.PendingPins.Range(func(key, value any) bool {
+		secrets = append(secrets, key.(string))
+		return true
+	})
+	return secrets
+}
+
 /**
  * @brief Pair, phase 1:
  *

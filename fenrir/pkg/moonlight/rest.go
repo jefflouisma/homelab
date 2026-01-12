@@ -37,6 +37,9 @@ import (
 //go:embed pin.html
 var pinHTML string
 
+//go:embed dashboard.html
+var dashboardHTML string
+
 type RESTServerOptions struct {
 	Port       int
 	SecurePort int
@@ -88,6 +91,8 @@ func NewRESTServer(
 	ps.router.HandleFunc("/pair", ps.pairHandler)
 	ps.router.HandleFunc("/unpair", ps.unpairHandler)
 	ps.router.HandleFunc("/pin/", ps.pinHandler)
+	ps.router.HandleFunc("/dashboard", ps.dashboardHandler)
+	ps.router.HandleFunc("/", ps.dashboardHandler) // Root redirects to dashboard
 
 	ps.router.HandleFunc("/readyz", ps.readyzHandler)
 	ps.router.HandleFunc("/livez", ps.livezHandler)
@@ -166,6 +171,35 @@ func (s *RESTServer) readyzHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *RESTServer) livezHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *RESTServer) dashboardHandler(w http.ResponseWriter, r *http.Request) {
+	secrets := s.manager.GetPendingSecrets()
+	
+	var requestsHTML string
+	if len(secrets) == 0 {
+		requestsHTML = `<div class="no-requests">
+			<p>No pending pairing requests.</p>
+			<p>Click on "Direwolf" in Moonlight to start pairing.</p>
+		</div>`
+	} else {
+		for _, secret := range secrets {
+			requestsHTML += fmt.Sprintf(`
+			<div class="pairing-request">
+				<div style="display: flex; align-items: center;">
+					<div class="status-indicator"></div>
+					<span>Waiting for PIN...</span>
+				</div>
+				<a href="/pin/#%s" class="btn">Enter PIN</a>
+			</div>`, secret)
+		}
+	}
+	
+	output := strings.Replace(dashboardHTML, "{{PENDING_REQUESTS}}", requestsHTML, 1)
+	
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(output))
 }
 
 func (s *RESTServer) serverInfoHandler(w http.ResponseWriter, r *http.Request) {

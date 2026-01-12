@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="2">
+    <title>Wolf - Pairing Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(132deg, #720082 0%, #3f00c3 50%, #0047ff 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            color: white;
+        }
+        h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+        .subtitle { opacity: 0.8; margin-bottom: 2rem; }
+        .card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 1rem;
+            padding: 2rem;
+            max-width: 600px;
+            width: 100%;
+            margin-bottom: 1rem;
+        }
+        .card h2 { margin-bottom: 1rem; font-size: 1.5rem; }
+        .no-requests {
+            text-align: center;
+            padding: 2rem;
+            opacity: 0.7;
+        }
+        .pairing-request {
+            background: rgba(255,255,255,0.15);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .pairing-request:last-child { margin-bottom: 0; }
+        .btn {
+            background: #00c853;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover { background: #00a844; }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            background: #00c853;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+            margin-right: 0.5rem;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .refresh-note {
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            opacity: 0.6;
+        }
+        .instructions {
+            background: rgba(0,0,0,0.2);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .instructions ol { 
+            margin-left: 1.5rem;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <h1>🐺 Wolf Pairing</h1>
+    <p class="subtitle">Moonlight client pairing dashboard</p>
+    
+    <div class="card">
+        <h2>📋 How to Pair</h2>
+        <div class="instructions">
+            <ol>
+                <li>Open Moonlight on your Apple TV</li>
+                <li>Click on "Direwolf"</li>
+                <li>Note the PIN shown on your TV</li>
+                <li>Click "Enter PIN" below and type that PIN</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🔗 Pending Pairing Requests</h2>
+        <div id="requests">
+            {{PENDING_REQUESTS}}
+        </div>
+        <p class="refresh-note">⟳ This page auto-refreshes every 2 seconds</p>
+    </div>
+</body>
+</html>
