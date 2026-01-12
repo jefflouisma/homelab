@@ -1,52 +1,186 @@
 # Fenrir Game Applications
-# Available games/emulators exposed to Moonlight clients
+# Apps for Moonlight clients using the Direwolf API
 ---
-apiVersion: wolf.games-on-whales.io/v1
+# Simple Firefox browser for testing
+apiVersion: direwolf.games-on-whales.github.io/v1alpha1
 kind: App
 metadata:
-  name: pegasus-launcher
+  name: firefox
   namespace: house
 spec:
-  displayName: "Game Library"
-  image: ghcr.io/jefflouisma/pegasus-emulators:latest
-  cmd: ["pegasus-fe"]
-  gpu: true
-  audio: true
+  id: 1
+  title: "Firefox"
+  isHDRSupported: false
+  # Minimal 1x1 transparent WebP placeholder (base64)
+  appAssetWebP: "UklGRlAAAABXRUJQVlA4IEQAAADwAQCdASoBAAEAAkA4JZQCdAEO/hOMAAD+9f/e/fn3/vf+7/3v/e/94AAAAAAA"
+  template:
+    spec:
+      containers:
+        # Firefox browser
+        - name: firefox
+          image: ghcr.io/games-on-whales/firefox:stable
+          env:
+            - name: XDG_RUNTIME_DIR
+              value: /tmp/runtime
+            - name: WAYLAND_DISPLAY
+              value: wayland-0
+            - name: PULSE_SERVER
+              value: unix:/tmp/pulse/native
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp/runtime
+            - name: pulse
+              mountPath: /tmp/pulse
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+        
+        # Wolf - Wayland compositor + GameStream encoder
+        - name: wolf
+          image: ghcr.io/games-on-whales/wolf:stable
+          env:
+            - name: XDG_RUNTIME_DIR
+              value: /tmp/runtime
+          securityContext:
+            privileged: true
+          ports:
+            - containerPort: 47984
+              name: https
+            - containerPort: 47989
+              name: http
+            - containerPort: 48010
+              name: rtsp
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp/runtime
+            - name: wolf-config
+              mountPath: /etc/wolf
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+        
+        # PulseAudio - Audio routing
+        - name: pulseaudio
+          image: ghcr.io/games-on-whales/pulseaudio:latest
+          volumeMounts:
+            - name: pulse
+              mountPath: /tmp/pulse
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      
+      volumes:
+        - name: runtime
+          emptyDir:
+            medium: Memory
+        - name: pulse
+          emptyDir:
+            medium: Memory
+        - name: wolf-config
+          configMap:
+            name: wolf-session-config
+      
+      restartPolicy: Always
 ---
-apiVersion: wolf.games-on-whales.io/v1
-kind: App
-metadata:
-  name: shadps4
-  namespace: house
-spec:
-  displayName: "PS4 Games (shadps4)"
-  image: ghcr.io/jefflouisma/pegasus-emulators:latest
-  cmd: ["/opt/shadps4/shadps4"]
-  gpu: true
-  audio: true
-  volumes:
-    - name: ps4-games
-      hostPath: /mnt/games/ps4
-      mountPath: /games/ps4
-    - name: saves
-      hostPath: /mnt/saves/ps4
-      mountPath: /saves
----
-apiVersion: wolf.games-on-whales.io/v1
+# RetroArch multi-system emulator
+apiVersion: direwolf.games-on-whales.github.io/v1alpha1
 kind: App
 metadata:
   name: retroarch
   namespace: house
 spec:
-  displayName: "RetroArch"
-  image: ghcr.io/jefflouisma/pegasus-emulators:latest
-  cmd: ["retroarch"]
-  gpu: true
-  audio: true
-  volumes:
-    - name: roms
-      hostPath: /mnt/games/roms
-      mountPath: /games/roms
-    - name: saves
-      hostPath: /mnt/saves/retroarch
-      mountPath: /saves
+  id: 2
+  title: "RetroArch"
+  isHDRSupported: false
+  # Minimal 1x1 transparent WebP placeholder (base64)
+  appAssetWebP: "UklGRlAAAABXRUJQVlA4IEQAAADwAQCdASoBAAEAAkA4JZQCdAEO/hOMAAD+9f/e/fn3/vf+7/3v/e/94AAAAAAA"
+  template:
+    spec:
+      containers:
+        - name: retroarch
+          image: ghcr.io/games-on-whales/retroarch:stable
+          env:
+            - name: XDG_RUNTIME_DIR
+              value: /tmp/runtime
+            - name: WAYLAND_DISPLAY
+              value: wayland-0
+            - name: PULSE_SERVER
+              value: unix:/tmp/pulse/native
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp/runtime
+            - name: pulse
+              mountPath: /tmp/pulse
+            - name: games
+              mountPath: /games
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+        
+        - name: wolf
+          image: ghcr.io/games-on-whales/wolf:stable
+          env:
+            - name: XDG_RUNTIME_DIR
+              value: /tmp/runtime
+          securityContext:
+            privileged: true
+          ports:
+            - containerPort: 47984
+            - containerPort: 47989
+            - containerPort: 48010
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp/runtime
+            - name: wolf-config
+              mountPath: /etc/wolf
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+        
+        - name: pulseaudio
+          image: ghcr.io/games-on-whales/pulseaudio:latest
+          volumeMounts:
+            - name: pulse
+              mountPath: /tmp/pulse
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      
+      volumes:
+        - name: runtime
+          emptyDir:
+            medium: Memory
+        - name: pulse
+          emptyDir:
+            medium: Memory
+        - name: wolf-config
+          configMap:
+            name: wolf-session-config
+        - name: games
+          emptyDir: {}
+      
+      restartPolicy: Always
