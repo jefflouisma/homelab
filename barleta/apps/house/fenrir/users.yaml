@@ -1,0 +1,15 @@
+# Fenrir Users
+# Users represent Moonlight streaming users that can pair and launch games
+---
+apiVersion: direwolf.games-on-whales.github.io/v1alpha1
+kind: User
+metadata:
+  name: alex
+  namespace: house
+---
+# Add additional users as needed for multi-user support
+apiVersion: direwolf.games-on-whales.github.io/v1alpha1
+kind: User
+metadata:
+  name: jeff
+  namespace: house
