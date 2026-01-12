@@ -55,11 +55,17 @@ spec:
               name: http
           volumeMounts:
             - name: config
-              mountPath: /etc/moonlight/config.yaml
-              subPath: config.yaml
+              mountPath: /etc/moonlight-config
             - name: tls
-              mountPath: /etc/moonlight
+              mountPath: /etc/moonlight-tls
               readOnly: true
+          env:
+            - name: CONFIG_PATH
+              value: /etc/moonlight-config/config.yaml
+            - name: TLS_CERT_FILE
+              value: /etc/moonlight-tls/tls.crt
+            - name: TLS_KEY_FILE
+              value: /etc/moonlight-tls/tls.key
           resources:
             requests:
               cpu: 100m
