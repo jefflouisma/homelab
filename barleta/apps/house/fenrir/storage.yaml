@@ -1,0 +1,40 @@
+# Fenrir Storage - Game ROMs and Save States
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fenrir-games
+  namespace: house
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 500Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fenrir-saves
+  namespace: house
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fenrir-config
+  namespace: house
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 1Gi

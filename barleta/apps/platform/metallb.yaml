@@ -1,0 +1,32 @@
+# MetalLB for Barleta - Game Streaming LoadBalancer
+# Provides external IP allocation for Fenrir game streaming sessions
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: metallb-system
+  labels:
+    app: metallb
+---
+# MetalLB will be installed via upstream manifests
+# Run: kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+# Then apply the configuration below
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: game-streaming-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    # Reserve IPs for game streaming (adjust to your network)
+    - 192.168.1.220-192.168.1.230
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: game-streaming-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - game-streaming-pool

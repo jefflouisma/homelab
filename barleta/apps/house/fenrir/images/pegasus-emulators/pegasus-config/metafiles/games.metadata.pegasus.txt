@@ -1,0 +1,55 @@
+# Pegasus Game Metadata
+# Defines collections for emulators
+
+collection: PS4 Games
+shortname: ps4
+launch: /opt/shadps4/shadps4 "{file.path}"
+files: /games/ps4/*.pkg
+
+collection: RetroArch
+shortname: retroarch
+launch: retroarch -L /usr/lib/libretro/{file.core} "{file.path}"
+files: /games/roms/**/*
+
+collection: NES
+shortname: nes
+launch: retroarch -L /usr/lib/libretro/nestopia_libretro.so "{file.path}"
+files: /games/roms/nes/*.nes
+files: /games/roms/nes/*.zip
+
+collection: SNES
+shortname: snes
+launch: retroarch -L /usr/lib/libretro/snes9x_libretro.so "{file.path}"
+files: /games/roms/snes/*.sfc
+files: /games/roms/snes/*.smc
+files: /games/roms/snes/*.zip
+
+collection: PlayStation
+shortname: psx
+launch: retroarch -L /usr/lib/libretro/pcsx_rearmed_libretro.so "{file.path}"
+files: /games/roms/psx/*.cue
+files: /games/roms/psx/*.chd
+
+collection: PlayStation 2
+shortname: ps2
+launch: retroarch -L /usr/lib/libretro/pcsx2_libretro.so "{file.path}"
+files: /games/roms/ps2/*.iso
+files: /games/roms/ps2/*.chd
+
+collection: Nintendo 64
+shortname: n64
+launch: retroarch -L /usr/lib/libretro/mupen64plus_next_libretro.so "{file.path}"
+files: /games/roms/n64/*.z64
+files: /games/roms/n64/*.n64
+
+collection: GameCube
+shortname: gc
+launch: retroarch -L /usr/lib/libretro/dolphin_libretro.so "{file.path}"
+files: /games/roms/gc/*.iso
+files: /games/roms/gc/*.gcm
+
+collection: Wii
+shortname: wii
+launch: retroarch -L /usr/lib/libretro/dolphin_libretro.so "{file.path}"
+files: /games/roms/wii/*.iso
+files: /games/roms/wii/*.wbfs

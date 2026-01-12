@@ -1,0 +1,48 @@
+# Gateway API for Barleta - Fenrir Port Forwarding
+# Uses Envoy Gateway as the controller for TCPRoute/UDPRoute
+---
+# Gateway API CRDs - Install first:
+# kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+# kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/experimental-install.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: envoy-gateway-system
+---
+# Envoy Gateway Helm installation:
+# helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.2.6 -n envoy-gateway-system --create-namespace
+---
+# GatewayClass for Envoy
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+# Gateway for Moonlight game streaming
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: moonlight-gateway
+  namespace: house
+spec:
+  gatewayClassName: envoy
+  listeners:
+    # HTTPS for pairing and app list
+    - name: https
+      protocol: HTTPS
+      port: 47984
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: moonlight-tls
+    # HTTP for pairing
+    - name: http
+      protocol: HTTP
+      port: 47989
+    # TCP for RTSP
+    - name: rtsp
+      protocol: TCP
+      port: 48010

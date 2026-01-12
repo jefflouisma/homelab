@@ -1,0 +1,52 @@
+# Fenrir Game Applications
+# Available games/emulators exposed to Moonlight clients
+---
+apiVersion: wolf.games-on-whales.io/v1
+kind: App
+metadata:
+  name: pegasus-launcher
+  namespace: house
+spec:
+  displayName: "Game Library"
+  image: ghcr.io/jefflouisma/pegasus-emulators:latest
+  cmd: ["pegasus-fe"]
+  gpu: true
+  audio: true
+---
+apiVersion: wolf.games-on-whales.io/v1
+kind: App
+metadata:
+  name: shadps4
+  namespace: house
+spec:
+  displayName: "PS4 Games (shadps4)"
+  image: ghcr.io/jefflouisma/pegasus-emulators:latest
+  cmd: ["/opt/shadps4/shadps4"]
+  gpu: true
+  audio: true
+  volumes:
+    - name: ps4-games
+      hostPath: /mnt/games/ps4
+      mountPath: /games/ps4
+    - name: saves
+      hostPath: /mnt/saves/ps4
+      mountPath: /saves
+---
+apiVersion: wolf.games-on-whales.io/v1
+kind: App
+metadata:
+  name: retroarch
+  namespace: house
+spec:
+  displayName: "RetroArch"
+  image: ghcr.io/jefflouisma/pegasus-emulators:latest
+  cmd: ["retroarch"]
+  gpu: true
+  audio: true
+  volumes:
+    - name: roms
+      hostPath: /mnt/games/roms
+      mountPath: /games/roms
+    - name: saves
+      hostPath: /mnt/saves/retroarch
+      mountPath: /saves

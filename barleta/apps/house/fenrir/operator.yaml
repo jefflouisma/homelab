@@ -1,0 +1,80 @@
+# Fenrir Operator - Wolf Kubernetes Controller
+# Manages game streaming sessions on Kubernetes
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fenrir-operator
+  namespace: house
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fenrir-operator
+rules:
+  - apiGroups: ["wolf.games-on-whales.io"]
+    resources: ["apps", "sessions", "pairings", "users"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["pods", "services", "persistentvolumeclaims", "secrets", "configmaps"]
+    verbs: ["*"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["*"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["tcproutes", "udproutes"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fenrir-operator
+subjects:
+  - kind: ServiceAccount
+    name: fenrir-operator
+    namespace: house
+roleRef:
+  kind: ClusterRole
+  name: fenrir-operator
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fenrir-operator
+  namespace: house
+  labels:
+    app: fenrir-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fenrir-operator
+  template:
+    metadata:
+      labels:
+        app: fenrir-operator
+    spec:
+      serviceAccountName: fenrir-operator
+      containers:
+        - name: operator
+          # TODO: Build and push custom operator image
+          # For now, use placeholder - will be replaced with actual Fenrir operator
+          image: ghcr.io/games-on-whales/fenrir-operator:latest
+          imagePullPolicy: Always
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

@@ -1,0 +1,180 @@
+# Session Pod Template
+# Template for game session pods spawned by Fenrir operator
+# Each session gets: Wolf + wolf-agent + PulseAudio + Game Container
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: session-pod-template
+  namespace: house
+data:
+  template.yaml: |
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: session-${SESSION_ID}
+      namespace: house
+      labels:
+        app: fenrir-session
+        session: ${SESSION_ID}
+        user: ${USER_ID}
+    spec:
+      containers:
+        # Game Container (Pegasus, shadps4, RetroArch, etc.)
+        - name: game
+          image: ${GAME_IMAGE}
+          command: ${GAME_CMD}
+          env:
+            - name: XDG_RUNTIME_DIR
+              value: /tmp/runtime
+            - name: WAYLAND_DISPLAY
+              value: wayland-0
+            - name: PULSE_SERVER
+              value: unix:/tmp/pulse/native
+            - name: LD_LIBRARY_PATH
+              value: /nvidia-libs:/usr/local/cuda/lib64
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp/runtime
+            - name: pulse
+              mountPath: /tmp/pulse
+            - name: nvidia-libs
+              mountPath: /nvidia-libs
+            - name: dev
+              mountPath: /dev
+            - name: games
+              mountPath: /games
+            - name: saves
+              mountPath: /saves
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "8"
+              memory: 16Gi
+        
+        # Wolf - Wayland compositor + GameStream encoder
+        - name: wolf
+          image: ghcr.io/games-on-whales/wolf:stable
+          env:
+            - name: XDG_RUNTIME_DIR
+              value: /tmp/runtime
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: all
+          securityContext:
+            privileged: true
+          ports:
+            - containerPort: 47984
+              name: https
+            - containerPort: 47989
+              name: http
+            - containerPort: 48010
+              name: rtsp
+            - containerPort: 47998
+              name: video
+              protocol: UDP
+            - containerPort: 47999
+              name: control
+              protocol: UDP
+            - containerPort: 48000
+              name: audio
+              protocol: UDP
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp/runtime
+            - name: wolf-config
+              mountPath: /etc/wolf
+            - name: dev
+              mountPath: /dev
+            - name: nvidia-libs
+              mountPath: /nvidia-libs
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+        
+        # Wolf Agent - Syncs K8s state with Wolf
+        - name: wolf-agent
+          image: ghcr.io/games-on-whales/wolf-agent:latest
+          env:
+            - name: WOLF_API_SOCKET
+              value: /tmp/runtime/wolf.sock
+            - name: SESSION_ID
+              value: ${SESSION_ID}
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp/runtime
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+        
+        # PulseAudio - Audio routing
+        - name: pulseaudio
+          image: ghcr.io/games-on-whales/pulseaudio:latest
+          volumeMounts:
+            - name: pulse
+              mountPath: /tmp/pulse
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      
+      # Init container to extract NVIDIA libraries
+      initContainers:
+        - name: nvidia-libs-init
+          image: nvidia/cuda:12.6.0-runtime-ubuntu22.04
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /nvidia-libs
+              cp -v /usr/local/cuda/lib64/libcudart.so* /nvidia-libs/ 2>/dev/null || true
+              cp -v /usr/lib/x86_64-linux-gnu/libnvidia*.so* /nvidia-libs/ 2>/dev/null || true
+              cp -v /usr/lib/x86_64-linux-gnu/libcuda*.so* /nvidia-libs/ 2>/dev/null || true
+          volumeMounts:
+            - name: nvidia-libs
+              mountPath: /nvidia-libs
+      
+      volumes:
+        - name: runtime
+          emptyDir:
+            medium: Memory
+        - name: pulse
+          emptyDir:
+            medium: Memory
+        - name: nvidia-libs
+          emptyDir: {}
+        - name: wolf-config
+          configMap:
+            name: wolf-session-config
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: games
+          persistentVolumeClaim:
+            claimName: fenrir-games
+        - name: saves
+          persistentVolumeClaim:
+            claimName: fenrir-saves
+      
+      # Node selection for GPU
+      nodeSelector:
+        kubernetes.io/os: linux
+      
+      tolerations:
+        - operator: Exists

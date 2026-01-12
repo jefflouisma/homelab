@@ -1,0 +1,107 @@
+# Moonlight Proxy - Entry point for Moonlight clients
+# Handles pairing, app lists, and session orchestration
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moonlight-proxy-config
+  namespace: house
+data:
+  config.yaml: |
+    # Moonlight Proxy Configuration
+    server:
+      httpPort: 47989
+      httpsPort: 47984
+    
+    # Kubernetes integration
+    kubernetes:
+      namespace: house
+      sessionCRD: sessions.wolf.games-on-whales.io
+      appCRD: apps.wolf.games-on-whales.io
+      pairingCRD: pairings.wolf.games-on-whales.io
+    
+    # TLS configuration
+    tls:
+      certFile: /etc/moonlight/tls.crt
+      keyFile: /etc/moonlight/tls.key
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moonlight-proxy
+  namespace: house
+  labels:
+    app: moonlight-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: moonlight-proxy
+  template:
+    metadata:
+      labels:
+        app: moonlight-proxy
+    spec:
+      serviceAccountName: fenrir-operator
+      containers:
+        - name: moonlight-proxy
+          # TODO: Build and push custom proxy image
+          image: ghcr.io/games-on-whales/moonlight-proxy:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 47984
+              name: https
+            - containerPort: 47989
+              name: http
+          volumeMounts:
+            - name: config
+              mountPath: /etc/moonlight/config.yaml
+              subPath: config.yaml
+            - name: tls
+              mountPath: /etc/moonlight
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: moonlight-proxy-config
+        - name: tls
+          secret:
+            secretName: moonlight-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: moonlight-proxy
+  namespace: house
+spec:
+  type: LoadBalancer
+  selector:
+    app: moonlight-proxy
+  ports:
+    - name: https
+      port: 47984
+      targetPort: 47984
+    - name: http
+      port: 47989
+      targetPort: 47989
+---
+# Self-signed certificate for Moonlight pairing
+# In production, replace with cert-manager issued cert
+apiVersion: v1
+kind: Secret
+metadata:
+  name: moonlight-tls
+  namespace: house
+type: kubernetes.io/tls
+data:
+  # Placeholder - generate real certs with:
+  # openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout tls.key -out tls.crt -subj "/CN=moonlight.barleta.local"
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUMrekNDQWVPZ0F3SUJBZ0lKQUxEN0NwN1R1Mk1JTUEwR0NTcUdTSWIzRFFFQkN3VUFNQlF4RWpBUUJnTlYKQkFNTUNXeHZZMkZzYUc5emREQWVGdzB5TkRBeE1ERXdNREF3TURCYUZ3MHlOVEF4TURFd01EQXdNREJhTUJReApFakFRQmdOVkJBTU1DV3h2WTJGc2FHOXpkRENDQVNJd0RRWUpLb1pJaHZjTkFRRUJCUUFEZ2dFUEFEQ0NBUW9DCmdnRUJBTHRKVHdEclZmQ0F0WE1QZ09jbVB0VFRTbU5xUHpKOXFQMmtKQ0FaWWpwN2tmQXJUZnNhWlRoMGJJNkYKNmxjRHdBPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2UUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktjd2dnU2pBZ0VBQW9JQkFRQzdTVThBNjFYd2dMVnoKRDREbkpqN1UwMHBqYWo4eWZhajlwQ1FnR1dJNmU1SHdLMDM3R21VNGRHeU9oZXBYQThBPQotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==

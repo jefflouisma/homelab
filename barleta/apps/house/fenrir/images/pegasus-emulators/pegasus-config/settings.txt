@@ -1,0 +1,17 @@
+# Pegasus Frontend Settings
+# Optimized for gamepad navigation and TV display
+
+[General]
+fullscreen=true
+locale=en
+
+[Keys]
+accept=Return,a
+back=Escape,b
+menu=F1,select
+details=F2,x
+filters=F3,y
+next_page=Right,rb
+prev_page=Left,lb
+page_up=PgUp,lt
+page_down=PgDown,rt
