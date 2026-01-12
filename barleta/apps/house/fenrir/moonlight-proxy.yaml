@@ -45,8 +45,8 @@ spec:
       serviceAccountName: fenrir-operator
       containers:
         - name: moonlight-proxy
-          # TODO: Build and push custom proxy image
-          image: ghcr.io/games-on-whales/moonlight-proxy:latest
+          # Custom-built moonlight-proxy image
+          image: ghcr.io/jefflouisma/fenrir-moonlight-proxy:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 47984
@@ -93,15 +93,20 @@ spec:
       targetPort: 47989
 ---
 # Self-signed certificate for Moonlight pairing
-# In production, replace with cert-manager issued cert
-apiVersion: v1
-kind: Secret
+apiVersion: cert-manager.io/v1
+kind: Certificate
 metadata:
   name: moonlight-tls
   namespace: house
-type: kubernetes.io/tls
-data:
-  # Placeholder - generate real certs with:
-  # openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout tls.key -out tls.crt -subj "/CN=moonlight.barleta.local"
-  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUMrekNDQWVPZ0F3SUJBZ0lKQUxEN0NwN1R1Mk1JTUEwR0NTcUdTSWIzRFFFQkN3VUFNQlF4RWpBUUJnTlYKQkFNTUNXeHZZMkZzYUc5emREQWVGdzB5TkRBeE1ERXdNREF3TURCYUZ3MHlOVEF4TURFd01EQXdNREJhTUJReApFakFRQmdOVkJBTU1DV3h2WTJGc2FHOXpkRENDQVNJd0RRWUpLb1pJaHZjTkFRRUJCUUFEZ2dFUEFEQ0NBUW9DCmdnRUJBTHRKVHdEclZmQ0F0WE1QZ09jbVB0VFRTbU5xUHpKOXFQMmtKQ0FaWWpwN2tmQXJUZnNhWlRoMGJJNkYKNmxjRHdBPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
-  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2UUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktjd2dnU2pBZ0VBQW9JQkFRQzdTVThBNjFYd2dMVnoKRDREbkpqN1UwMHBqYWo4eWZhajlwQ1FnR1dJNmU1SHdLMDM3R21VNGRHeU9oZXBYQThBPQotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==
+spec:
+  secretName: moonlight-tls
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+  commonName: moonlight.barleta.local
+  dnsNames:
+    - moonlight.barleta.local
+  ipAddresses:
+    - "192.168.1.220"
