@@ -1,0 +1,542 @@
+= Configuration
+
+Wolf is configured via a TOML config file and some additional optional ENV variables
+
+== ENV variables
+
+|===
+|Variable |Default |Description
+
+|WOLF_LOG_LEVEL
+|INFO
+|The log level to show, one of ERROR, WARNING, INFO, DEBUG, TRACE
+
+|WOLF_CFG_FILE
+|/etc/wolf/cfg/config.toml
+|Full path to the config file
+
+|WOLF_PRIVATE_KEY_FILE
+|/etc/wolf/cfg/key.pem
+|Full path to the key.pem file
+
+|WOLF_PRIVATE_CERT_FILE
+|/etc/wolf/cfg/cert.pem
+|Full path to the cert.pem file
+
+|XDG_RUNTIME_DIR
+|/tmp/sockets
+|The full path where PulseAudio and video sockets will reside, this path is expected to be present in the host and mounted in the Wolf container
+
+|WOLF_PULSE_IMAGE
+|ghcr.io/games-on-whales/pulseaudio:master
+|The name of the PulseAudio image to be started (when no connection is available)
+
+|WOLF_STOP_CONTAINER_ON_EXIT
+|TRUE
+|Set to False in order to avoid force stop and removal of containers when the connection is closed
+
+|WOLF_DOCKER_SOCKET
+|/var/run/docker.sock
+|The full path to the docker socket, doesn't support tcp (yet)
+
+|NVIDIA_DRIVER_VOLUME_NAME
+|nvidia-driver-vol
+|The name of the externally created Docker Volume that holds the Nvidia drivers
+
+|HOST_APPS_STATE_FOLDER
+|/etc/wolf
+|The base folder in the host where the running apps will store permanent state, if not set Wolf will automatically use the path that is mounted in the docker container
+
+|WOLF_RENDER_NODE
+|/dev/dri/renderD128
+|The default render node used for virtual desktops; see: <<_multiple_gpu>>
+
+|WOLF_DOCKER_FAKE_UDEV_PATH
+|$HOST_APPS_STATE_FOLDER/fake-udev
+|The path on the host for the fake-udev CLI tool
+|===
+
+Additional env variables useful when debugging:
+
+|===
+|Variable |Default |Description
+
+|RUST_BACKTRACE
+|full
+|In case an exception is thrown in the Rust code, this sets the backtrace level
+
+|GST_DEBUG
+|2
+|Gstreamer debug print, see https://gstreamer.freedesktop.org/documentation/tutorials/basic/debugging-tools.html?gi-language=c[debugging-tools]
+|===
+
+[#data_setup]
+== Where apps will store permanent data?
+
+Wolf is designed to support multiple streaming sessions simultaneously, each potentially running a different app.
+To ensure that each app’s data remains persistent and isolated, Wolf automatically creates a dedicated folder structure for every app instance.
+
+When using the configuration provided in the quickstart guide, this structure is located at `/etc/wolf/profile_data/${profile_id}/${app_title}` on the host system.
+This folder is then mounted as the home directory (`/home/retro`) inside the app’s Docker container, using a bind mount like `-v /etc/wolf/profile_data/${profile_id}/${app_title}:/home/retro`.
+
+The magic of Wolf lies in its ability to dynamically resolve the host path, regardless of where `/etc/wolf` is actually located. +
+For example, if you run Wolf mounting `/etc/wolf` to a custom location on your host such as `-v /mnt/drive/wolf:/etc/wolf:rw` Wolf will automatically adjust the mount path for each app.
+In this case, the app’s data will be stored in `/mnt/drive/wolf/profile_data/${profile_id}/${app_title}` on the host, but still appear as `/home/retro` inside the app container.
+
+These two variables are defined as follows:
+
+* `profile_id`: a unique identifier for each user profile, see: xref:_profiles[]
+* `app_title`: the title of the app as defined in the `config.toml` file, see: xref:_defining_apps[]
+
+== TOML file
+
+The TOML configuration file is read only once at startup (or created if not present), and it'll be modified by Wolf only when a new user is successfully paired.
+
+.Default TOML configuration file
+[source,toml]
+....
+hostname = "wolf"   #<1>
+support_hevc = true #<2>
+config_version = 2 #<3>
+uuid = "0f75f4d1-e28e-410a-b318-c0579f18f8d1" #<4>
+
+paired_clients = [] #<5>
+profiles = [] #<6>
+gstreamer = {} #<7>
+....
+
+<1> *hostname*: this is the name that will be displayed in the list of hosts in the Moonlight UI
+<2> *support_hevc*: when set to `false` will disable support for HEVC in Moonlight
+<3> *config_version*: The version of this config file
+<4> *uuid*: a randomly generated UUID, it's used by Moonlight to know if the current host has already been paired
+<5> *paired_clients*: a list of all the Moonlight clients that have succesfully completed the pairing process; it'll be populated by Wolf and saved to this file.
+<6> *profiles*: a list of xref:_profiles[profiles], each contains a list of xref:_defining_apps[apps]
+<7> *gstreamer* audio/video pipeline definitions, see xref:_gstreamer[]
+
+[#_profiles]
+=== Profiles
+
+Wolf supports multiple profiles, each with its own set of apps. +
+This allows you to define different configurations for different users or use cases.
+
+By default, we have a special profile called `moonlight-profile-id` which defines what will be shown as available apps by Moonlight clients when connecting to Wolf.
+Here's the default TOML configuration file which defines two apps:
+
+* Wolf UI: a docker container running the Wolf UI
+* Test ball: a dummy Gstreamer pipeline used to test out if everything is working correctly
+
+[source,toml]
+....
+[[profiles]]
+id = 'moonlight-profile-id'
+
+    [[profiles.apps]]
+    title = 'Wolf UI'
+    start_virtual_compositor = true
+    icon_png_path = "https://raw.githubusercontent.com/games-on-whales/wolf-ui/refs/heads/main/src/Icons/wolf_ui_icon.png"
+
+        [profiles.apps.runner]
+        type = 'docker'
+        name = 'Wolf-UI'
+        image = 'ghcr.io/games-on-whales/wolf-ui:main'
+        devices = []
+        env = [
+            'GOW_REQUIRED_DEVICES=/dev/input/event* /dev/dri/* /dev/nvidia*',
+            'WOLF_SOCKET_PATH=/var/run/wolf/wolf.sock',
+            'WOLF_UI_AUTOUPDATE=False',
+            'LOGLEVEL=INFO'
+        ]
+        mounts = [
+            '/var/run/wolf/wolf.sock:/var/run/wolf/wolf.sock'
+        ]
+        ports = []
+        base_create_json = '''{
+          "HostConfig": {
+            "IpcMode": "host",
+            "CapAdd": ["NET_RAW", "MKNOD", "NET_ADMIN", "SYS_ADMIN", "SYS_NICE"],
+            "Privileged": false,
+            "DeviceCgroupRules": ["c 13:* rmw", "c 244:* rmw"]
+          }
+        }'''
+
+
+
+    [[profiles.apps]]
+    title = 'Test ball'
+    icon_png_path = "https://raw.githubusercontent.com/games-on-whales/wolf/refs/heads/stable/docs/images/test_ball_icon.png"
+    start_audio_server = false
+    start_virtual_compositor = false
+
+        [profiles.apps.runner]
+        type = 'process'
+        run_cmd = "sh -c \"while :; do echo 'running...'; sleep 10; done\""
+
+        [profiles.apps.audio]
+        source = 'audiotestsrc wave=ticks is-live=true'
+
+        [profiles.apps.video]
+        source = '''videotestsrc pattern=ball flip=true is-live=true !
+                           video/x-raw, framerate={fps}/1'''
+....
+
+Wolf UI is a special app that will be able to show you available profiles and lobbies directly from your Moonlight client.
+By default we create a single profile in our TOML file called `user`:
+
+[source,toml]
+....
+# An example profile that will be shown in our Wolf UI
+[[profiles]]
+id = "user"
+name = "User"
+
+    [[profiles.apps]]
+    title = "Firefox"
+    icon_png_path = "https://games-on-whales.github.io/wildlife/apps/firefox/assets/icon.png"
+    start_virtual_compositor = true
+
+        [profiles.apps.runner]
+        type = "docker"
+        name = "WolfFirefox"
+        image = "ghcr.io/games-on-whales/firefox:edge"
+        mounts = []
+        env = [
+            "RUN_SWAY=1",
+            "MOZ_ENABLE_WAYLAND=1",
+            "GOW_REQUIRED_DEVICES=/dev/input/* /dev/dri/* /dev/nvidia*",
+        ]
+        devices = []
+        ports = []
+        base_create_json = """
+        {
+          "HostConfig": {
+            "IpcMode": "host",
+            "Privileged": false,
+            "CapAdd": ["NET_RAW", "MKNOD", "NET_ADMIN"],
+            "DeviceCgroupRules": ["c 13:* rmw", "c 244:* rmw"]
+          }
+        }
+        \
+        """
+# Additional apps for the current profile will be defined here
+....
+
+Additional profiles can be defined in the same way, here are the full options that you have available:
+
+[#_profile_example]
+[source,toml]
+....
+[[profiles]]
+id = 'user' #<1>
+name = 'Random User' #<2>
+icon_png_path = 'http://192.168.1.155:8888/misc/guest.png' #<3>
+pin = [ 3, 2, 1, 4 ] #<4>
+....
+
+<1> *id*: a unique string that identifies this profile, used internally by Wolf
+<2> *name*: the name that will be displayed in Wolf UI
+<3> *icon_png_path*: this is the box art that will be displayed in Wolf UI, see: xref:custom_images[]
+<4> *pin*: optional, if present Wolf UI will ask for a PIN in order to show this profile app list
+
+[#_defining_apps]
+=== Defining apps
+
+Here's an example annotated TOML configuration for a single app:
+
+[source,toml]
+....
+[[profiles.apps]]
+title = "Test ball" #<1>
+start_virtual_compositor = false #<2>
+app_state_folder = "some/folder" #<3>
+icon_png_path = "ball.png" #<4>
+
+[profiles.apps.runner] #<5>
+type = "process"
+run_cmd = "sh -c \"while :; do echo 'running...'; sleep 10; done\""
+
+[profiles.apps.video] #<6>
+source = """
+videotestsrc pattern=ball flip=true is-live=true !
+video/x-raw, framerate={fps}/1
+\
+"""
+
+[profiles.apps.audio] #<7>
+source = "audiotestsrc wave=ticks is-live=true"
+....
+
+<1> *title*: this is the name that will be displayed in Moonlight
+<2> *start_virtual_compositor*: set to True if this app needs our custom virtual compositor (TODO: document this better)
+<3> *app_state_folder*: the folder where the app will store permanent data, see: xref:data_setup[]
+<4> *icon_png_path*: this is the box art that will be displayed in Moonlight, see: xref:custom_images[]
+<5> *runner*: the type of process to run in order to start this app, see: xref:_app_runner[]
+<6> *video*: here it's possible to override the default video pipeline variables defined in: xref:_gstreamer[]
+<7> *audio*: here it's possible to override the default audio pipeline variables defined in: xref:_gstreamer[]
+
+See more examples in the xref:gstreamer.adoc[] page.
+
+[#custom_images]
+=== Custom icons in Moonlight clients
+
+The `icon_png_path` specifies the icon to be shown in Moonlight clients for each app.
+The image must be a PNG, ideally 200x266 or 628x888 pixels.
+You can specify the location for the image in three different ways:
+
+* A URL, ex: `"https://games-on-whales.github.io/wildlife/apps/steam/assets/icon.png"`
+* A path relative to the `HOST_APPS_STATE_FOLDER`, ex: `"icons/icon.png"`
+* An absolute path, ex: `"/mnt/path/to/files/icon.png"`
+
+=== Override the default joypad mapping
+
+By default, Wolf will try to match the joypad type that Moonlight sends with the correct mapping.
+It is possible to override this behaviour for each Moonlight paired client, ex:
+
+[source,toml]
+....
+[[paired_clients]]
+# client_cert = ...
+[paired_clients.settings]
+controllers_override = [
+  "PS", # First controller will be forced to be PS
+  "XBOX" # Second controller will be forced to be XBOX
+]
+....
+
+The available joypad types are:
+
+* `auto` (default)
+* `xbox`
+* `nintendo`
+* `ps`
+
+=== Input mouse overrides
+
+You can increase and decrease the mouse acceleration and scroll speed for each paired client, ex:
+
+[source,toml]
+....
+[[paired_clients]]
+# client_cert = ...
+[paired_clients.settings]
+# Values above 1.0 will make it faster, between 0.0 and 1.0 will make it slower
+mouse_acceleration = 1.0
+v_scroll_acceleration = 1.0
+h_scroll_acceleration = 1.0
+....
+
+[#_app_runner]
+==== App Runner
+
+There are currently two types of runner supported: `docker` and `process`
+
+==== Process
+
+Example:
+
+[source,toml]
+....
+[apps.runner]
+type = "process"
+run_cmd = "sh -c \"while :; do echo 'running...'; sleep 10; done\""
+....
+
+==== Docker
+
+Example:
+
+[source,toml]
+....
+type = "docker"
+name = "WolfSteam"
+image = "ghcr.io/games-on-whales/steam:edge"
+mounts = [ #<1>
+  "/run/udev:/run/udev:ro"
+]
+env = [
+  "PROTON_LOG=1",
+  "RUN_SWAY=true",
+  "ENABLE_VKBASALT=1"
+]
+devices = []
+ports = []
+#<2>
+base_create_json = """
+{
+  "HostConfig": {
+    "IpcMode": "host",
+    "CapAdd": ["SYS_ADMIN", "SYS_NICE"],
+    "Privileged": false
+  }
+}
+\
+"""
+....
+
+<1> *mounts*: Here you can define any additional mount that you want to add to the container.
+For example, you can add `mounts = ["/media/data/games:/games:rw"]` if you want to share games files between host and app container.
+<2> *base_create_json*: here you can re-define any property that's defined in the docker API JSON format, see: https://docs.docker.com/engine/api/v1.40/#tag/Container/operation/ContainerCreate[docs.docker.com/engine/api/v1.40]
+
+[#_gstreamer]
+=== Gstreamer
+
+In here we define the default pipeline for both video and audio streaming to Moonlight. +
+In order to automatically pick up the right encoder at runtime based on the user HW we run in order the list of encoders at `gstreamer.video.hevc_encoders` (and `gstreamer.video.h264_encoders`); the first set of plugins that can be correctly initialised by Gstreamer will be the selected encoder for all the pipelines.
+
+You can read more about gstreamer and custom pipelines in the xref:gstreamer.adoc[] page.
+
+=== Set Window compositor
+
+Our Docker images support both https://swaywm.org/[Sway] and https://github.com/ValveSoftware/gamescope[Gamescope] compositor.
+
+Sway is used by default, but some games may work better with one or the other.
+
+Usage is controlled by environment variables on `[apps.runner]` configs:
+
+- `RUN_SWAY=1` - enable Sway (Default for newer Wolf installation)
+- `RUN_GAMESCOPE=1` - enable Gamescope
+
+[WARNING]
+====
+Gamescope have some known issues:
+- It may be unstable with some Nvidia driver versions.
+See https://github.com/games-on-whales/wolf/issues/60[#60].
+- It doesn't support multiple windows which may cause issues with multi-window applications like Steam desktop UI.
+
+Switch to Gamescope only if you encounter issues with Sway.
+====
+
+Examples:
+
+.Enable Sway
+[source,toml]
+....
+[apps.runner]
+env = [
+    "RUN_SWAY=1",
+    # ...
+]
+....
+
+.Enable Gamescope
+[source,toml]
+....
+[apps.runner]
+env = [
+    "RUN_GAMESCOPE=1",
+    # ...
+]
+....
+
+If both are defined, Gamescoped is used. (see https://github.com/games-on-whales/gow/blob/master/images/base-app/scripts/launch-comp.sh[launch-comp.sh] for details)
+
+[#_multiple_gpu]
+== Multiple GPUs
+
+When you have multiple GPUs installed in your host, you might want to specify which one to use for Wolf.
+Use the `WOLF_RENDER_NODE` environment variable (defaults to `/dev/dri/renderD128`) to control this.
+
+[TIP]
+====
+
+If you don't know which render node is associated with which GPU you can use the following command:
+
+[source,bash]
+....
+ls -l /sys/class/drm/renderD*/device/driver
+/sys/class/drm/renderD128/device/driver -> ../../../../bus/virtio/drivers/virtio_gpu <1>
+/sys/class/drm/renderD129/device/driver -> ../../../../bus/pci/drivers/nvidia <2>
+....
+
+<1> This line will tell you that `renderD128` is a virtual GPU
+<2> This line will tell you that `renderD129` is a Nvidia GPU
+
+====
+
+There are two main separated parts that make use of HW acceleration in Wolf:
+
+* *App render node*: this will use HW acceleration in order to create virtual Wayland desktops and run the chosen app (ex: Firefox, Steam, ...).
+* *Gstreamer video encoding*: this will use HW acceleration in order to efficiently encode the video stream with H.264 or HEVC.
+
+Since Wolf supports HW accelerated zero-copy pipelines it's best to keep both the Wayland rendering and the Gstreamer encoding on the same GPU.
+Support for multi-GPU load balancing is planned for future releases.
+
+[#_keyboard_layout]
+== Changing and Switching Keyboard Layouts in wolf Apps Containers
+
+This guide demonstrates how to change the default keyboard layout and switch between multiple layouts in Docker containers.
+
+For Layout and Variant codes see: https://man.archlinux.org/man/xkeyboard-config.7#LAYOUTS
+
+=== Using environment variable
+
+Add environment variable `XKB_DEFAULT_LAYOUT=<layout>` and `XKB_DEFAULT_VARIANT=<variant>` to `[apps.runner]` config.
+
+.Keyboard layout environment variable example
+....
+[apps.runner]
+env = [
+    # ...
+    "XKB_DEFAULT_LAYOUT=fr",
+    "XKB_DEFAULT_VARIANT=azerty",
+]
+....
+
+=== Using configuration file
+
+Using configuration file allow more layouts to be configured.
+
+.Note: configuration file is only supported for Sway compositor and won't have any effect wih Gamescope.
+==== Create a Configuration File
+
+Create a config file at `${HOST_APPS_STATE_FOLDER}/cfg/90-custom.conf` with the following content:
+
+....
+input type:keyboard {
+    xkb_layout "fr,us"
+    xkb_numlock "enable"
+}
+....
+
+* xkb_layout : The first layout code you set will be the default layout.
+Add other layouts separated by commas.
+* xkb_numlock "enable" turns on NumLock by default.
+
+==== Configure Container Mounts
+
+In the same folder, edit `${HOST_APPS_STATE_FOLDER}/cfg/config.toml`
+For each container where you want to use the custom layout, edit the "mounts" variable as follows:
+
+....
+mounts = [
+    "${HOST_APPS_STATE_FOLDER}/cfg/90-custom.conf:/etc/sway/config.d/90-custom.conf",
+]
+....
+
+This ensures that the config is not overwritten.
+On the next app restart, the keyboard layout will be set to the default one specified.
+
+==== Switching Layouts
+
+===== Switching layout from the console in moonlight
+
+Start the console in Moonlight.
+Use the command:
+
+....
+swaymsg input type:keyboard xkb_switch_layout next
+....
+
+===== Creating a Steam Shortcut for Layout Switching
+
+In Steam, add a "Non-Steam Game", and select anything as the target.
+Once the game is created in Steam, Right-click on it and select "Properties".
+In the "Target" field, enter:
+
+....
+/bin/bash -c "swaymsg input type:keyboard xkb_switch_layout next"
+....
+
+Rename the game to "Switch Layout".
+Close the properties window.
+
+You now have a clickable link in Steam to switch layouts.

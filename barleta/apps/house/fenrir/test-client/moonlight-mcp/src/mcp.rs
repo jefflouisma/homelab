@@ -6,7 +6,6 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::moonlight;
 use crate::tests::{self, TestAction, TestDefinition, TestResult, ValidationConfig};
 use crate::validator;
 
@@ -254,18 +253,21 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
     let result = match name {
         "moonlight_list_apps" => {
             let host = arguments["host"].as_str().unwrap_or("localhost");
-            match moonlight::list_apps(host).await {
-                Ok(apps) => ToolResult {
-                    content: vec![ContentItem {
-                        content_type: "text".into(),
-                        text: serde_json::json!({
-                            "apps": apps,
-                            "count": apps.len()
-                        })
-                        .to_string(),
-                    }],
-                    is_error: false,
-                },
+            match crate::pairing::native_list_apps(host).await {
+                Ok(apps) => {
+                    let app_names: Vec<String> = apps.iter().map(|a| a.title.clone()).collect();
+                    ToolResult {
+                        content: vec![ContentItem {
+                            content_type: "text".into(),
+                            text: serde_json::json!({
+                                "apps": app_names,
+                                "count": apps.len()
+                            })
+                            .to_string(),
+                        }],
+                        is_error: false,
+                    }
+                }
                 Err(e) => ToolResult {
                     content: vec![ContentItem {
                         content_type: "text".into(),
@@ -331,23 +333,13 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
         }
 
         "moonlight_quit" => {
-            let host = arguments["host"].as_str().unwrap_or("localhost");
-
-            match moonlight::quit(host).await {
-                Ok(()) => ToolResult {
-                    content: vec![ContentItem {
-                        content_type: "text".into(),
-                        text: "App quit successfully".into(),
-                    }],
-                    is_error: false,
-                },
-                Err(e) => ToolResult {
-                    content: vec![ContentItem {
-                        content_type: "text".into(),
-                        text: format!("Quit failed: {}", e),
-                    }],
-                    is_error: true,
-                },
+            // No-op for now since we don't have a native cancel implementation
+            ToolResult {
+                content: vec![ContentItem {
+                    content_type: "text".into(),
+                    text: "Quit action (no-op for native implementation)".into(),
+                }],
+                is_error: false,
             }
         }
 

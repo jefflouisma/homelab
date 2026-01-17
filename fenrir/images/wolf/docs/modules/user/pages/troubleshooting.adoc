@@ -1,0 +1,150 @@
+= Troubleshooting
+
+[TIP]
+====
+When something doesn't work it'll be helpful to be able to see the logs from Wolf, please change the env variable `WOLF_LOG_LEVEL` to `DEBUG` and try to replicate the issue.
+====
+
+== Black screen in Moonlight
+
+If it's the very first time that you are running an app, and you can only see a black screen with a cursor in Moonlight, it's probably because Wolf is downloading the corresponding docker image and installing first time updates (when necessary).
+
+If this persists or Moonlight kicks you out of the streaming session then you should probably take a look at the Wolf logs to gather more informations.
+
+=== Vulkan errors in App
+
+Example log line:
+
+....
+vulkan: physical device 10de:1c03 compute queue doesn't support presenting on our surface, using graphics queue
+vulkan: selecting physical device 'NVIDIA GeForce GTX 1060 6GB': queue family 0
+vulkan: physical device supports DRM format modifiers
+vulkan: vkCreateDevice failed (VkResult: -7)
+Failed to initialize Vulkan
+....
+
+Vulkan errors are generally related to the video drivers.
+
+.Nvidia GPU checklist
+[%collapsible]
+====
+
+Make sure to follow all the instructions on the xref:user:quickstart.adoc[] page.
+Here's a brief summary of things to check:
+
+* Check that the nvidia volume driver has been created...
+[source,bash]
+....
+docker volume ls | grep nvidia-driver
+
+local     nvidia-driver-vol
+....
+
+* ...and that the same volume name is passed in the env variable `NVIDIA_DRIVER_VOLUME_NAME`
+
+* Make sure that the `nvidia-drm` module has been loaded...
+[source,bash]
+....
+sudo dmesg | grep nvidia-drm    # Should print something like the following:
+[   12.561107] [drm] [nvidia-drm] [GPU ID 0x00000100] Loading driver
+[   14.138312] [drm] Initialized nvidia-drm 0.0.0 20160202 for 0000:01:00.0 on minor 0
+....
+
+* ...and check that the module is loaded with the flag `modeset=1`.
+[source,bash]
+....
+sudo cat /sys/module/nvidia_drm/parameters/modeset
+Y
+....
+
+
+====
+
+== Address already in use
+
+You'll see something like the following log lines:
+
+....
+terminate called after throwing an instance of 'boost::wrapexcept<boost::system::system_error>'
+  what():  bind: Address already in use
+INFO  | Received interrupt signal 6, clean exit
+....
+
+This means that some other process is using the same ports that Wolf needs in order to communicate with Moonlight.
+
+[TIP]
+====
+Have you left Sunshine running in the background?
+====
+
+The following ports need to be available in order for Wolf to work:
+
+* 47984/tcp - HTTPS
+* 47989/tcp - HTTP
+* 47999/udp - Control
+* 48100/udp - Video
+* 48200/udp - Audio
+* 48010/tcp - RTSP
+
+== Unable to recognise GPU vendor
+
+Example log line:
+
+....
+WARN  | Unable to recognise GPU vendor: red hat, inc.
+....
+
+Do you have multiple GPUs installed (or even just a virtual display in a VM)? +
+Checkout the xref:user:configuration.adoc#_multiple_gpu[Multiple GPU configuration page]
+
+== Intel: MFX_ERR_UNSUPPORTED
+
+Example log line:
+....
+0:01:31.983118812     1 0x7f1d50000b70 ERROR             qsvencoder gstqsvencoder.cpp:1098:gst_qsv_encoder_init_encode_session:<qsvh265enc3> MFXVideoENCODE::Query failed -3 (MFX_ERR_UNSUPPORTED)
+0:01:31.983243805     1 0x7f1d50000b70 WARN            videoencoder gstvideoencoder.c:771:gst_video_encoder_setcaps:<qsvh265enc3> rejected caps video/x-raw(memory:VAMemory), width=(int)1280, height=(int)720, framerate=(fraction)60/1, format=(string)NV12, chroma-site=(string)mpeg2, colorimetry=(string)bt601
+....
+
+Follow the steps outlined in https://www.intel.com/content/www/us/en/support/articles/000089952/software/iot-software.html[here]:
+
+  *  `sudo apt install --reinstall linux-firmware`
+  *  Add `i915.enable_guc=2`  in `/etc/default/grub`: `GRUB_CMDLINE_LINUX_DEFAULT="quiet splash i915.force_probe=* i915.enable_guc=2"`
+  *  `sudo update-initramfs –u`
+  *  `sudo update-grub`
+  *  Reboot the system.
+  *  After reboot, execute the command: `dmesg | grep guc`
+  *  Verify the logs for guc information.
+
+Note: If output doesn't contain guc details, then install the latest guc/huc firmware. Copy the https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/i915[firmware] to `/lib/firmware/i915/`, and reboot the system.
+
+
+== Permission error when using uhid
+
+Depending on your system configuration the `uhid` module is only loaded "on demand" (when accessing `/dev/uhid` the first time). +
+This can be easily fixed by adding `uhid` to `/etc/module` to load the module during boot:
+
+[source,bash]
+....
+echo 'uhid' | sudo tee /etc/modules-load.d/uhid.conf
+....
+
+== Recreating the Nvidia Driver Volume
+
+Anytime you update the Nvidia drivers on your host you'll have to re-created the driver volume as described in xref:user:quickstart.adoc[the quickstart guide]. +
+
+Here's a quick script that does that:
+
+[source,bash]
+....
+curl https://raw.githubusercontent.com/games-on-whales/gow/master/images/nvidia-driver/Dockerfile | docker build -t gow/nvidia-driver:latest -f - --build-arg NV_VERSION=$(cat /sys/module/nvidia/version) .
+docker create --rm --mount source=nvidia-driver-vol,destination=/usr/nvidia gow/nvidia-driver:latest sh
+docker volume ls | grep nvidia-driver
+....
+
+(thanks to G.Reaper)
+
+== Problems with AV1 Streaming
+
+Cards such as the 7900XTX that have problems with encoding, as well as CPUs such as the N150 have reported problems with AV1 streaming. If this occurs, edit the config toml file and comment out the [[gstreamer.video.av1_encoders]] via # before the lines within them.
+
+One good step to isolate the issue is to run moonlight statistics, and to validate that the network is behaving as expected. The 7900XTX will, when it runs into this issue, only be able to stream at 30FPS over moonlight regardless of settings or configuration. Users with the UHD 730 have also reported similar issues with AV1 encoding.

@@ -1,0 +1,4 @@
+name: wolf
+version: true
+nav:
+ - modules/ROOT/nav.adoc

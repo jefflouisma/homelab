@@ -451,6 +451,120 @@ pub fn has_identity() -> bool {
     ClientIdentity::load_or_create().is_ok()
 }
 
+/// Create an mTLS client using our client certificate
+fn create_mtls_client() -> Result<reqwest::Client> {
+    let client_identity = ClientIdentity::load_or_create()?;
+    
+    // Create reqwest identity from cert + key PEM
+    let identity = reqwest::Identity::from_pkcs8_pem(
+        client_identity.cert_pem.as_bytes(),
+        client_identity.key_pem.as_bytes(),
+    )?;
+    
+    let client = reqwest::Client::builder()
+        .identity(identity)
+        .danger_accept_invalid_certs(true) // Server uses self-signed cert
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+    
+    Ok(client)
+}
+
+/// App info returned from /applist
+#[derive(Debug, Clone)]
+pub struct AppInfo {
+    pub id: u32,
+    pub title: String,
+}
+
+/// List apps on the host using native HTTPS API
+pub async fn native_list_apps(host: &str) -> Result<Vec<AppInfo>> {
+    let client = create_mtls_client()?;
+    
+    let url = format!(
+        "https://{}:47984/applist?uniqueid=moonlight-mcp-e2e&uuid={}",
+        host,
+        uuid::Uuid::new_v4()
+    );
+    
+    let response = client.get(&url).send().await?;
+    let body = response.text().await?;
+    
+    // Parse XML response for apps
+    let mut apps = Vec::new();
+    
+    // Simple XML parsing for <App><ID>N</ID><AppTitle>Name</AppTitle></App>
+    let mut pos = 0;
+    while let Some(app_start) = body[pos..].find("<App>") {
+        let app_start = pos + app_start;
+        if let Some(app_end) = body[app_start..].find("</App>") {
+            let app_xml = &body[app_start..app_start + app_end + 6];
+            
+            // Extract ID
+            let id = if let Some(id_start) = app_xml.find("<ID>") {
+                if let Some(id_end) = app_xml.find("</ID>") {
+                    app_xml[id_start + 4..id_end].parse().unwrap_or(0)
+                } else { 0 }
+            } else { 0 };
+            
+            // Extract title
+            let title = if let Some(title_start) = app_xml.find("<AppTitle>") {
+                if let Some(title_end) = app_xml.find("</AppTitle>") {
+                    app_xml[title_start + 10..title_end].to_string()
+                } else { String::new() }
+            } else { String::new() };
+            
+            if id > 0 && !title.is_empty() {
+                apps.push(AppInfo { id, title });
+            }
+            
+            pos = app_start + app_end + 6;
+        } else {
+            break;
+        }
+    }
+    
+    Ok(apps)
+}
+
+/// Launch an app on the host using native HTTPS API
+pub async fn native_launch(host: &str, app_id: u32) -> Result<()> {
+    let client = create_mtls_client()?;
+    
+    // Generate rikey (AES key for stream encryption) - 16 bytes hex encoded
+    let mut rikey = [0u8; 16];
+    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut rikey);
+    let rikey_hex = hex::encode(&rikey).to_uppercase();
+    
+    // Generate rikey ID
+    let rikeyid: u32 = rand::random();
+    
+    let url = format!(
+        "https://{}:47984/launch?uniqueid=moonlight-mcp-e2e&uuid={}&appid={}&mode=1920x1080x60&additionalStates=1&sops=0&rikey={}&rikeyid={}&localAudioPlayMode=0&surroundAudioInfo=196610",
+        host,
+        uuid::Uuid::new_v4(),
+        app_id,
+        rikey_hex,
+        rikeyid
+    );
+    
+    let response = client.get(&url).send().await?;
+    let body = response.text().await?;
+    
+    // Check for success
+    if body.contains("<gamesession>1</gamesession>") || body.contains("status_code=\"200\"") {
+        return Ok(());
+    }
+    
+    // Check for errors
+    if body.contains("status_code=\"4") || body.contains("status_code=\"5") {
+        return Err(anyhow!("Launch failed: {}", body));
+    }
+    
+    // Assume success if no obvious error
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,0 +1,53 @@
+= Code Structure
+
+The code is written in order to be as readable as possible **with no side effects** and **no global objects/variables**.
+
+We (try to) follow a *functional programming* paradigm where all the methods take *immutable* inputs and returns new outputs; this has great benefits:
+
+* Given the highly parallel nature of Wolf, we can easily share immutable data structures to multiple threads without having to deal with race conditions.
+** This gives us the power to support multiple concurrent users effortlessly.
+* Code can easily be re-used by other projects since every part is highly decoupled.
+* Enables testing most of the implemented methods in isolation.
+
+We are also trying to isolate the Moonlight protocol from the actual implementation so that we can create a portable C++ library of stateless methods, where possible, the code has been separated in logical modules.
+
+== Modules
+
+=== src/core
+
+High-level utilities and re-usable libraries, not strictly tied to Moonlight or Wolf:
+
+* https://github.com/games-on-whales/wolf/blob/HEAD/src/core/src/core/docker.hpp[docker.hpp]: using libcurl and boost json to interrogate the Docker socket and provide an easy to use interface to most methods.
+* https://github.com/games-on-whales/wolf/blob/HEAD/src/core/src/core/input.hpp[input.hpp]: an easy to use virtual input device library; supports mouse, keyboard, joypads and more!
+* https://github.com/games-on-whales/wolf/blob/HEAD/src/core/src/core/virtual-display.hpp[virtual-display.hpp]: a simple abstraction on top of https://github.com/games-on-whales/gst-wayland-display[games-on-whales/gst-wayland-display] in order to create and control virtual desktops.
+* https://github.com/games-on-whales/wolf/blob/HEAD/src/core/src/core/audio.hpp[audio.hpp]: a simple abstraction on top of `libpulse` to create and control virtual audio devices.
+
+=== src/fake-udev
+
+A little standalone CLI tool that enables us to generate udev events.
+You can read more about the rationale behind it in xref:dev:fake-udev.adoc[].
+
+=== src/moonlight-protocol
+
+Here we define core Moonlight functions in order to create the foundation for a platform-agnostic portable library.
+It currently hosts the followings:
+
+* HTTP/S protocol interface: https://github.com/games-on-whales/wolf/blob/HEAD/src/moonlight-protocol/moonlight/protocol.hpp[protocol.hpp]
+* Control protocol packet format https://github.com/games-on-whales/wolf/blob/HEAD/src/moonlight-protocol/moonlight/control.hpp[control.hpp]
+* Reed Solomon FEC header https://github.com/games-on-whales/wolf/blob/HEAD/src/moonlight-protocol/moonlight/fec.hpp[fec.hpp]
+** Based on top of https://github.com/sleepybishop/nanors[sleepybishop/nanors]
+* RTSP message parser https://github.com/games-on-whales/wolf/blob/HEAD/src/moonlight-protocol/rtsp/parser.hpp[parser.hpp]
+** Built using https://github.com/yhirose/cpp-peglib[yhirose/cpp-peglib] by writing a formal PEG (Parsing Expression Grammars) definition for all messages
+
+=== src/moonlight-server
+
+This is where the final Wolf executable will be built, contains all the additional code and logic required to run the full Moonlight server. +
+In order to keep modules decoupled most of the logic revolves around reacting to events in a shared event bus (implemented using https://github.com/DeveloperPaul123/eventbus[DeveloperPaul123/eventbus]).
+
+=== tests
+
+Unit tests will live under `tests/` and are written using the https://github.com/catchorg/Catch2[Catch2] framework. +
+We are implementing unit tests for most of the methods and (where possible) also mocking packets/requests seen during real Moonlight sessions.
+
+Some of them are platform/HW specific; they are all enabled by default, you should disable them based on your platform.
+Checkout the options in the https://github.com/games-on-whales/wolf/blob/HEAD/tests/CMakeLists.txt[tests/CMakeLists.txt]

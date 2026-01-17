@@ -1,0 +1,917 @@
+:experimental:
+:includedir: partial$
+
+= Input Data
+
+Moonlight will send all user inputs via the xref:protocols:control-specs.adoc[control stream].
+
+.General format of an `INPUT_DATA` message
+[bytefield,format=svg,align="center"]
+....
+include::{includedir}/bytefield-shared.edn[]
+(draw-input-header 0x0206)
+
+(draw-box "input size" [:box-first {:span 4}])
+(draw-box "input type" [:box-related {:span 4}])
+(draw-box "data" {:span 2 :borders #{:left :top :bottom}})
+(draw-gap-inline)
+(draw-box nil {:borders #{:top :bottom :right}})
+....
+
+The first 4 bytes (big endian) following the header of a packet of type
+`INPUT_DATA` indicate the size of the message, which varies depending on the input type.
+The next 4 bytes (little endian) specify the input type, which can be any of the values in the following table.
+
+|===
+|Input type name|Value
+
+|MOUSE_MOVE_REL
+|`0x00000007`
+
+|MOUSE_MOVE_ABS
+|`0x00000005`
+
+|MOUSE_BUTTON_DOWN
+|`0x00000008`
+
+|MOUSE_BUTTON_UP
+|`0x00000009`
+
+|KEY_DOWN
+|`0x00000003`
+
+|KEY_UP
+|`0x00000004`
+
+|MOUSE_SCROLL
+|`0x0000000A`
+
+|MOUSE_HSCROLL
+|`0x55000001`
+
+|TOUCH
+|`0x55000002`
+
+|PEN
+|`0x55000003`
+
+|CONTROLLER_MULTI
+|`0x0000000C`
+
+|CONTROLLER_ARRIVAL
+|`0x55000004`
+
+|CONTROLLER_TOUCH
+|`0x55000005`
+
+|CONTROLLER_MOTION
+|`0x55000006`
+
+|CONTROLLER_BATTERY
+|`0x55000007`
+
+|HAPTICS
+|`0x0000000D`
+
+|UTF8_TEXT
+|`0x00000017`
+
+|===
+
+== Mouse: relative move
+
+Moonlight will send mouse relative coordinates when the option "Optimize mouse for remote desktop instead of games" is turned `OFF`.
+
+.The full format of a `MOUSE_MOVE_REL` packet
+[bytefield,format=svg,align="center"]
+....
+include::{includedir}/bytefield-shared.edn[]
+(draw-input-header 0x0206)
+
+(draw-row-header "format")
+(draw-box 0x8 [:box-first {:span 4}])
+(draw-box 0x7 [:box-related {:span 4}])
+(draw-box "delta X" [:box-related {:span 2}])
+(draw-box "delta Y" [:box-related {:span 2}])
+(next-row)
+
+(draw-row-header "network")
+(draw-related-boxes [0x6 0x2 0xC 0x0 0x0 0x0 0x0 0x8 0x7 0x0 0x0 0x0 0xFF 0xFF 0x0 0x0])
+....
+
+`Delta X` and `Delta Y` defines the relative movement that the mouse must perform.
+
+[NOTE]
+`Delta X` and `Delta Y` are encoded as https://en.wikipedia.org/wiki/Endianness[big endian].
+
+== Mouse: absolute move
+
+Moonlight will send mouse absolute coordinates when the option "Optimize mouse for remote desktop instead of games" is turned `ON`.
+
+.The full format of a `MOUSE_MOVE_ABS` packet
+[bytefield,format=svg,align="center"]
+....
+include::{includedir}/bytefield-shared.edn[]
+(draw-input-header 0x0206)
+
+(draw-row-header "format")
+(draw-box 0xe [:box-first {:span 4}])
+(draw-box 0x5 [:box-related {:span 4}])
+(draw-box "X" [:box-related {:span 2}])
+(draw-box "Y" [:box-last {:span 2}])
+(draw-related-boxes [nil nil])
+(draw-box "width" [:box-related {:span 2}])
+(draw-box "height" [:box-last {:span 2}])
+(next-row)
+
+(draw-row-header "network")
+(draw-related-boxes [0x06 0x02 0x12 0x00 0x00 0x00 0x00 0x0E 0x05 0x00 0x00 0x00 0x05 0xB8 0x02 0x10 0x00 0x00 0x07 0x7F 0x04 0x37
+])
+....
+
+In order to define an absolute position Moonlight will send both:
+
+* `width`, `height` which represent the size of the viewport on the client side
+* `X`,`Y` are the absolute coordinates of the mouse on the client side
+
+[NOTE]
+`X`, `Y`, `width` and `height` are encoded as https://en.wikipedia.org/wiki/Endianness[big endian].
+
+== Mouse: button
+
+.The full format of a `MOUSE_BUTTON_DOWN` or `MOUSE_BUTTON_UP` packet
+[bytefield,format=svg,align="center"]
+....
+include::{includedir}/bytefield-shared.edn[]
+(draw-input-header 0x0206)
+(draw-row-header "format")
+
+(draw-box 0x5 [:box-first {:span 4}])
+(draw-box "action" [:box-related {:span 4}])
+(draw-box "btn" [:box-last])
+(next-row)
+(draw-row-header "network")
+(draw-related-boxes [0x06 0x02 0x09 0x00 0x00 0x00 0x00 0x05 0x08 0x00 0x00 0x00 0x01])
+....
+
+`Action` can have the following values:
+
+|===
+|Action data |Meaning
+
+|`0x09`
+|Button released
+
+|`0x08`
+|Button pressed
+|===
+
+`Button` can have the following values:
+
+|===
+|Button data |Meaning
+
+|1
+|Button left
+
+|2
+|Button middle
+
+|3
+|Button right
+
+|4
+|Button side
+
+|5
+|Button extra
+|===
+
+== Keyboard
+
+.The full format of a `KEY_DOWN` or `KEY_UP` packet
+[bytefield,format=svg,align="center"]
+....
+include::{includedir}/bytefield-shared.edn[]
+(draw-input-header 0x0206)
+
+(draw-row-header "format")
+(draw-box 0xa [:box-first {:span 4}])
+(draw-box "action" [:box-related {:span 4}])
+(draw-box "flags" [:box-related])
+(draw-box "key code" [:box-related {:span 2}])
+(draw-box "mod" [:box-last])
+(draw-box 0 [{:span 2}])
+(next-row)
+
+(draw-row-header "network")
+(draw-related-boxes [0x06 0x02 0x0E 0x00 0x00 0x00 0x00 0x0A 0x03 0x00 0x00 0x00 0x00 0xA4 0x80 0x04 0x00 0x00
+])
+....
+
+`Action` can have the following values:
+
+|===
+|Action data |Meaning
+
+|`0x04`
+|Button released
+
+|`0x03`
+|Button pressed
+|===
+
+[WARNING,caption=TODO]
+====
+What's `modifiers`?
+====
+
+`Key code` represent the corresponding keyboard code of the pressed input, see the following table:
+
+|===
+| Moonlight code | Keyboard button
+
+| 0x08
+| kbd:[BACKSPACE]
+
+| 0x09
+| kbd:[TAB]
+
+| 0x0C
+| kbd:[CLEAR]
+
+| 0x0D
+| kbd:[ENTER]
+
+| 0x10
+| kbd:[LEFTSHIFT]
+
+| 0x11
+| kbd:[LEFTCTRL]
+
+| 0x12
+| kbd:[LEFTALT]
+
+| 0x13
+| kbd:[PAUSE]
+
+| 0x14
+| kbd:[CAPSLOCK]
+
+| 0x15
+| kbd:[KATAKANAHIRAGANA]
+
+| 0x16
+| kbd:[HANGEUL]
+
+| 0x17
+| kbd:[HANJA]
+
+| 0x19
+| kbd:[KATAKANA]
+
+| 0x1B
+| kbd:[ESC]
+
+| 0x20
+| kbd:[SPACE]
+
+| 0x21
+| kbd:[PAGEUP]
+
+| 0x22
+| kbd:[PAGEDOWN]
+
+| 0x23
+| kbd:[END]
+
+| 0x24
+| kbd:[HOME]
+
+| 0x25
+| kbd:[LEFT]
+
+| 0x26
+| kbd:[UP]
+
+| 0x27
+| kbd:[RIGHT]
+
+| 0x28
+| kbd:[DOWN]
+
+| 0x29
+| kbd:[SELECT]
+
+| 0x2A
+| kbd:[PRINT]
+
+| 0x2C
+| kbd:[SYSRQ]
+
+| 0x2D
+| kbd:[INSERT]
+
+| 0x2E
+| kbd:[DELETE]
+
+| 0x2F
+| kbd:[HELP]
+
+| 0x30
+| kbd:[0]
+
+| 0x31
+| kbd:[1]
+
+| 0x32
+| kbd:[2]
+
+| 0x33
+| kbd:[3]
+
+| 0x34
+| kbd:[4]
+
+| 0x35
+| kbd:[5]
+
+| 0x36
+| kbd:[6]
+
+| 0x37
+| kbd:[7]
+
+| 0x38
+| kbd:[8]
+
+| 0x39
+| kbd:[9]
+
+| 0x41
+| kbd:[A]
+
+| 0x42
+| kbd:[B]
+
+| 0x43
+| kbd:[C]
+
+| 0x44
+| kbd:[D]
+
+| 0x45
+| kbd:[E]
+
+| 0x46
+| kbd:[F]
+
+| 0x47
+| kbd:[G]
+
+| 0x48
+| kbd:[H]
+
+| 0x49
+| kbd:[I]
+
+| 0x4A
+| kbd:[J]
+
+| 0x4B
+| kbd:[K]
+
+| 0x4C
+| kbd:[L]
+
+| 0x4D
+| kbd:[M]
+
+| 0x4E
+| kbd:[N]
+
+| 0x4F
+| kbd:[O]
+
+| 0x50
+| kbd:[P]
+
+| 0x51
+| kbd:[Q]
+
+| 0x52
+| kbd:[R]
+
+| 0x53
+| kbd:[S]
+
+| 0x54
+| kbd:[T]
+
+| 0x55
+| kbd:[U]
+
+| 0x56
+| kbd:[V]
+
+| 0x57
+| kbd:[W]
+
+| 0x58
+| kbd:[X]
+
+| 0x59
+| kbd:[Y]
+
+| 0x5A
+| kbd:[Z]
+
+| 0x5B
+| kbd:[LEFTMETA]
+
+| 0x5C
+| kbd:[RIGHTMETA]
+
+| 0x5F
+| kbd:[SLEEP]
+
+| 0x60
+| kbd:[NUMPAD 0]
+
+| 0x61
+| kbd:[NUMPAD 1]
+
+| 0x62
+| kbd:[NUMPAD 2]
+
+| 0x63
+| kbd:[NUMPAD 3]
+
+| 0x64
+| kbd:[NUMPAD 4]
+
+| 0x65
+| kbd:[NUMPAD 5]
+
+| 0x66
+| kbd:[NUMPAD 6]
+
+| 0x67
+| kbd:[NUMPAD 7]
+
+| 0x68
+| kbd:[NUMPAD 8]
+
+| 0x69
+| kbd:[NUMPAD 9]
+
+| 0x6A
+| kbd:[NUMPAD ASTERISK]
+
+| x6B
+| kbd:[NUMPAD PLUS]
+
+| 0x6C
+| kbd:[NUMPAD COMMA]
+
+| 0x6D
+| kbd:[NUMPAD MINUS]
+
+| 0x6E
+| kbd:[NUMPAD DOT]
+
+| 0x6F
+| kbd:[NUMPAD SLASH]
+
+| 0x70
+| kbd:[F1]
+
+| 0x71
+| kbd:[F2]
+
+| 0x72
+| kbd:[F3]
+
+| 0x73
+| kbd:[F4]
+
+| 0x74
+| kbd:[F5]
+
+| 0x75
+| kbd:[F6]
+
+| 0x76
+| kbd:[F7]
+
+| 0x77
+| kbd:[F8]
+
+| 0x78
+| kbd:[F9]
+
+| 0x79
+| kbd:[F10]
+
+
+| 0x7A
+| kbd:[F11]
+
+| 0x7B
+| kbd:[F12]
+
+| 0x90
+| kbd:[NUMLOCK]
+
+| 0x91
+| kbd:[SCROLLLOCK]
+
+| 0xA0
+| kbd:[LEFTSHIFT]
+
+| 0xA1
+| kbd:[RIGHTSHIFT]
+
+| 0xA2
+| kbd:[LEFTCTRL]
+
+| 0xA3
+| kbd:[RIGHTCTRL]
+
+| 0xA4
+| kbd:[LEFTALT]
+
+| 0xA5
+| kbd:[RIGHTALT]
+
+| 0xBA
+| kbd:[SEMICOLON]
+
+| 0xBB
+| kbd:[EQUAL]
+
+| 0xBC
+| kbd:[COMMA]
+
+| 0xBD
+| kbd:[MINUS]
+
+| 0xBE
+| kbd:[DOT]
+
+| 0xBF
+| kbd:[SLASH]
+
+| 0xC0
+| kbd:[GRAVE]
+
+| 0xDB
+| kbd:[LEFTBRACE]
+
+| 0xDC
+| kbd:[BACKSLASH]
+
+| 0xDD
+| kbd:[RIGHTBRACE]
+
+| 0xDE
+| kbd:[APOSTROPHE]
+
+| 0xE2
+| kbd:[102ND]
+
+
+|===
+
+== Mouse scroll
+
+.The full format of a `MOUSE_SCROLL` packet
+[bytefield,format=svg,align="center"]
+....
+include::{includedir}/bytefield-shared.edn[]
+(draw-input-header 0x0206)
+(draw-row-header "format")
+(draw-box 0xa [:box-first {:span 4}])
+(draw-box 0xa [:box-related {:span 4}])
+(draw-box (text "amount" [:math] [:sub 1]) [:box-related {:span 2}])
+(draw-box (text "amount" [:math] [:sub 2]) [:box-related {:span 2}])
+(draw-box 0 [{:span 2}])
+(next-row)
+
+(draw-row-header "network")
+(draw-related-boxes [0x06 0x02 0x0E 0x00 0x00 0x00 0x00 0x0A 0x0A 0x00 0x00 0x00 0xFF 0x88 0xFF 0x88 0x00 0x00
+])
+....
+
+We only use `amount 1` to determine the amount of scroll to be applied.
+
+[WARNING,caption=TODO]
+====
+What's `amount 2`?
+====
+
+== Mouse horizontal scroll
+
+.The full format of a `MOUSE_HSCROLL` packet
+[bytefield,format=svg,align="center"]
+....
+include::{includedir}/bytefield-shared.edn[]
+
+
+(draw-input-header 0x0206)
+(draw-row-header "format")
+(draw-box 0x6 [:box-first {:span 4}])
+(draw-box 0x55000001 [:box-related {:span 4}])
+(draw-box "amount" [:box-last {:span 2}])
+(next-row)
+(next-row)
+(draw-row-header "network")
+(draw-boxes [0x06 0x02 0x0A 0x00 0x00 0x00 0x00 0x06 0x01 0x00 0x00 0x55 0x00 0x1E
+])
+....
+
+== Touch
+
+#icon:bullhorn[] new in Moonlight 5.0.0#
+
+== Pen
+
+#icon:bullhorn[] new in Moonlight 5.0.0#
+
+== Controller
+
+=== Controller arrival
+
+#icon:bullhorn[] new in Moonlight 5.0.0#
+
+Sent when a new connector has been plugged, it'll specify the supported capabilities and the specific type of controller to be emulated.
+
+.The full format of a `CONTROLLER_ARRIVAL` packet
+[bytefield,format=svg,align="center"]
+....
+include::{includedir}/bytefield-shared.edn[]
+(draw-input-header 0x0206)
+(draw-box "ctrl #" {:span 1})
+(draw-box "type" {:span 1})
+(draw-box "cap" {:span 1})
+(draw-box "button flags" {:span 4})
+....
+
+Where controller type can be:
+
+|===
+|Moonlight code |Description
+
+|Unknown
+|0x00
+
+|XBOX
+|0x01
+
+|PS
+|0x02
+
+|Nintendo
+|0x03
+|===
+
+And the capabilities is a bitfield with the followings options:
+
+|===
+|Moonlight code |Description
+
+|Analog triggers
+|0x01
+
+|Rumble
+|0x02
+
+|Trigger Rumble
+|0x04
+
+|Touchpad
+|0x08
+
+|Accelerometer
+|0x10
+
+|Gyro
+|0x20
+
+|Battery
+|0x40
+
+|RGB LED
+|0x80
+|===
+
+=== Controller multi
+
+IMPORTANT: Since Moonlight 5.0.0 the format has been slightly changed (without breaking the legacy format)
+
+.The legacy format of a `CONTROLLER_MULTI` packet
+[bytefield,format=svg,align="center"]
+....
+include::{includedir}/bytefield-shared.edn[]
+(draw-input-header 0x0206)
+(draw-row-header "format")
+(draw-box nil [:box-first {:span 2}])
+(draw-box "ctrl #" [:box-first {:span 2}])
+(draw-box "active mask" [:box-first {:span 2}])
+(draw-box nil [:box-first {:span 2}])
+(draw-box "btn flags" [:box-first {:span 2}])
+(draw-box "LT" [:box-first {:span 1}])
+(draw-box "RT" [:box-first {:span 1}])
+(draw-box "Left X" [:box-first {:span 2}])
+(draw-box "Left Y" [:box-first {:span 2}])
+(draw-box "Right X" [:box-first {:span 2}])
+(draw-box "Right Y" [:box-first {:span 2}])
+(draw-box nil [:box-first {:span 2}])
+(draw-box "btn flags 2" [:box-first {:span 2}])
+(draw-box nil [:box-first {:span 2}])
+....
+
+.Legacy format
+[%collapsible]
+====
+
+.The legacy format of a `CONTROLLER_MULTI` packet
+[bytefield,format=svg,align="center"]
+....
+include::{includedir}/bytefield-shared.edn[]
+(draw-input-header 0x0206)
+(draw-row-header "format")
+(draw-box 0x1e [:box-first {:span 4}])
+(draw-box 0xc [:box-related {:span 4}])
+(draw-box 0x1a [:box-related {:span 2}])
+(draw-box "controller" [:box-last {:span 2}])
+(draw-box "active" [:box-first {:span 2}])
+(draw-box 0x14 [:box-related {:span 2}])
+(draw-box "buttons" [:box-related {:span 2}])
+(draw-box "LT" [:box-related {:span 1}])
+(draw-box "RT" [:box-related {:span 1}])
+(draw-box "left X" [:box-related {:span 2}])
+(draw-box "left Y" [:box-related {:span 2}])
+(draw-box "right X" [:box-related {:span 2}])
+(draw-box "right Y" [:box-last {:span 2}])
+(draw-box 0x9c [:box-first {:span 4}])
+(draw-box 0x55 [:box-last {:span 2}])
+(next-row)
+
+(draw-row-header "network")
+(draw-related-boxes [0x06 0x02 0x22 0x00 0x00 0x00 0x00 0x1E 0x0C 0x00 0x00 0x00 0x1A 0x00 0x00 0x00 0x01 0x00 0x14 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x98 0xFF 0x9C 0x00 0x00 0x00 0x55 0x00
+])
+....
+
+====
+
+`LT` and `RT` refer to the left and right triggers, respectively. `Left X` and the following fields refer to the values of the left and right sticks.
+
+==== Active mask
+
+The active mask represent a bitfield with bits set for each controller present.
+If you combine this with the `ctrl #` (controller number) you can detect when a controller has been *unplugged*.
+
+[NOTE,caption=EXAMPLE]
+====
+An active mask of `0x0` and a controller number of `0x1` means that the first controller has been unplugged.
+====
+
+==== Button flags
+
+The `buttons` element encodes the currently pressed buttons in the joypad. +
+
+In order to get the new added buttons you have to combine `btn flags` and `btn flags 2` so that
+
+[source,c]
+....
+(button_flags | (button_flags2 << 16))
+....
+
+|===
+|Button type | Flag (HEX)
+
+|DPAD_UP
+| 0x0001
+
+|DPAD_DOWN
+| 0x0002
+
+|DPAD_LEFT
+| 0x0004
+
+|DPAD_RIGHT
+| 0x0008
+
+|START
+| 0x0010
+
+|BACK
+| 0x0020
+
+|HOME
+| 0x0400
+
+|LEFT_STICK
+| 0x0040
+
+|RIGHT_STICK
+| 0x0080
+
+|LEFT_BUTTON
+| 0x0100
+
+|RIGHT_BUTTON
+| 0x0200
+
+|A
+| 0x1000
+
+|B
+| 0x2000
+
+|X
+| 0x4000
+
+|Y
+| 0x8000
+
+|SPECIAL_FLAG
+| 0x0400
+
+|PADDLE 1
+| 0x010000
+
+|PADDLE 2
+| 0x020000
+
+|PADDLE 3
+| 0x040000
+
+|PADDLE 4
+| 0x080000
+
+|Touchpad
+| 0x100000
+
+|MISC
+| 0x200000
+
+|===
+
+If more than one button is being pressed at the same time `button_flag` will contain the sum of both values.
+
+.When pressing  kbd:[A] and  kbd:[X] `button_flag` contains `0x0050` that `5` decodes as follows:
+[wavedrom,format=svg]
+....
+{ reg: [
+
+  { "attr": "Y", "bits": 1, "name": 0x0},
+  { "attr": "X", "bits": 1, "name": 0x1, type: 2},
+  { "attr": "B", "bits": 1, "name": 0x0},
+  { "attr": "A", "bits": 1, "name": 0x1, type: 2},
+], config: {fontsize: 16, vflip:true, hflip:true}
+}
+....
+
+.The full format of the `button_flag` binary encoding
+[wavedrom,format=svg]
+....
+{ reg: [
+
+  {"attr": "START", "bits": 1, "name": 0x0, type: 3},
+  {"attr": "BACK", "bits": 1, "name": 0x0, type: 3},
+  {"attr": "LEFT_STICK", "bits": 1, "name": 0x0, type: 3},
+  {"attr": "RIGHT_STICK", "bits": 1, "name": 0x0, type: 3},
+
+  {"attr": "DPAD_UP", "bits": 1, "name": 0x0, type: 2},
+  {"attr": "DPAD_DOWN", "bits": 1, "name": 0x0, type: 2},
+  {"attr": "DPAD_LEFT", "bits": 1, "name": 0x0, type: 2},
+  {"attr": "DPAD_RIGHT", "bits": 1, "name": 0x0, type: 2},
+
+  { "attr": "Y", "bits": 1, "name": 0x0, type: 5},
+  { "attr": "X", "bits": 1, "name": 0x0, type: 5},
+  { "attr": "B", "bits": 1, "name": 0x0, type: 5},
+  { "attr": "A", "bits": 1, "name": 0x0, type: 5},
+
+  {"attr": "LEFT_BTN", "bits": 1, "name": 0x0, type:4},
+  {"attr": "RIGHT_BTN", "bits": 1, "name": 0x0, type:4},
+  {"attr": "HOME", "bits": 1, "name": 0x0, type:4},
+  {"attr": "None", "bits": 1, "name": 0x0, type:4},
+
+], config: {fontsize: 14, lanes: 2, vflip:true, hflip:true}
+}
+....
+
+
+=== Controller Touch
+
+#icon:bullhorn[] new in Moonlight 5.0.0#
+
+=== Controller Motion
+
+#icon:bullhorn[] new in Moonlight 5.0.0#
+
+=== Controller Battery
+
+#icon:bullhorn[] new in Moonlight 5.0.0#

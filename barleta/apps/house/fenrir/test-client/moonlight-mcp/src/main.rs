@@ -1,12 +1,11 @@
 //! Moonlight MCP - E2E Testing Tool for Fenrir Game Streaming
 //!
-//! This tool wraps the Moonlight CLI to provide:
+//! Native implementation of GameStream protocol:
 //! - JSON-based E2E test definitions
 //! - MCP stdio protocol for AI agent integration
 //! - Visual validation via OpenRouter/Gemini
 
 mod mcp;
-mod moonlight;
 mod pairing;
 mod tests;
 mod validator;
@@ -75,9 +74,9 @@ async fn main() -> Result<()> {
                 tests::run_test_file(&file).await
             }
             Some(Commands::List { host }) => {
-                let apps = moonlight::list_apps(&host).await?;
+                let apps = pairing::native_list_apps(&host).await?;
                 for app in apps {
-                    println!("{}", app);
+                    println!("{} (ID: {})", app.title, app.id);
                 }
                 Ok(())
             }
