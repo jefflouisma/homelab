@@ -537,7 +537,8 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Wait for session to be created by the direwolf controller
 	var streamURL string
-	err = wait.PollUntilContextTimeout(r.Context(), 250*time.Millisecond, 25*time.Second, true, func(ctx context.Context) (bool, error) {
+	// Increased timeout to 90s to allow for pod scheduling, image pulls, and GPU allocation
+	err = wait.PollUntilContextTimeout(r.Context(), 250*time.Millisecond, 90*time.Second, true, func(ctx context.Context) (bool, error) {
 		session, err := s.SessionClient.Get(ctx, session.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, err
@@ -602,8 +603,8 @@ func (s *RESTServer) stopSessionsForUser(user *v1alpha1types.User, shouldWait bo
 	}
 
 	if shouldWait {
-		// Wait for pods to be cleaned up
-		err = wait.PollUntilContextTimeout(context.Background(), 250*time.Millisecond, 25*time.Second, true, func(ctx context.Context) (bool, error) {
+		// Wait for pods to be cleaned up (increased timeout to 90s)
+		err = wait.PollUntilContextTimeout(context.Background(), 250*time.Millisecond, 90*time.Second, true, func(ctx context.Context) (bool, error) {
 			pods, err := s.PodLister.List(labels.SelectorFromSet(labels.Set{
 				"direwolf/user": user.Name,
 			}))
