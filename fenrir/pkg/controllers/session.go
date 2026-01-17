@@ -1014,6 +1014,11 @@ echo "=== Done ==="
 			},
 			SecurityContext: &corev1.SecurityContext{
 				Privileged: ptr.To(true),
+				RunAsUser:  ptr.To(int64(0)),  // Run as root for DRM access
+				RunAsGroup: ptr.To(int64(0)),  // Run as root group
+				Capabilities: &corev1.Capabilities{
+					Add: []corev1.Capability{"SYS_ADMIN"},
+				},
 			},
 			VolumeMounts: []corev1.VolumeMount{
 				{
