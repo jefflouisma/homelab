@@ -1022,12 +1022,8 @@ echo "=== Done ==="
 					MountPath: "/mnt/data/wolf",
 				},
 				{
-					Name:      "dev-input",
-					MountPath: "/dev/input",
-				},
-				{
-					Name:      "dev-dri",
-					MountPath: "/dev/dri",
+					Name:      "dev",
+					MountPath: "/dev",
 				},
 				// {
 				// 	Name:      "dev-uinput",
@@ -1083,20 +1079,10 @@ echo "=== Done ==="
 			},
 		},
 		corev1.Volume{
-			Name: "dev-input",
+			Name: "dev",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: "/dev/input",
-					Type: ptr.To(corev1.HostPathDirectory),
-				},
-			},
-		},
-		corev1.Volume{
-			Name: "dev-dri",
-			VolumeSource: corev1.VolumeSource{
-				HostPath: &corev1.HostPathVolumeSource{
-					Path: "/dev/dri",
-					Type: ptr.To(corev1.HostPathDirectory),
+					Path: "/dev",
 				},
 			},
 		},
