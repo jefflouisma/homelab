@@ -807,15 +807,18 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				"sh", "-c", `
 echo "=== Extracting NVIDIA libraries ==="
 mkdir -p /nvidia-libs
-# Copy CUDA libraries
+# Copy CUDA runtime libraries from container
 cp -v /usr/local/cuda/lib64/libcudart.so* /nvidia-libs/ 2>/dev/null || true
 cp -v /usr/local/cuda/lib64/libcublas.so* /nvidia-libs/ 2>/dev/null || true
 cp -v /usr/local/cuda/lib64/libcufft.so* /nvidia-libs/ 2>/dev/null || true
-# Copy NVIDIA driver libraries 
-cp -v /usr/lib/x86_64-linux-gnu/libnvidia*.so* /nvidia-libs/ 2>/dev/null || true
-cp -v /usr/lib/x86_64-linux-gnu/libcuda*.so* /nvidia-libs/ 2>/dev/null || true
-cp -v /usr/lib/x86_64-linux-gnu/libnvcuvid*.so* /nvidia-libs/ 2>/dev/null || true
-cp -v /usr/lib/x86_64-linux-gnu/libnvoptix*.so* /nvidia-libs/ 2>/dev/null || true
+# Copy NVIDIA driver libraries from HOST filesystem (mounted at /host-lib)
+cp -v /host-lib/x86_64-linux-gnu/libnvidia*.so* /nvidia-libs/ 2>/dev/null || true
+cp -v /host-lib/x86_64-linux-gnu/libcuda*.so* /nvidia-libs/ 2>/dev/null || true
+cp -v /host-lib/x86_64-linux-gnu/libnvcuvid*.so* /nvidia-libs/ 2>/dev/null || true
+cp -v /host-lib/x86_64-linux-gnu/libnvoptix*.so* /nvidia-libs/ 2>/dev/null || true
+# Also try alternate host paths
+cp -v /host-lib/nvidia*/libnvidia*.so* /nvidia-libs/ 2>/dev/null || true
+cp -v /host-lib/nvidia*/libcuda*.so* /nvidia-libs/ 2>/dev/null || true
 ls -la /nvidia-libs/
 echo "=== Done ==="
 `,
@@ -824,6 +827,11 @@ echo "=== Done ==="
 				{
 					Name:      "nvidia-libs",
 					MountPath: "/nvidia-libs",
+				},
+				{
+					Name:      "host-usr-lib",
+					MountPath: "/host-lib",
+					ReadOnly:  true,
 				},
 			},
 		},
@@ -1082,6 +1090,15 @@ echo "=== Done ==="
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
 					Path: "/dev",
+				},
+			},
+		},
+		corev1.Volume{
+			Name: "host-usr-lib",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/usr/lib",
+					Type: ptr.To(corev1.HostPathDirectory),
 				},
 			},
 		},
