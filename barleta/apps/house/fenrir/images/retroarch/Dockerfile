@@ -94,6 +94,10 @@ RUN chmod +x /usr/lib/libretro/*.so
 # Create directories
 RUN mkdir -p /roms /saves /config /screenshots
 
+# Copy startup script that waits for Wayland display
+COPY startup.sh /usr/local/bin/startup.sh
+RUN chmod +x /usr/local/bin/startup.sh
+
 # Copy default configuration
 COPY config/retroarch.cfg /root/.config/retroarch/retroarch.cfg
 
@@ -106,5 +110,5 @@ ENV LD_LIBRARY_PATH=/nvidia-libs:/usr/local/cuda/lib64
 # Run as non-root user for security (matches Wolf expectations)
 USER ubuntu
 
-# Default command
-CMD ["retroarch"]
+# Default command - use startup script that waits for display
+CMD ["/usr/local/bin/startup.sh"]
