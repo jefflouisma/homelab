@@ -1,0 +1,43 @@
+[package]
+name = "moonlight-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "MCP tool for Moonlight E2E testing with AI validation"
+
+[[bin]]
+name = "moonlight-mcp"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# JSON serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP client for OpenRouter API
+reqwest = { version = "0.12", features = ["json"] }
+
+# Base64 encoding for images
+base64 = "0.22"
+
+# Environment file parsing
+dotenvy = "0.15"
+
+# Image handling
+image = "0.25"
+
+# Async process spawning
+async-process = "2"
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Path expansion
+shellexpand = "3"
+
