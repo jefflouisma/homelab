@@ -974,6 +974,9 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 					// GPU access via privileged: true + /dev mount (no nvidia-device-plugin)
 				},
 			},
+			SecurityContext: &corev1.SecurityContext{
+				Privileged: ptr.To(true),
+			},
 			VolumeMounts: []corev1.VolumeMount{
 				{
 					Name:      "wolf-cfg",
