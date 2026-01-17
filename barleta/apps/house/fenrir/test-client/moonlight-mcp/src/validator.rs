@@ -104,7 +104,7 @@ Respond ONLY with this exact JSON format, no other text:
         .header("HTTP-Referer", "https://github.com/jefflouisma/homelab")
         .header("X-Title", "Fenrir E2E Test")
         .json(&serde_json::json!({
-            "model": "google/gemini-2.5-pro-preview-06-05",
+            "model": "google/gemini-3-pro-image-preview",
             "messages": [
                 {
                     "role": "user",

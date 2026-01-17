@@ -1206,7 +1206,7 @@ func (c *SessionController) reconcilePVC(ctx context.Context, session *v1alpha1t
 			WithSpec(
 				v1ac.PersistentVolumeClaimSpec().
 					WithAccessModes("ReadWriteOnce").
-					WithStorageClassName("openebs-hostpath").
+					WithStorageClassName("longhorn").
 					WithResources(v1ac.VolumeResourceRequirements().
 						WithRequests(corev1.ResourceList{
 							corev1.ResourceStorage: resource.MustParse("100Gi"),
