@@ -969,7 +969,7 @@ echo "=== Done ==="
 				"WOLF_CFG_FILE":              "/etc/wolf/cfg/config.toml",
 				"WOLF_PULSE_IMAGE":           "ghcr.io/games-on-whales/pulseaudio:master",
 				"WOLF_CFG_FOLDER":            "/etc/wolf/cfg",
-				"WOLF_RENDER_NODE":           "/dev/dri/renderD128",
+				"WOLF_RENDER_NODE":           "/dev/dri/renderD129",  // renderD129=NVIDIA, renderD128=AMD
 				"GST_VAAPI_ALL_DRIVERS":      "1",
 				"GST_DEBUG":                  "2",
 				"__GL_SYNC_TO_VBLANK":        "0",
