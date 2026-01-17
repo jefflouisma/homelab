@@ -991,6 +991,10 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 					Name:      "dev-input",
 					MountPath: "/dev/input",
 				},
+				{
+					Name:      "dev-dri",
+					MountPath: "/dev/dri",
+				},
 				// {
 				// 	Name:      "dev-uinput",
 				// 	MountPath: "/dev/uinput",
@@ -1039,6 +1043,15 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
 					Path: "/dev/input",
+					Type: ptr.To(corev1.HostPathDirectory),
+				},
+			},
+		},
+		corev1.Volume{
+			Name: "dev-dri",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/dev/dri",
 					Type: ptr.To(corev1.HostPathDirectory),
 				},
 			},
