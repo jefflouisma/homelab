@@ -798,6 +798,37 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 		},
 	)
 
+	// Init container to extract NVIDIA libraries for GPU encoding
+	podToCreate.Spec.InitContainers = append(podToCreate.Spec.InitContainers,
+		corev1.Container{
+			Name:  "nvidia-libs-init",
+			Image: "nvidia/cuda:12.6.0-runtime-ubuntu22.04",
+			Command: []string{
+				"sh", "-c", `
+echo "=== Extracting NVIDIA libraries ==="
+mkdir -p /nvidia-libs
+# Copy CUDA libraries
+cp -v /usr/local/cuda/lib64/libcudart.so* /nvidia-libs/ 2>/dev/null || true
+cp -v /usr/local/cuda/lib64/libcublas.so* /nvidia-libs/ 2>/dev/null || true
+cp -v /usr/local/cuda/lib64/libcufft.so* /nvidia-libs/ 2>/dev/null || true
+# Copy NVIDIA driver libraries 
+cp -v /usr/lib/x86_64-linux-gnu/libnvidia*.so* /nvidia-libs/ 2>/dev/null || true
+cp -v /usr/lib/x86_64-linux-gnu/libcuda*.so* /nvidia-libs/ 2>/dev/null || true
+cp -v /usr/lib/x86_64-linux-gnu/libnvcuvid*.so* /nvidia-libs/ 2>/dev/null || true
+cp -v /usr/lib/x86_64-linux-gnu/libnvoptix*.so* /nvidia-libs/ 2>/dev/null || true
+ls -la /nvidia-libs/
+echo "=== Done ==="
+`,
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "nvidia-libs",
+					MountPath: "/nvidia-libs",
+				},
+			},
+		},
+	)
+
 	podToCreate.Spec.Containers = append(podToCreate.Spec.Containers,
 		corev1.Container{
 			Name:            "wolf-agent",
@@ -937,7 +968,7 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				"NVIDIA_VISIBLE_DEVICES":     "all",
 				"NVIDIA_DRIVER_CAPABILITIES": "all",
 				"LIBVA_DRIVER_NAME":          "nvidia",
-				"LD_LIBRARY_PATH":            "/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
+				"LD_LIBRARY_PATH":            "/nvidia-libs:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
 			}),
 			// Note: Container Ports list is strictly informational. As long
 			// as process is listening on 0.0.0.0 it can be bound by a service.
@@ -1006,6 +1037,10 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 					Name:      "host-udev",
 					MountPath: "/run/udev",
 				},
+				{
+					Name:      "nvidia-libs",
+					MountPath: "/nvidia-libs",
+				},
 			},
 		},
 	)
@@ -1029,6 +1064,12 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 		},
 		corev1.Volume{
 			Name: "wolf-runtime",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+		corev1.Volume{
+			Name: "nvidia-libs",
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
