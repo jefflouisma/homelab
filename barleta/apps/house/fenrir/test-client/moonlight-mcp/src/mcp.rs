@@ -50,11 +50,13 @@ struct Capabilities {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ToolsCapability {
     list_changed: bool,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct InitializeResult {
     protocol_version: String,
     server_info: ServerInfo,
@@ -63,6 +65,7 @@ struct InitializeResult {
 
 /// Tool definition
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Tool {
     name: String,
     description: String,
@@ -71,6 +74,7 @@ struct Tool {
 
 /// Tool call result
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ToolResult {
     content: Vec<ContentItem>,
     is_error: bool,

@@ -27,7 +27,7 @@ config:
     client_id: airflow
     client_secret: cQ5cTszTYKs90SkX6zpfB0Zq1MoD8vjM
     realm: barleta
-    server_url: http://keycloak.identity.svc.cluster.local:8080
+    server_url: http://keycloak.barleta.local:31664
 
 # Install Keycloak provider via pip at startup
 extraEnv: |

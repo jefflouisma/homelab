@@ -1,0 +1,72 @@
+# NVIDIA Device Node Init DaemonSet for Harvester
+# Creates /dev/nvidia* device nodes on each GPU-enabled node
+# Required because device nodes don't persist across reboots on immutable OS
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-init
+  namespace: kube-system
+  labels:
+    app: nvidia-device-init
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-device-init
+  template:
+    metadata:
+      labels:
+        app: nvidia-device-init
+    spec:
+      hostPID: true
+      initContainers:
+        - name: create-devices
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "=== NVIDIA Device Node Init ==="
+              # Check if nvidia module is loaded
+              if ! grep -q "^nvidia " /proc/modules; then
+                echo "NVIDIA module not loaded, skipping device creation"
+                exit 0
+              fi
+              # Create device nodes with major number 195
+              echo "Creating NVIDIA device nodes..."
+              mknod -m 666 /dev/nvidia0 c 195 0 2>/dev/null || true
+              mknod -m 666 /dev/nvidiactl c 195 255 2>/dev/null || true
+              mknod -m 666 /dev/nvidia-modeset c 195 254 2>/dev/null || true
+              # Verify
+              ls -la /dev/nvidia* 2>/dev/null || echo "No devices created"
+              echo "=== Done ==="
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: dev
+              mountPath: /dev
+            - name: proc
+              mountPath: /proc
+              readOnly: true
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.9
+          resources:
+            requests:
+              cpu: 1m
+              memory: 1Mi
+            limits:
+              cpu: 10m
+              memory: 10Mi
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: proc
+          hostPath:
+            path: /proc
+      tolerations:
+        - operator: Exists
+      nodeSelector:
+        # Only run on nodes with NVIDIA GPU (labeled by sriovgpudevice)
+        kubernetes.io/os: linux

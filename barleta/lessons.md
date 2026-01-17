@@ -4,22 +4,70 @@ A comprehensive curriculum for practicing analytics engineering skills using the
 
 ---
 
+## Platform Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Barleta Analytics Platform                    │
+├─────────────────────────────────────────────────────────────────┤
+│  Identity Layer (Keycloak SSO + FreeIPA LDAP + MidPoint IGA)   │
+├─────────────────────────────────────────────────────────────────┤
+│  Orchestration    │  Transformation  │  Visualization           │
+│  ─────────────    │  ──────────────  │  ─────────────           │
+│  Airflow          │  dbt             │  Superset                │
+│                   │                  │  Grafana                 │
+│                   │                  │  Metabase                │
+├─────────────────────────────────────────────────────────────────┤
+│  Data Catalog: DataHub    │    Storage: PostgreSQL             │
+├─────────────────────────────────────────────────────────────────┤
+│  Infrastructure: Harvester HCI + Traefik Ingress               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Prerequisites
 
-- Access to Barleta environment
+- Access to Barleta environment (add entries to `/etc/hosts` pointing to `192.168.1.10`)
 - User account: `chris` / `Ilovejeff1` (via Keycloak SSO)
 - Basic SQL knowledge
 - Python familiarity
 
+### Required /etc/hosts Entries
+```
+192.168.1.10    airflow.barleta.local superset.barleta.local grafana.barleta.local
+192.168.1.10    metabase.barleta.local datahub.barleta.local postgresql.barleta.local
+192.168.1.10    keycloak.barleta.local midpoint.barleta.local argocd.barleta.local
+192.168.1.212   ipa.barleta.local
+```
+
 ## Access URLs
+
+### Analytics Services (SSO via Keycloak)
+
+| Service | URL | Auth Method |
+|---------|-----|-------------|
+| Airflow | http://airflow.barleta.local:31664 | Keycloak OIDC |
+| Superset | http://superset.barleta.local:31664 | Keycloak OIDC |
+| Grafana | http://grafana.barleta.local:31664 | Keycloak OIDC |
+| DataHub | http://datahub.barleta.local:31664 | Keycloak OIDC |
+| Metabase | http://metabase.barleta.local:31664 | FreeIPA LDAP |
+
+### Admin Services
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Airflow | http://airflow.barleta.local:31664 | admin / admin |
-| Superset | http://superset.barleta.local:31664 | admin / admin |
+| Keycloak Admin | http://keycloak.barleta.local:31664/admin | admin / Barleta2024! |
 | MidPoint | http://midpoint.barleta.local:31664 | administrator / Admin123! |
-| Keycloak | http://keycloak.barleta.local:31664 | admin / admin |
-| PostgreSQL | postgresql.identity.svc:5432 | analytics / Analytics2024! |
+| ArgoCD | http://argocd.barleta.local:31664 | admin / (from secret) |
+
+### Database Access
+
+| Service | Host | Port | Credentials |
+|---------|------|------|-------------|
+| PostgreSQL (external) | postgresql.barleta.local | 32432 | postgres / Barleta2024! |
+| PostgreSQL (in-cluster) | postgresql.identity.svc.cluster.local | 5432 | postgres / Barleta2024! |
+| FreeIPA LDAP | 192.168.1.212 | 389 | See Keycloak federation |
 
 ---
 
@@ -100,24 +148,41 @@ pip install dbt-postgres
 dbt init analytics_project
 cd analytics_project
 
-# Configure profiles.yml
+# Configure profiles.yml for LOCAL development (external access)
 cat > ~/.dbt/profiles.yml << 'EOF'
 analytics_project:
   target: dev
   outputs:
     dev:
       type: postgres
+      host: postgresql.barleta.local
+      port: 32432
+      user: postgres
+      password: Barleta2024!
+      dbname: superset
+      schema: staging
+    # For running inside the cluster (e.g., Airflow)
+    prod:
+      type: postgres
       host: postgresql.identity.svc.cluster.local
       port: 5432
-      user: analytics
-      password: Analytics2024!
-      dbname: midpoint
-      schema: staging
+      user: postgres
+      password: Barleta2024!
+      dbname: superset
+      schema: analytics
 EOF
 
 # Test connection
 dbt debug
 ```
+
+**Available Databases:**
+- `superset` - Superset metadata + analytics data
+- `airflow` - Airflow metadata
+- `metabase` - Metabase metadata
+- `datahub` - DataHub metadata
+- `keycloak` - Keycloak identity data
+- `midpoint` - MidPoint IGA data
 
 ### Lesson 2.2: Staging Models
 **Objective**: Create clean, standardized staging models
@@ -297,13 +362,15 @@ ORDER BY 1, 2
 **Objective**: Connect Superset to PostgreSQL
 
 1. Navigate to http://superset.barleta.local:31664
-2. Login with admin/admin
+2. Login via Keycloak SSO (chris/Ilovejeff1)
 3. Go to Settings → Database Connections → + Database
 4. Select PostgreSQL
 5. Enter connection string:
    ```
-   postgresql://analytics:Analytics2024!@postgresql.identity.svc.cluster.local:5432/midpoint
+   postgresql://postgres:Barleta2024!@postgresql.identity.svc.cluster.local:5432/superset
    ```
+
+**Note**: Superset uses Keycloak SSO - you'll be redirected to Keycloak for authentication.
 
 ### Lesson 4.2: Creating Charts
 **Objective**: Build essential business charts
@@ -332,7 +399,9 @@ ORDER BY 1, 2
 ### Lesson 5.1: DAG Basics
 **Objective**: Understand Airflow DAG structure
 
-Access Airflow at http://airflow.barleta.local:31664
+Access Airflow at http://airflow.barleta.local:31664 (SSO via Keycloak)
+
+**Note**: Airflow 3.x uses KeycloakAuthManager for authentication. Login with your Keycloak credentials.
 
 ```python
 # Example DAG: dbt_daily.py
@@ -448,12 +517,113 @@ Analyze product performance:
 - [ ] Module 1: SQL Fundamentals (Exercises 1-3)
 - [ ] Module 2: dbt Fundamentals (Exercises 4-6)
 - [ ] Module 3: Metrics and KPIs (Exercises 7-8)
-- [ ] Module 4: Data Visualization (Exercises 9-10)
-- [ ] Module 5: Orchestration (Exercise 11)
+- [ ] Module 4: Data Visualization with Superset (Exercises 9-10)
+- [ ] Module 5: Orchestration with Airflow (Exercise 11)
 - [ ] Module 6: Advanced Topics
+- [ ] Module 7: Data Catalog with DataHub (Exercise 12)
+- [ ] Module 8: Monitoring with Grafana (Exercise 13)
+- [ ] Module 9: Business Intelligence with Metabase (Exercise 14)
 - [ ] Project 1: End-to-End Pipeline
 - [ ] Project 2: Customer 360
 - [ ] Project 3: Product Analytics
+
+---
+
+## Module 7: Data Catalog with DataHub
+
+### Lesson 7.1: Exploring DataHub
+**Objective**: Understand data lineage and metadata management
+
+1. Navigate to http://datahub.barleta.local:31664
+2. Login via Keycloak SSO
+3. Explore:
+   - Dataset discovery
+   - Data lineage visualization
+   - Schema documentation
+   - Data quality metrics
+
+### Lesson 7.2: Ingesting Metadata
+**Objective**: Push dbt metadata to DataHub
+
+```bash
+# Install datahub CLI
+pip install acryl-datahub
+
+# Configure DataHub connection
+datahub init
+# Server: http://datahub.barleta.local:31664
+# Token: (generate from DataHub UI)
+
+# Ingest dbt metadata
+datahub ingest -c dbt_recipe.yaml
+```
+
+**Exercise 12**: 
+- Ingest your dbt project metadata
+- Document datasets with descriptions
+- Add data owners and tags
+
+---
+
+## Module 8: Monitoring with Grafana
+
+### Lesson 8.1: Platform Monitoring
+**Objective**: Monitor analytics platform health
+
+1. Navigate to http://grafana.barleta.local:31664
+2. Login via Keycloak SSO
+3. Explore pre-configured dashboards
+
+### Lesson 8.2: Custom Dashboards
+**Objective**: Create operational dashboards
+
+**Exercise 13**:
+- Create dashboard for dbt run metrics
+- Add Airflow DAG success/failure rates
+- Monitor database query performance
+
+---
+
+## Module 9: Business Intelligence with Metabase
+
+### Lesson 9.1: Self-Service Analytics
+**Objective**: Enable business users with Metabase
+
+1. Navigate to http://metabase.barleta.local:31664
+2. Login with LDAP credentials (chris/Ilovejeff1)
+3. Create questions and dashboards
+
+**Note**: Metabase uses FreeIPA LDAP for authentication (not Keycloak OIDC - requires Enterprise edition).
+
+**Exercise 14**:
+- Create a "Sales Overview" question
+- Build a self-service dashboard
+- Set up email subscriptions
+
+---
+
+## Quick Reference: Connection Strings
+
+### PostgreSQL (Local Development)
+```bash
+# psql
+psql -h postgresql.barleta.local -p 32432 -U postgres -d superset
+
+# Connection string
+postgresql://postgres:Barleta2024!@postgresql.barleta.local:32432/superset
+```
+
+### PostgreSQL (In-Cluster)
+```bash
+# From Airflow/dbt running in Kubernetes
+postgresql://postgres:Barleta2024!@postgresql.identity.svc.cluster.local:5432/superset
+```
+
+### LDAP (FreeIPA)
+```bash
+# Test LDAP bind
+ldapwhoami -x -H ldap://192.168.1.212 -D "uid=chris,cn=users,cn=accounts,dc=barleta,dc=local" -w 'Ilovejeff1'
+```
 
 ---
 
@@ -462,4 +632,8 @@ Analyze product performance:
 - [dbt Documentation](https://docs.getdbt.com/)
 - [Apache Superset Docs](https://superset.apache.org/docs/)
 - [Apache Airflow Docs](https://airflow.apache.org/docs/)
+- [DataHub Docs](https://datahubproject.io/docs/)
+- [Grafana Docs](https://grafana.com/docs/)
+- [Metabase Docs](https://www.metabase.com/docs/)
 - [UCI Online Retail Dataset](https://archive.ics.uci.edu/ml/datasets/Online+Retail)
+- [Keycloak Documentation](https://www.keycloak.org/documentation)

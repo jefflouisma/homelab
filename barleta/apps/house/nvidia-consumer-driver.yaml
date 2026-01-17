@@ -1,0 +1,144 @@
+---
+# Custom NVIDIA Consumer Driver DaemonSet for Harvester
+# Uses same methodology as nvidia-driver-toolkit but without vGPU dependencies
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nvidia-driver
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvidia-driver-entrypoint
+  namespace: nvidia-driver
+data:
+  entrypoint.sh: |
+    #!/bin/bash
+    set -e
+    
+    DRIVER_URL="${DRIVER_LOCATION:-https://download.nvidia.com/XFree86/Linux-x86_64/580.119.02/NVIDIA-Linux-x86_64-580.119.02.run}"
+    DRIVER_FILE="/tmp/nvidia-driver.run"
+    
+    echo "=== NVIDIA Consumer Driver Installer ==="
+    echo "Driver URL: $DRIVER_URL"
+    
+    # Check if driver already installed
+    if lsmod | grep -q "^nvidia "; then
+      echo "NVIDIA driver already loaded, checking nvidia-smi..."
+      if nvidia-smi > /dev/null 2>&1; then
+        echo "Driver working, creating device nodes..."
+        # Ensure device nodes exist
+        nvidia-smi > /dev/null 2>&1
+        echo "=== GPU Ready ==="
+        nvidia-smi
+        # Keep container running to serve libraries
+        echo "Keeping container alive to serve NVIDIA libraries..."
+        sleep infinity
+      fi
+    fi
+    
+    echo "Downloading driver..."
+    curl -fsSL -k -o "$DRIVER_FILE" "$DRIVER_URL"
+    chmod +x "$DRIVER_FILE"
+    
+    echo "Installing driver (silent mode, no questions)..."
+    "$DRIVER_FILE" --silent --no-questions --ui=none --no-install-compat32-libs 2>&1 || true
+    
+    echo "Verifying installation..."
+    if ! lsmod | grep -q "^nvidia "; then
+      echo "Loading nvidia module..."
+      modprobe nvidia || true
+    fi
+    
+    # Create device nodes
+    echo "Creating device nodes..."
+    if [ -e /usr/bin/nvidia-smi ]; then
+      nvidia-smi > /dev/null 2>&1 || true
+    fi
+    
+    # Check final status
+    echo "=== Installation Complete ==="
+    lsmod | grep nvidia || echo "WARNING: nvidia module not loaded"
+    ls -la /dev/nvidia* 2>/dev/null || echo "WARNING: /dev/nvidia* not found"
+    
+    if [ -e /usr/bin/nvidia-smi ]; then
+      nvidia-smi || echo "nvidia-smi failed"
+    fi
+    
+    # Keep container running to serve libraries
+    echo "Keeping container alive to serve NVIDIA libraries..."
+    sleep infinity
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-consumer-driver
+  namespace: nvidia-driver
+  labels:
+    app: nvidia-consumer-driver
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-consumer-driver
+  template:
+    metadata:
+      labels:
+        app: nvidia-consumer-driver
+    spec:
+      hostPID: true
+      hostNetwork: true
+      containers:
+        - name: nvidia-driver
+          image: rancher/harvester-nvidia-driver-toolkit:v1.7-20251222
+          command: ["/bin/bash", "/scripts/entrypoint.sh"]
+          env:
+            - name: DRIVER_LOCATION
+              value: "https://download.nvidia.com/XFree86/Linux-x86_64/580.119.02/NVIDIA-Linux-x86_64-580.119.02.run"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: dev
+              mountPath: /dev
+            - name: lib-modules
+              mountPath: /lib/modules
+            - name: usr-src
+              mountPath: /usr/src
+              readOnly: true
+            # Mount host paths for driver installation
+            - name: host-usr-lib64
+              mountPath: /host-usr-lib64
+            - name: run-nvidia
+              mountPath: /run/nvidia
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+      volumes:
+        - name: scripts
+          configMap:
+            name: nvidia-driver-entrypoint
+            defaultMode: 0755
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: lib-modules
+          hostPath:
+            path: /lib/modules
+        - name: usr-src
+          hostPath:
+            path: /usr/src
+        - name: host-usr-lib64
+          hostPath:
+            path: /usr/lib64
+            type: DirectoryOrCreate
+        - name: run-nvidia
+          hostPath:
+            path: /run/nvidia
+            type: DirectoryOrCreate
+      tolerations:
+        - operator: Exists

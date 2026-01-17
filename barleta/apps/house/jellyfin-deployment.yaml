@@ -1,0 +1,205 @@
+# Jellyfin with NVIDIA GPU Support for Harvester HCI
+# Uses init container pattern to inject NVIDIA libraries
+# Bypasses need for NVIDIA Container Toolkit on immutable OS
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jellyfin-config
+  namespace: house
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jellyfin-cache
+  namespace: house
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin
+  namespace: house
+  labels:
+    app: jellyfin
+    gpu: nvidia
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jellyfin
+  template:
+    metadata:
+      labels:
+        app: jellyfin
+        gpu: nvidia
+    spec:
+      # Init container extracts NVIDIA libraries from CUDA image
+      initContainers:
+        - name: nvidia-libs-init
+          image: nvidia/cuda:12.6.0-runtime-ubuntu22.04
+          command:
+            - sh
+            - -c
+            - |
+              echo "=== Extracting NVIDIA libraries ==="
+              mkdir -p /nvidia-libs
+              # Copy CUDA libraries
+              cp -v /usr/local/cuda/lib64/libcudart.so* /nvidia-libs/ 2>/dev/null || true
+              cp -v /usr/local/cuda/lib64/libcublas.so* /nvidia-libs/ 2>/dev/null || true
+              cp -v /usr/local/cuda/lib64/libcufft.so* /nvidia-libs/ 2>/dev/null || true
+              # Copy NVIDIA driver libraries
+              cp -v /usr/lib/x86_64-linux-gnu/libnvidia*.so* /nvidia-libs/ 2>/dev/null || true
+              cp -v /usr/lib/x86_64-linux-gnu/libcuda*.so* /nvidia-libs/ 2>/dev/null || true
+              cp -v /usr/lib/x86_64-linux-gnu/libnvcuvid*.so* /nvidia-libs/ 2>/dev/null || true
+              cp -v /usr/lib/x86_64-linux-gnu/libnvoptix*.so* /nvidia-libs/ 2>/dev/null || true
+              # List what we extracted
+              echo "=== Libraries extracted ==="
+              ls -la /nvidia-libs/
+              echo "=== Done ==="
+          volumeMounts:
+            - name: nvidia-libs
+              mountPath: /nvidia-libs
+      containers:
+        - name: jellyfin
+          image: jellyfin/jellyfin:10.11.5
+          ports:
+            - containerPort: 8096
+              name: http
+            - containerPort: 8920
+              name: https
+            - containerPort: 7359
+              name: discovery
+              protocol: UDP
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility,video"
+            - name: TZ
+              value: "America/Los_Angeles"
+            # Add NVIDIA libs to library path
+            - name: LD_LIBRARY_PATH
+              value: "/nvidia-libs:/usr/local/cuda/lib64"
+            # Log to tmpfs to prevent PVC disk fill (logs are ephemeral, Loki captures stdout)
+            - name: JELLYFIN_LOG_DIR
+              value: "/tmp/logs"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: cache
+              mountPath: /cache
+            - name: media
+              mountPath: /media
+              readOnly: true
+            # NVIDIA libraries from init container
+            - name: nvidia-libs
+              mountPath: /nvidia-libs
+              readOnly: true
+            # GPU device access
+            - name: dev
+              mountPath: /dev
+            - name: jellyfin-logs
+              mountPath: /tmp/logs
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 4000m
+              memory: 8Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8096
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8096
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: jellyfin-config
+        - name: cache
+          persistentVolumeClaim:
+            claimName: jellyfin-cache
+        - name: media
+          emptyDir: {}
+        # Shared volume for NVIDIA libraries
+        - name: nvidia-libs
+          emptyDir: {}
+        # Mount entire /dev for GPU access
+        - name: dev
+          hostPath:
+            path: /dev
+        # Ephemeral log storage with size limit (prevents disk fill)
+        - name: jellyfin-logs
+          emptyDir:
+            sizeLimit: 100Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyfin
+  namespace: house
+spec:
+  selector:
+    app: jellyfin
+  ports:
+    - name: http
+      port: 8096
+      targetPort: 8096
+    - name: https
+      port: 8920
+      targetPort: 8920
+  type: ClusterIP
+---
+# NodePort for direct IP access (Apple TV Swiftfin)
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyfin-nodeport
+  namespace: house
+spec:
+  type: NodePort
+  selector:
+    app: jellyfin
+  ports:
+    - name: http
+      port: 8096
+      targetPort: 8096
+      nodePort: 30096
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: jellyfin
+  namespace: house
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`jellyfin.barleta.local`)
+      kind: Rule
+      services:
+        - name: jellyfin
+          port: 8096

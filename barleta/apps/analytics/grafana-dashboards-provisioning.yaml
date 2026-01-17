@@ -1,0 +1,20 @@
+# Grafana Dashboard Provisioning Configuration
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: analytics
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'house-apps'
+        orgId: 1
+        folder: 'House Apps'
+        folderUid: 'house-apps'
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/house

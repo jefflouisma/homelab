@@ -29,3 +29,4 @@ id_rsa*
 *.local.yaml
 *.local.yml
 
+.env 
