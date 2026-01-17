@@ -13,7 +13,7 @@ metadata:
   name: fenrir-operator
 rules:
   - apiGroups: ["direwolf.games-on-whales.github.io"]
-    resources: ["apps", "sessions", "pairings", "users"]
+    resources: ["apps", "sessions", "pairings", "users", "sessions/status"]
     verbs: ["*"]
   - apiGroups: [""]
     resources: ["pods", "services", "persistentvolumeclaims", "secrets", "configmaps"]
@@ -42,6 +42,31 @@ roleRef:
   name: fenrir-operator
   apiGroup: rbac.authorization.k8s.io
 ---
+# Namespace-scoped Role for leader election leases
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fenrir-leader-election
+  namespace: house
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fenrir-leader-election
+  namespace: house
+subjects:
+  - kind: ServiceAccount
+    name: fenrir-operator
+    namespace: house
+roleRef:
+  kind: Role
+  name: fenrir-leader-election
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -67,6 +92,10 @@ spec:
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace

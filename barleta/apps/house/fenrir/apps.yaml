@@ -16,22 +16,9 @@ spec:
   template:
     spec:
       containers:
+        # Only app container - operator adds wolf, pulseaudio, wolf-agent
         - name: retroarch
           image: ghcr.io/games-on-whales/retroarch:stable
-          env:
-            - name: XDG_RUNTIME_DIR
-              value: /tmp/runtime
-            - name: WAYLAND_DISPLAY
-              value: wayland-0
-            - name: PULSE_SERVER
-              value: unix:/tmp/pulse/native
-          volumeMounts:
-            - name: runtime
-              mountPath: /tmp/runtime
-            - name: pulse
-              mountPath: /tmp/pulse
-            - name: games
-              mountPath: /games
           resources:
             requests:
               cpu: "1"
@@ -39,56 +26,6 @@ spec:
             limits:
               cpu: "4"
               memory: 8Gi
-        
-        - name: wolf
-          image: ghcr.io/games-on-whales/wolf:stable
-          env:
-            - name: XDG_RUNTIME_DIR
-              value: /tmp/runtime
-          securityContext:
-            privileged: true
-          ports:
-            - containerPort: 47984
-            - containerPort: 47989
-            - containerPort: 48010
-          volumeMounts:
-            - name: runtime
-              mountPath: /tmp/runtime
-            - name: wolf-config
-              mountPath: /etc/wolf
-          resources:
-            requests:
-              cpu: "500m"
-              memory: 512Mi
-            limits:
-              cpu: "2"
-              memory: 2Gi
-        
-        - name: pulseaudio
-          image: ghcr.io/games-on-whales/pulseaudio:latest
-          volumeMounts:
-            - name: pulse
-              mountPath: /tmp/pulse
-          resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 200m
-              memory: 128Mi
-      
-      volumes:
-        - name: runtime
-          emptyDir:
-            medium: Memory
-        - name: pulse
-          emptyDir:
-            medium: Memory
-        - name: wolf-config
-          configMap:
-            name: wolf-session-config
-        - name: games
-          emptyDir: {}
       
       restartPolicy: Always
 ---
