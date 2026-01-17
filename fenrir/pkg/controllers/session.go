@@ -757,8 +757,8 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 			podToCreate.Spec.Containers[i].Resources.Limits = corev1.ResourceList{}
 		}
 
-		podToCreate.Spec.Containers[i].Resources.Requests["nvidia.com/gpu"] = resource.MustParse("1")
-		podToCreate.Spec.Containers[i].Resources.Limits["nvidia.com/gpu"] = resource.MustParse("1")
+		// GPU access is via privileged: true + /dev hostPath mount (jellyfin pattern)
+		// No nvidia.com/gpu resource requests - cluster doesn't have nvidia-device-plugin
 	}
 
 	podToCreate.Spec.InitContainers = append(podToCreate.Spec.InitContainers,
@@ -971,10 +971,7 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				Requests: corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("100m"),
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
-					"nvidia.com/gpu":      resource.MustParse("1"),
-				},
-				Limits: corev1.ResourceList{
-					"nvidia.com/gpu": resource.MustParse("1"),
+					// GPU access via privileged: true + /dev mount (no nvidia-device-plugin)
 				},
 			},
 			VolumeMounts: []corev1.VolumeMount{
