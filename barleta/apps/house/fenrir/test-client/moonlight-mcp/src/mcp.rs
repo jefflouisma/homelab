@@ -312,11 +312,11 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
             let host = arguments["host"].as_str().unwrap_or("localhost");
             let pin = arguments["pin"].as_str().unwrap_or("0000");
 
-            match moonlight::pair(host, pin).await {
+            match crate::pairing::native_pair(host, pin).await {
                 Ok(()) => ToolResult {
                     content: vec![ContentItem {
                         content_type: "text".into(),
-                        text: "Successfully paired".into(),
+                        text: "Successfully paired using native protocol".into(),
                     }],
                     is_error: false,
                 },

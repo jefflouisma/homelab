@@ -7,6 +7,7 @@
 
 mod mcp;
 mod moonlight;
+mod pairing;
 mod tests;
 mod validator;
 
@@ -81,7 +82,10 @@ async fn main() -> Result<()> {
                 Ok(())
             }
             Some(Commands::Pair { host, pin }) => {
-                moonlight::pair(&host, &pin).await
+                println!("Pairing with {} using native protocol...", host);
+                pairing::native_pair(&host, &pin).await?;
+                println!("Pairing successful!");
+                Ok(())
             }
             None => {
                 // Default: run as MCP server

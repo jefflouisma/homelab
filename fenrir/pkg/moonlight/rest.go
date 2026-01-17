@@ -96,6 +96,7 @@ func NewRESTServer(
 
 	ps.router.HandleFunc("/readyz", ps.readyzHandler)
 	ps.router.HandleFunc("/livez", ps.livezHandler)
+	ps.router.HandleFunc("/pairing/pending", ps.pendingPairingsHandler)
 
 	ps.secureRouter.HandleFunc("/serverinfo", ps.serverInfoHandler)
 	ps.secureRouter.HandleFunc("/pair", ps.pairHandler)
@@ -171,6 +172,17 @@ func (s *RESTServer) readyzHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *RESTServer) livezHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
+}
+
+// pendingPairingsHandler returns pending pairing secrets as JSON for E2E automation
+func (s *RESTServer) pendingPairingsHandler(w http.ResponseWriter, r *http.Request) {
+	type response struct {
+		Secrets []string `json:"secrets"`
+	}
+
+	secrets := s.manager.GetPendingSecrets()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response{Secrets: secrets})
 }
 
 func (s *RESTServer) dashboardHandler(w http.ResponseWriter, r *http.Request) {

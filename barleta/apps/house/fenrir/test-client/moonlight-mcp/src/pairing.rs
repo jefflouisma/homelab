@@ -1,0 +1,476 @@
+//! Native GameStream pairing protocol implementation
+//!
+//! Implements the 4-phase pairing protocol without depending on moonlight-qt:
+//! - Phase 1: Send salt + client cert, receive server cert
+//! - Phase 2: Send client challenge, receive challenge response  
+//! - Phase 3: Send server challenge response, receive pairing secret
+//! - Phase 4: Send client pairing secret, receive paired confirmation
+
+use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
+use aes::Aes128;
+use anyhow::{anyhow, Result};
+use rand::RngCore;
+use rcgen::{CertificateParams, KeyPair};
+use rsa::pkcs1v15::SigningKey;
+use rsa::pkcs8::DecodePrivateKey;
+use rsa::signature::{SignatureEncoding, Signer};
+use rsa::RsaPrivateKey;
+use sha2::{Digest, Sha256};
+use std::fs;
+use std::path::PathBuf;
+
+/// Client identity for pairing - generated once and persisted
+pub struct ClientIdentity {
+    pub cert_pem: String,
+    pub key_pem: String,
+    pub fingerprint: String,
+    key_pair: KeyPair,
+}
+
+impl ClientIdentity {
+    /// Load existing identity or create new one
+    pub fn load_or_create() -> Result<Self> {
+        let config_dir = Self::config_dir()?;
+        fs::create_dir_all(&config_dir)?;
+
+        let cert_path = config_dir.join("client.crt");
+        let key_path = config_dir.join("client.key");
+
+        if cert_path.exists() && key_path.exists() {
+            Self::load(&cert_path, &key_path)
+        } else {
+            let identity = Self::generate()?;
+            identity.save(&cert_path, &key_path)?;
+            Ok(identity)
+        }
+    }
+
+    fn config_dir() -> Result<PathBuf> {
+        let base = dirs::config_dir().ok_or_else(|| anyhow!("No config directory"))?;
+        Ok(base.join("moonlight-mcp"))
+    }
+
+    fn generate() -> Result<Self> {
+        use rsa::pkcs8::EncodePrivateKey;
+        
+        // Generate RSA-2048 key pair using rsa crate
+        let mut rng = rand::thread_rng();
+        let bits = 2048;
+        let private_key = RsaPrivateKey::new(&mut rng, bits)?;
+        
+        // Export private key to PKCS8 PEM format
+        let key_pem = private_key.to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)?;
+        
+        // Load the key into rcgen's KeyPair
+        let key_pair = KeyPair::from_pem(&key_pem)?;
+        
+        // Create certificate params
+        let mut params = CertificateParams::new(vec!["NVIDIA GameStream Client".to_string()])?;
+        params.distinguished_name.push(
+            rcgen::DnType::CommonName,
+            "NVIDIA GameStream Client",
+        );
+
+        // Generate self-signed cert using the RSA key
+        let cert = params.self_signed(&key_pair)?;
+
+        let cert_pem = cert.pem();
+
+        // Calculate fingerprint (SHA256 of DER cert)
+        let cert_der = cert.der();
+        let fingerprint = hex::encode(Sha256::digest(cert_der.as_ref()));
+
+        Ok(Self {
+            cert_pem,
+            key_pem: key_pem.to_string(),
+            fingerprint,
+            key_pair,
+        })
+    }
+
+    fn load(cert_path: &PathBuf, key_path: &PathBuf) -> Result<Self> {
+        let cert_pem = fs::read_to_string(cert_path)?;
+        let key_pem = fs::read_to_string(key_path)?;
+
+        // Parse the key pair
+        let key_pair = KeyPair::from_pem(&key_pem)?;
+
+        // Calculate fingerprint from cert
+        let cert_der = pem::parse(&cert_pem)?.into_contents();
+        let fingerprint = hex::encode(Sha256::digest(&cert_der));
+
+        Ok(Self {
+            cert_pem,
+            key_pem,
+            fingerprint,
+            key_pair,
+        })
+    }
+
+    fn save(&self, cert_path: &PathBuf, key_path: &PathBuf) -> Result<()> {
+        fs::write(cert_path, &self.cert_pem)?;
+        fs::write(key_path, &self.key_pem)?;
+        Ok(())
+    }
+
+    /// Get the hex-encoded certificate for pairing requests
+    pub fn cert_hex(&self) -> String {
+        hex::encode(self.cert_pem.as_bytes())
+    }
+}
+
+/// Pairing session state
+pub struct PairingSession {
+    host: String,
+    unique_id: String,
+    identity: ClientIdentity,
+    salt: Vec<u8>,
+    aes_key: Vec<u8>,
+    server_cert_pem: Option<String>,
+    client_challenge: Vec<u8>,
+    server_challenge: Vec<u8>,
+    client_secret: Vec<u8>,
+}
+
+impl PairingSession {
+    pub fn new(host: &str) -> Result<Self> {
+        let identity = ClientIdentity::load_or_create()?;
+        let mut salt = vec![0u8; 16];
+        rand::thread_rng().fill_bytes(&mut salt);
+
+        Ok(Self {
+            host: host.to_string(),
+            unique_id: "moonlight-mcp-e2e".to_string(),
+            identity,
+            salt,
+            aes_key: Vec::new(),
+            server_cert_pem: None,
+            client_challenge: Vec::new(),
+            server_challenge: Vec::new(),
+            client_secret: Vec::new(),
+        })
+    }
+
+    /// Execute the full 4-phase pairing protocol
+    pub async fn pair(&mut self, pin: &str) -> Result<()> {
+        // Derive AES key from salt + PIN
+        self.aes_key = Self::derive_aes_key(&self.salt, pin);
+
+        // Phase 1: Get server certificate (handles async PIN submission via API)
+        let server_cert = self.phase1(pin).await?;
+        self.server_cert_pem = Some(server_cert);
+
+        // Phase 2: Client challenge
+        self.phase2().await?;
+
+        // Phase 3: Server challenge response
+        self.phase3().await?;
+
+        // Phase 4: Complete pairing
+        self.phase4().await?;
+
+        Ok(())
+    }
+
+    fn derive_aes_key(salt: &[u8], pin: &str) -> Vec<u8> {
+        let mut hasher = Sha256::new();
+        hasher.update(&salt[..16.min(salt.len())]);
+        hasher.update(pin.as_bytes());
+        hasher.finalize()[..16].to_vec()
+    }
+
+    async fn phase1(&self, pin: &str) -> Result<String> {
+        let host = self.host.clone();
+        let unique_id = self.unique_id.clone();
+        let salt = self.salt.clone();
+        let cert_hex = self.identity.cert_hex();
+
+        // Spawn phase1 request in background (will block until PIN is submitted)
+        let phase1_handle = tokio::spawn(async move {
+            let url = format!(
+                "http://{}:47989/pair?uniqueid={}&uuid={}&devicename=moonlight-mcp&updateState=1&phrase=getservercert&salt={}&clientcert={}",
+                host,
+                unique_id,
+                uuid::Uuid::new_v4(),
+                hex::encode(&salt),
+                cert_hex
+            );
+
+            let client = reqwest::Client::builder()
+                .danger_accept_invalid_certs(true)
+                .timeout(std::time::Duration::from_secs(60))
+                .build()?;
+
+            let response = client.get(&url).send().await?;
+            let body = response.text().await?;
+
+            // Parse XML response for plaincert
+            if let Some(start) = body.find("<plaincert>") {
+                if let Some(end) = body.find("</plaincert>") {
+                    let cert_hex = &body[start + 11..end];
+                    let cert_pem = String::from_utf8(hex::decode(cert_hex)?)?;
+                    return Ok(cert_pem);
+                }
+            }
+
+            // Check for paired=0 (error)
+            if body.contains("<paired>0</paired>") {
+                return Err(anyhow!("Pairing failed in phase 1: {}", body));
+            }
+
+            Err(anyhow!("Invalid phase 1 response: {}", body))
+        });
+
+        // Give server time to process request and generate pin secret
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Poll for pending secrets
+        let secret = self.poll_for_secret().await?;
+
+        // Submit PIN
+        self.submit_pin(&secret, pin).await?;
+
+        // Await phase1 completion
+        phase1_handle.await?
+    }
+
+    /// Poll the server for pending pairing secrets
+    async fn poll_for_secret(&self) -> Result<String> {
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()?;
+
+        let url = format!("http://{}:47989/pairing/pending", self.host);
+
+        // Poll for up to 10 seconds
+        for _ in 0..20 {
+            let response = client.get(&url).send().await?;
+            let body: serde_json::Value = response.json().await?;
+
+            if let Some(secrets) = body.get("secrets").and_then(|s| s.as_array()) {
+                if !secrets.is_empty() {
+                    if let Some(secret) = secrets[0].as_str() {
+                        return Ok(secret.to_string());
+                    }
+                }
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+
+        Err(anyhow!("Timeout waiting for pairing secret"))
+    }
+
+    /// Submit PIN to server
+    async fn submit_pin(&self, secret: &str, pin: &str) -> Result<()> {
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()?;
+
+        let url = format!("http://{}:47989/pin/", self.host);
+
+        #[derive(serde::Serialize)]
+        struct PinRequest<'a> {
+            pin: &'a str,
+            secret: &'a str,
+        }
+
+        let response = client
+            .post(&url)
+            .json(&PinRequest { pin, secret })
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let body = response.text().await?;
+            return Err(anyhow!("Failed to submit PIN: {}", body));
+        }
+
+        Ok(())
+    }
+
+    async fn phase2(&mut self) -> Result<()> {
+        // Generate client challenge
+        self.client_challenge = vec![0u8; 16];
+        rand::thread_rng().fill_bytes(&mut self.client_challenge);
+
+        // Encrypt challenge with AES-ECB
+        let encrypted = Self::aes_encrypt_ecb(&self.client_challenge, &self.aes_key)?;
+
+        let url = format!(
+            "http://{}:47989/pair?uniqueid={}&uuid={}&devicename=moonlight-mcp&updateState=1&phrase=clientchallenge&clientchallenge={}",
+            self.host,
+            self.unique_id,
+            uuid::Uuid::new_v4(),
+            hex::encode(&encrypted)
+        );
+
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()?;
+
+        let response = client.get(&url).send().await?;
+        let body = response.text().await?;
+
+        // Parse challengeresponse
+        if let Some(start) = body.find("<challengeresponse>") {
+            if let Some(end) = body.find("</challengeresponse>") {
+                let challenge_hex = &body[start + 19..end];
+                let encrypted_response = hex::decode(challenge_hex)?;
+                let decrypted = Self::aes_decrypt_ecb(&encrypted_response, &self.aes_key)?;
+
+                // Server challenge is the last 16 bytes
+                if decrypted.len() >= 16 {
+                    self.server_challenge = decrypted[decrypted.len() - 16..].to_vec();
+                    return Ok(());
+                }
+            }
+        }
+
+        Err(anyhow!("Invalid phase 2 response: {}", body))
+    }
+
+    async fn phase3(&mut self) -> Result<()> {
+        // Generate client secret
+        self.client_secret = vec![0u8; 16];
+        rand::thread_rng().fill_bytes(&mut self.client_secret);
+
+        // Get client cert signature
+        let cert_der = pem::parse(&self.identity.cert_pem)?.into_contents();
+        let (_, cert) = x509_parser::parse_x509_certificate(&cert_der)?;
+        let cert_signature = cert.signature_value.as_ref();
+
+        // Create hash: SHA256(server_challenge + cert_signature + client_secret)
+        let mut hasher = Sha256::new();
+        hasher.update(&self.server_challenge);
+        hasher.update(cert_signature);
+        hasher.update(&self.client_secret);
+        let client_hash = hasher.finalize().to_vec();
+
+        // Encrypt the hash
+        let encrypted = Self::aes_encrypt_ecb(&client_hash, &self.aes_key)?;
+
+        let url = format!(
+            "http://{}:47989/pair?uniqueid={}&uuid={}&devicename=moonlight-mcp&updateState=1&phrase=serverchallengeresp&serverchallengeresp={}",
+            self.host,
+            self.unique_id,
+            uuid::Uuid::new_v4(),
+            hex::encode(&encrypted)
+        );
+
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()?;
+
+        let response = client.get(&url).send().await?;
+        let body = response.text().await?;
+
+        if body.contains("<paired>1</paired>") {
+            return Ok(());
+        }
+
+        Err(anyhow!("Invalid phase 3 response: {}", body))
+    }
+
+    async fn phase4(&self) -> Result<()> {
+        // Sign the client secret with our private key
+        let key_der = pem::parse(&self.identity.key_pem)?.into_contents();
+        let private_key = rsa::RsaPrivateKey::from_pkcs8_der(&key_der)?;
+        let signing_key = SigningKey::<Sha256>::new(private_key);
+        let signature = signing_key.sign(&self.client_secret);
+
+        // Pairing secret = client_secret + signature
+        let mut pairing_secret = self.client_secret.clone();
+        pairing_secret.extend(signature.to_bytes().as_ref());
+
+        let url = format!(
+            "http://{}:47989/pair?uniqueid={}&uuid={}&devicename=moonlight-mcp&updateState=1&phrase=clientpairingsecret&clientpairingsecret={}",
+            self.host,
+            self.unique_id,
+            uuid::Uuid::new_v4(),
+            hex::encode(&pairing_secret)
+        );
+
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()?;
+
+        let response = client.get(&url).send().await?;
+        let body = response.text().await?;
+
+        if body.contains("<paired>1</paired>") {
+            return Ok(());
+        }
+
+        Err(anyhow!("Pairing failed in phase 4: {}", body))
+    }
+
+    fn aes_encrypt_ecb(plaintext: &[u8], key: &[u8]) -> Result<Vec<u8>> {
+        let cipher = Aes128::new_from_slice(key)?;
+        let mut ciphertext = Vec::new();
+
+        // Pad to block size
+        let block_size = 16;
+        let mut padded = plaintext.to_vec();
+        while padded.len() % block_size != 0 {
+            padded.push(0);
+        }
+
+        for chunk in padded.chunks(block_size) {
+            let mut block = aes::cipher::generic_array::GenericArray::clone_from_slice(chunk);
+            cipher.encrypt_block(&mut block);
+            ciphertext.extend_from_slice(&block);
+        }
+
+        Ok(ciphertext)
+    }
+
+    fn aes_decrypt_ecb(ciphertext: &[u8], key: &[u8]) -> Result<Vec<u8>> {
+        let cipher = Aes128::new_from_slice(key)?;
+        let mut plaintext = Vec::new();
+
+        let block_size = 16;
+        for chunk in ciphertext.chunks(block_size) {
+            let mut block = aes::cipher::generic_array::GenericArray::clone_from_slice(chunk);
+            cipher.decrypt_block(&mut block);
+            plaintext.extend_from_slice(&block);
+        }
+
+        Ok(plaintext)
+    }
+}
+
+/// Pair with host using the native protocol
+pub async fn native_pair(host: &str, pin: &str) -> Result<()> {
+    let mut session = PairingSession::new(host)?;
+    session.pair(pin).await
+}
+
+/// Check if we have a valid client identity
+pub fn has_identity() -> bool {
+    ClientIdentity::load_or_create().is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_aes_key_derivation() {
+        let salt = vec![0u8; 16];
+        let pin = "1234";
+        let key = PairingSession::derive_aes_key(&salt, pin);
+        assert_eq!(key.len(), 16);
+    }
+
+    #[test]
+    fn test_aes_roundtrip() {
+        let key = vec![0u8; 16];
+        let plaintext = b"Hello, World!!!"; // 16 bytes
+        
+        let encrypted = PairingSession::aes_encrypt_ecb(plaintext, &key).unwrap();
+        let decrypted = PairingSession::aes_decrypt_ecb(&encrypted, &key).unwrap();
+        
+        assert_eq!(&decrypted[..16], plaintext);
+    }
+}

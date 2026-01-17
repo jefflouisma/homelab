@@ -41,3 +41,27 @@ thiserror = "1"
 # Path expansion
 shellexpand = "3"
 
+# Crypto for native pairing protocol
+rcgen = "0.13"          # Self-signed cert generation
+rsa = { version = "0.9", features = ["sha2"] }
+sha2 = "0.10"
+aes = "0.8"
+rand = "0.8"
+hex = "0.4"
+x509-parser = "0.16"
+
+# Native TLS with client certs
+rustls = "0.23"
+rustls-pemfile = "2"
+tokio-rustls = "0.26"
+webpki-roots = "0.26"
+
+# Directories for config storage
+dirs = "5"
+
+# UUID generation for pairing requests
+uuid = { version = "1", features = ["v4"] }
+
+# PEM parsing
+pem = "3"
+
