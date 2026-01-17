@@ -2,7 +2,7 @@
 # Custom RetroArch image for Wolf/Moonlight game streaming
 # Based on games-on-whales gst-wayland-display for Wolf compatibility
 
-FROM gameonwhales/gst-wayland-display:latest
+FROM ghcr.io/games-on-whales/base:edge
 
 LABEL org.opencontainers.image.source="https://github.com/jefflouisma/homelab"
 LABEL org.opencontainers.image.description="RetroArch for Fenrir game streaming"
