@@ -965,8 +965,7 @@ echo "=== Done ==="
 				"GST_VAAPI_ALL_DRIVERS":      "1",
 				"GST_DEBUG":                  "2",
 				"__GL_SYNC_TO_VBLANK":        "0",
-				"NVIDIA_VISIBLE_DEVICES":     "all",
-				"NVIDIA_DRIVER_CAPABILITIES": "all",
+				// Note: NVIDIA_VISIBLE_DEVICES removed - conflicts with hostPath /dev mount
 				"LIBVA_DRIVER_NAME":          "nvidia",
 				"LD_LIBRARY_PATH":            "/nvidia-libs:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
 			}),
