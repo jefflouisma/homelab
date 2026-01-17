@@ -1,31 +1,19 @@
 # Fenrir RetroArch Container
 # Custom RetroArch image for Wolf/Moonlight game streaming
-# Based on games-on-whales gst-wayland-display for Wolf compatibility
+# High-quality emulation with cores from libretro buildbot
 
 FROM ghcr.io/games-on-whales/base:edge
 
 LABEL org.opencontainers.image.source="https://github.com/jefflouisma/homelab"
 LABEL org.opencontainers.image.description="RetroArch for Fenrir game streaming"
 
-# Install RetroArch and popular cores
+# Install RetroArch and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # RetroArch core
     retroarch \
-    # Popular cores - console emulation
-    libretro-beetle-psx-hw \
-    libretro-mupen64plus-next \
-    libretro-mgba \
-    libretro-snes9x \
-    libretro-nestopia \
-    libretro-desmume \
-    libretro-ppsspp \
-    libretro-flycast \
-    libretro-bsnes-mercury-balanced \
-    libretro-gambatte \
-    libretro-genesis-plus-gx \
     # Vulkan/GPU support
     vulkan-tools \
     mesa-vulkan-drivers \
+    libvulkan1 \
     # Audio
     pulseaudio \
     # Controller support
@@ -33,7 +21,75 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Fonts for UI
     fonts-liberation \
     fonts-noto \
+    # Download utilities
+    wget \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# Create core directory
+RUN mkdir -p /usr/lib/libretro
+
+# Download high-quality cores from libretro buildbot
+# Using correct filenames verified from https://buildbot.libretro.com/nightly/linux/x86_64/latest/
+
+# PlayStation (mednafen_psx_hw - hardware accelerated, formerly beetle)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/mednafen_psx_hw_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# PlayStation 2 (pcsx2)  
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/pcsx2_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# Nintendo 64 (mupen64plus_next)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/mupen64plus_next_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# PSP (ppsspp)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/ppsspp_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# Dreamcast (flycast)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/flycast_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# GameCube/Wii (dolphin)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/dolphin_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# Nintendo 3DS (citra)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/citra_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# Game Boy Advance (mgba)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/mgba_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# Super Nintendo (snes9x)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/snes9x_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# NES (mesen)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/mesen_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# Nintendo DS (melonDS)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/melonds_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# Sega Genesis (genesis_plus_gx)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/genesis_plus_gx_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# Saturn (mednafen_saturn) 
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/mednafen_saturn_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# Arcade (FinalBurn Neo)
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/fbneo_libretro.so.zip -O /tmp/core.zip \
+    && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# Set permissions on cores
+RUN chmod +x /usr/lib/libretro/*.so
 
 # Create directories
 RUN mkdir -p /roms /saves /config /screenshots
@@ -48,7 +104,6 @@ ENV PULSE_SERVER=unix:/tmp/pulse/native
 ENV LD_LIBRARY_PATH=/nvidia-libs:/usr/local/cuda/lib64
 
 # Run as non-root user for security (matches Wolf expectations)
-# The base image already sets up ubuntu user
 USER ubuntu
 
 # Default command
