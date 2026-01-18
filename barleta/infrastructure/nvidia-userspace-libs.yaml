@@ -37,11 +37,14 @@ spec:
           set -e
           echo "=== Installing NVIDIA User-Space Libraries ==="
           
-          # Check if nvidia module is loaded (check HOST via nsenter)
-          echo "Checking host kernel modules..."
-          HOST_MODULES=$(nsenter -t 1 -m cat /proc/modules 2>/dev/null)
+          # Read host kernel modules via mounted /host-root
+          echo "Checking host kernel modules via /host-root/proc/modules..."
+          HOST_MODULES=$(cat /host-root/proc/modules 2>/dev/null || echo "")
+          echo "First 3 nvidia-related modules found:"
+          echo "$HOST_MODULES" | grep nvidia | head -3
+          
           if ! echo "$HOST_MODULES" | grep -q "^nvidia "; then
-            echo "NVIDIA module not loaded on HOST, skipping"
+            echo "NVIDIA module not loaded on HOST, skipping installation"
             exit 0
           fi
           echo "nvidia module found on host!"
@@ -54,24 +57,24 @@ spec:
             # Check if we have cached nvidia-uvm.ko
             if [ -f /host-lib/nvidia-uvm.ko ]; then
               echo "Found cached nvidia-uvm.ko at /host-lib/nvidia-uvm.ko"
-              echo "Attempting insmod via nsenter..."
-              nsenter -t 1 -m -u -i -n insmod /var/lib/nvidia-userspace/nvidia-uvm.ko 2>&1 || echo "insmod failed (may need extraction)"
+              echo "Attempting insmod via chroot into host..."
+              chroot /host-root /sbin/insmod /var/lib/nvidia-userspace/nvidia-uvm.ko 2>&1 || echo "insmod failed (may need extraction)"
             else
               echo "No cached nvidia-uvm.ko found, need to extract from driver..."
               NEEDS_UVM_EXTRACT=1
             fi
             
             # Verify if loaded now
-            HOST_MODULES=$(nsenter -t 1 -m cat /proc/modules 2>/dev/null)
+            HOST_MODULES=$(cat /host-root/proc/modules 2>/dev/null || echo "")
             if echo "$HOST_MODULES" | grep -q "nvidia_uvm"; then
               echo "SUCCESS: nvidia-uvm is now loaded!"
               # Create device nodes
-              MAJOR=$(nsenter -t 1 -m cat /proc/devices 2>/dev/null | grep nvidia-uvm | awk '{print $1}')
+              MAJOR=$(cat /host-root/proc/devices 2>/dev/null | grep nvidia-uvm | awk '{print $1}')
               if [ -n "$MAJOR" ]; then
                 echo "Creating /dev/nvidia-uvm device nodes with major $MAJOR"
-                nsenter -t 1 -m mknod -m 666 /dev/nvidia-uvm c $MAJOR 0 2>/dev/null || true
-                nsenter -t 1 -m mknod -m 666 /dev/nvidia-uvm-tools c $MAJOR 1 2>/dev/null || true
-                nsenter -t 1 -m ls -la /dev/nvidia-uvm* 2>/dev/null
+                mknod -m 666 /host-root/dev/nvidia-uvm c $MAJOR 0 2>/dev/null || true
+                mknod -m 666 /host-root/dev/nvidia-uvm-tools c $MAJOR 1 2>/dev/null || true
+                ls -la /host-root/dev/nvidia-uvm* 2>/dev/null
               fi
             else
               echo "nvidia-uvm still not loaded, need full driver extraction..."
@@ -79,7 +82,7 @@ spec:
             fi
           else
             echo "nvidia-uvm already loaded on HOST!"
-            nsenter -t 1 -m ls -la /dev/nvidia-uvm* 2>/dev/null || true
+            ls -la /host-root/dev/nvidia-uvm* 2>/dev/null || true
           fi
           
           # Check if user-space libraries already installed AND nvidia-uvm is loaded
