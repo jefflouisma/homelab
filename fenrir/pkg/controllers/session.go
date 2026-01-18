@@ -1423,6 +1423,7 @@ func (c *SessionController) reconcileActiveStreams(
 			AppID:             "1",
 			AudioChannelCount: 2, // !TODO: parse from audio info
 			ClientIP:          "10.128.1.0",
+			RTSPFakeIP:        "10.128.1.0", // Required by Wolf API for RTSP streaming
 			ClientSettings: wolfapi.ClientSettings{
 				RunGID:              1000,
 				RunUID:              1000,

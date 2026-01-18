@@ -23,6 +23,9 @@ type Session struct {
 
 	AESKey string `json:"aes_key"`
 	AESIV  string `json:"aes_iv"`
+
+	// Required by Wolf API for RTSP streaming
+	RTSPFakeIP string `json:"rtsp_fake_ip"`
 }
 
 type ClientSettings struct {
