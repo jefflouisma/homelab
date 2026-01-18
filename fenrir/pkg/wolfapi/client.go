@@ -12,9 +12,8 @@ import (
 )
 
 type ClientInfo struct {
-	ID        string `json:"id"`
-	AppID     string `json:"app_id,omitempty"`
-	IP        string `json:"ip,omitempty"`
+	ID        string `json:"client_id"`
+	AppState  string `json:"app_state_folder,omitempty"`
 }
 
 type ClientsResponse struct {
