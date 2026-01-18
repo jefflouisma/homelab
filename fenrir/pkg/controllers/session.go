@@ -1009,11 +1009,12 @@ echo "=== Done ==="
 				"WOLF_CFG_FILE":              "/etc/wolf/cfg/config.toml",
 				"WOLF_PULSE_IMAGE":           "ghcr.io/games-on-whales/pulseaudio:master",
 				"WOLF_CFG_FOLDER":            "/etc/wolf/cfg",
-				"WOLF_RENDER_NODE":           "/dev/dri/renderD128",  // renderD128=AMD (sw encoding), renderD129=NVIDIA (cuda broken)
+				"WOLF_RENDER_NODE":           "/dev/dri/renderD129",  // renderD129=NVIDIA
 				"GST_VAAPI_ALL_DRIVERS":      "1",
 				"GST_DEBUG":                  "2",
 				"__GL_SYNC_TO_VBLANK":        "0",
-				// Note: NVIDIA_VISIBLE_DEVICES removed - conflicts with hostPath /dev mount
+				// Disable CUDA to force software encoding (nvidia-uvm not in open driver)
+				"CUDA_VISIBLE_DEVICES":       "-1",
 				"LIBVA_DRIVER_NAME":          "nvidia",
 				// Point EGL to NVIDIA vendor library - critical for DRI2 screen creation
 				"__EGL_VENDOR_LIBRARY_DIRS":  "/nvidia-userspace:/usr/share/glvnd/egl_vendor.d",
