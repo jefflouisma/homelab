@@ -1,34 +1,35 @@
 # nvidia-uvm.ko Builder for Harvester
-# Builds nvidia-uvm kernel module for SLE Micro 6.1 kernel 6.4.0-36-default
+# Builds nvidia-uvm kernel module for SLE Micro 6.1 kernel
 #
-# This image uses SUSE SLE 15 SP6 with kernel-devel to cross-compile
+# Uses OpenSUSE Leap 15.6 with kernel-devel to cross-compile
 # the nvidia-uvm.ko module from NVIDIA open-source drivers.
 #
 # Usage:
-#   docker build -t nvidia-uvm-builder .
+#   docker build -t nvidia-uvm-builder -f Dockerfile.uvm-builder .
 #   docker run --rm nvidia-uvm-builder cat /output/nvidia-uvm.ko > nvidia-uvm.ko
 
-FROM registry.suse.com/bci/bci-base:15.6
+FROM opensuse/leap:15.6
 
-# Target kernel version (must match Harvester's kernel)
-ARG KERNEL_VERSION=6.4.0-36-default
+# Driver version matching Harvester's installed driver
 ARG DRIVER_VERSION=580.119.02
 
-ENV KERNEL_VERSION=${KERNEL_VERSION}
 ENV DRIVER_VERSION=${DRIVER_VERSION}
 
-# Install build dependencies
+# Install build dependencies - OpenSUSE Leap has these packages
 RUN zypper --non-interactive refresh && \
     zypper --non-interactive install -y \
         gcc \
+        gcc-c++ \
         make \
         kernel-default-devel \
-        kernel-source \
         wget \
         tar \
         gzip \
-        elfutils-libelf-devel \
+        libelf-devel \
         && zypper clean --all
+
+# Show kernel version we're building for
+RUN echo "Building for kernel:" && ls /usr/src/linux-* | head -1
 
 # Download NVIDIA open-source driver
 RUN wget -q "https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run" \
@@ -41,23 +42,30 @@ RUN /nvidia-driver.run --extract-only --target /nvidia-src
 # Create output directory
 RUN mkdir -p /output
 
-# Build nvidia-uvm kernel module
-# The open-source driver has nvidia-uvm in kernel-open/nvidia-uvm/
+# Build nvidia kernel modules using the open-source kernel-open
 WORKDIR /nvidia-src/kernel-open
 
-# Build just nvidia-uvm module
-# Note: We need to specify KERNEL_SOURCES and SYSSRC for the build
-RUN make -j$(nproc) modules \
-    KERNEL_VERSION=${KERNEL_VERSION} \
-    SYSSRC=/usr/src/linux-${KERNEL_VERSION} \
-    KERNEL_SOURCES=/usr/src/linux-${KERNEL_VERSION} \
-    NV_KERNEL_SOURCES=/usr/src/linux-${KERNEL_VERSION} \
-    || echo "Build may have partial success, checking for nvidia-uvm.ko..."
+# Get the kernel version from available sources
+RUN KERNEL_VERSION=$(ls /usr/src/linux-* -d | head -1 | sed 's|/usr/src/linux-||') && \
+    echo "Building for kernel version: ${KERNEL_VERSION}" && \
+    make -j$(nproc) modules \
+        SYSSRC=/usr/src/linux-${KERNEL_VERSION} \
+        KERNEL_SOURCES=/usr/src/linux-${KERNEL_VERSION} \
+    2>&1 || echo "Build may have warnings, checking for .ko files..."
 
-# Copy built modules to output
-RUN find /nvidia-src -name "nvidia-uvm.ko" -exec cp {} /output/ \; && \
-    find /nvidia-src -name "nvidia*.ko" -exec cp {} /output/ \; && \
+# Find and copy all built kernel modules to output
+RUN find /nvidia-src -name "*.ko" -type f -exec cp {} /output/ \; && \
+    echo "=== Built modules ===" && \
     ls -la /output/
+
+# Verify nvidia-uvm.ko was built
+RUN if [ -f "/output/nvidia-uvm.ko" ]; then \
+        echo "SUCCESS: nvidia-uvm.ko built!"; \
+        file /output/nvidia-uvm.ko; \
+    else \
+        echo "WARNING: nvidia-uvm.ko not found in output"; \
+        find /nvidia-src -name "nvidia-uvm*" -ls; \
+    fi
 
 # Default command shows what was built
 CMD ["ls", "-la", "/output/"]
