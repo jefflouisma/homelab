@@ -692,6 +692,14 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 		}
 	}
 
+	// Add video (486) and render (489) groups for DRI device access
+	// These GIDs are from the Harvester host and needed for GPU hardware encoding
+	podToCreate.Spec.SecurityContext.SupplementalGroups = append(
+		podToCreate.Spec.SecurityContext.SupplementalGroups,
+		486, // video group
+		489, // render group
+	)
+
 	mapToEnvApplyList := func(m map[string]string) []corev1.EnvVar {
 		var res []corev1.EnvVar
 		for k, v := range m {
