@@ -845,6 +845,33 @@ echo "=== Done ==="
 		},
 	)
 
+	// Init container to fix DRI device permissions for Wolf
+	// Wolf runs as ubuntu (uid 1000) which doesn't have access to render group files
+	podToCreate.Spec.InitContainers = append(podToCreate.Spec.InitContainers,
+		corev1.Container{
+			Name:  "dri-permissions",
+			Image: "busybox",
+			Command: []string{
+				"sh", "-c", `
+echo "=== Setting DRI device permissions ==="
+chmod 666 /dev/dri/renderD* 2>/dev/null || true
+chmod 666 /dev/dri/card* 2>/dev/null || true
+ls -la /dev/dri/
+echo "=== Done ==="
+`,
+			},
+			SecurityContext: &corev1.SecurityContext{
+				Privileged: ptr.To(true),
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "dev",
+					MountPath: "/dev",
+				},
+			},
+		},
+	)
+
 	podToCreate.Spec.Containers = append(podToCreate.Spec.Containers,
 		corev1.Container{
 			Name:            "wolf-agent",
