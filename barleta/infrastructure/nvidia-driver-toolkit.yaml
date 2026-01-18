@@ -1,0 +1,119 @@
+---
+# Unified NVIDIA Driver Toolkit DaemonSet
+# Replaces: nvidia-device-init, nvidia-userspace-libs, nvidia-uvm-loader, nvidia-consumer-driver
+#
+# Features:
+#   - Builds and loads ALL nvidia modules including nvidia-uvm
+#   - Persists kernel modules for fast reload after reboot
+#   - Extracts all userspace libraries
+#   - Creates device nodes with proper permissions
+#   - Generates EGL/Vulkan ICD files
+#
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-driver-toolkit
+  namespace: kube-system
+  labels:
+    app: nvidia-driver-toolkit
+    app.kubernetes.io/name: nvidia-driver-toolkit
+    app.kubernetes.io/component: driver
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-driver-toolkit
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: nvidia-driver-toolkit
+        app.kubernetes.io/name: nvidia-driver-toolkit
+    spec:
+      hostPID: true
+      hostNetwork: true
+      priorityClassName: system-node-critical
+      
+      containers:
+        - name: nvidia-driver
+          image: ghcr.io/jefflouisma/nvidia-driver-toolkit:580.119.02
+          imagePullPolicy: Always
+          args: ["init"]
+          env:
+            - name: DRIVER_VERSION
+              value: "580.119.02"
+            - name: NVIDIA_BASE_DIR
+              value: "/var/lib/nvidia"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            # Device access
+            - name: dev
+              mountPath: /dev
+            # Kernel modules
+            - name: lib-modules
+              mountPath: /lib/modules
+            # Kernel sources (for module building)
+            - name: usr-src
+              mountPath: /usr/src
+              readOnly: true
+            # Persistent storage for modules, libs, and configs
+            - name: nvidia-persist
+              mountPath: /var/lib/nvidia
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          # Liveness probe - check nvidia module is loaded
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "lsmod | grep -q '^nvidia '"
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            failureThreshold: 3
+          # Readiness probe - check nvidia-uvm is loaded (CUDA ready)
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "lsmod | grep -q '^nvidia_uvm '"
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 10
+      
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: lib-modules
+          hostPath:
+            path: /lib/modules
+            type: Directory
+        - name: usr-src
+          hostPath:
+            path: /usr/src
+            type: Directory
+        - name: nvidia-persist
+          hostPath:
+            path: /var/lib/nvidia
+            type: DirectoryOrCreate
+      
+      # Run on all nodes, tolerate any taints
+      tolerations:
+        - operator: Exists
+      
+      # GPU node selector - only nodes that need nvidia driver
+      nodeSelector:
+        kubernetes.io/os: linux
+        # Optionally restrict to specific nodes:
+        # sriovgpu.harvesterhci.io/driver-needed: "true"
