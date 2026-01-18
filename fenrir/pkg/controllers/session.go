@@ -810,28 +810,23 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 		},
 	)
 
-	// Init container to extract NVIDIA libraries for GPU encoding
+	// Init container to verify NVIDIA libraries from host toolkit
+	// Harvester nvidia-driver-toolkit installs libs to /var/lib/nvidia/lib
 	podToCreate.Spec.InitContainers = append(podToCreate.Spec.InitContainers,
 		corev1.Container{
 			Name:  "nvidia-libs-init",
-			Image: "nvidia/cuda:12.6.0-runtime-ubuntu22.04",
+			Image: "busybox:latest",
 			Command: []string{
 				"sh", "-c", `
-echo "=== Extracting NVIDIA libraries ==="
-mkdir -p /nvidia-libs
-# Copy CUDA runtime libraries from container
-cp -v /usr/local/cuda/lib64/libcudart.so* /nvidia-libs/ 2>/dev/null || true
-cp -v /usr/local/cuda/lib64/libcublas.so* /nvidia-libs/ 2>/dev/null || true
-cp -v /usr/local/cuda/lib64/libcufft.so* /nvidia-libs/ 2>/dev/null || true
-# Copy NVIDIA driver libraries from HOST filesystem (mounted at /host-lib)
-cp -v /host-lib/x86_64-linux-gnu/libnvidia*.so* /nvidia-libs/ 2>/dev/null || true
-cp -v /host-lib/x86_64-linux-gnu/libcuda*.so* /nvidia-libs/ 2>/dev/null || true
-cp -v /host-lib/x86_64-linux-gnu/libnvcuvid*.so* /nvidia-libs/ 2>/dev/null || true
-cp -v /host-lib/x86_64-linux-gnu/libnvoptix*.so* /nvidia-libs/ 2>/dev/null || true
-# Also try alternate host paths
-cp -v /host-lib/nvidia*/libnvidia*.so* /nvidia-libs/ 2>/dev/null || true
-cp -v /host-lib/nvidia*/libcuda*.so* /nvidia-libs/ 2>/dev/null || true
-ls -la /nvidia-libs/
+echo "=== Verifying NVIDIA libraries from host toolkit ==="
+if [ -f /nvidia-libs/libcuda.so.1 ]; then
+    echo "SUCCESS: Found libcuda.so.1"
+    ls -la /nvidia-libs/*.so* 2>/dev/null | head -20
+else
+    echo "WARNING: libcuda.so.1 not found in /nvidia-libs"
+    echo "Contents of /nvidia-libs:"
+    ls -la /nvidia-libs/ 2>/dev/null || echo "Directory empty or not found"
+fi
 echo "=== Done ==="
 `,
 			},
@@ -839,10 +834,6 @@ echo "=== Done ==="
 				{
 					Name:      "nvidia-libs",
 					MountPath: "/nvidia-libs",
-				},
-				{
-					Name:      "host-usr-lib",
-					MountPath: "/host-lib",
 					ReadOnly:  true,
 				},
 			},
@@ -1130,7 +1121,13 @@ echo "=== Done ==="
 		corev1.Volume{
 			Name: "nvidia-libs",
 			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/var/lib/nvidia/lib",
+					Type: func() *corev1.HostPathType {
+						t := corev1.HostPathDirectory
+						return &t
+					}(),
+				},
 			},
 		},
 		corev1.Volume{
