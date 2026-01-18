@@ -134,21 +134,27 @@ data:
               cpu: 200m
               memory: 128Mi
       
-      # Init container to extract NVIDIA libraries
+      # Init container to verify NVIDIA libraries from host toolkit
       initContainers:
         - name: nvidia-libs-init
-          image: nvidia/cuda:12.6.0-runtime-ubuntu22.04
+          image: busybox:latest
           command:
             - sh
             - -c
             - |
-              mkdir -p /nvidia-libs
-              cp -v /usr/local/cuda/lib64/libcudart.so* /nvidia-libs/ 2>/dev/null || true
-              cp -v /usr/lib/x86_64-linux-gnu/libnvidia*.so* /nvidia-libs/ 2>/dev/null || true
-              cp -v /usr/lib/x86_64-linux-gnu/libcuda*.so* /nvidia-libs/ 2>/dev/null || true
+              echo "Verifying NVIDIA libraries from host toolkit..."
+              if [ -f /nvidia-libs/libcuda.so.1 ]; then
+                echo "SUCCESS: Found libcuda.so.1"
+                ls -la /nvidia-libs/*.so* | head -20
+              else
+                echo "WARNING: libcuda.so.1 not found in /nvidia-libs"
+                echo "Contents:"
+                ls -la /nvidia-libs/ 2>/dev/null || echo "Directory empty or not found"
+              fi
           volumeMounts:
             - name: nvidia-libs
               mountPath: /nvidia-libs
+              readOnly: true
       
       volumes:
         - name: runtime
@@ -158,7 +164,9 @@ data:
           emptyDir:
             medium: Memory
         - name: nvidia-libs
-          emptyDir: {}
+          hostPath:
+            path: /var/lib/nvidia/lib
+            type: Directory
         - name: wolf-config
           configMap:
             name: wolf-session-config
