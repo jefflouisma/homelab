@@ -43,31 +43,32 @@ RUN wget -q "https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/
     -O /nvidia-driver.run && \
     chmod +x /nvidia-driver.run
 
+# Extract driver source (don't run installer, just extract)
+RUN /nvidia-driver.run --extract-only --target /nvidia-src && \
+    ls -la /nvidia-src/
+
 # Create output directory
 RUN mkdir -p /output
 
-# Build kernel modules using nvidia-installer with kernel-only option
+# Build kernel modules manually from kernel-open source
+# The nvidia-open modules are in kernel-open/ directory
+WORKDIR /nvidia-src/kernel-open
+
+# Get kernel version and build modules using the Makefile
 RUN KERNEL_VERSION=$(ls /usr/src/linux-* -d | head -1 | sed 's|/usr/src/linux-||') && \
-    echo "Building NVIDIA modules for kernel: ${KERNEL_VERSION}" && \
-    /nvidia-driver.run \
-        --kernel-module-only \
-        --kernel-name=${KERNEL_VERSION} \
-        --kernel-source-path=/usr/src/linux-${KERNEL_VERSION} \
-        --silent \
-        --no-questions \
-        --ui=none \
-        --no-backup \
-        --no-nouveau-check \
-        --no-cc-version-check \
-        --log-file-name=/tmp/nvidia-install.log \
-    2>&1 || (cat /tmp/nvidia-install.log; echo "Installation had issues, checking for built modules...")
+    echo "Building NVIDIA open kernel modules for: ${KERNEL_VERSION}" && \
+    echo "Contents of kernel-open:" && ls -la && \
+    echo "Building nvidia modules..." && \
+    make -j$(nproc) modules \
+        SYSSRC=/usr/src/linux-${KERNEL_VERSION} \
+        KERNEL_SOURCES=/usr/src/linux-${KERNEL_VERSION} \
+    2>&1 | tee /tmp/build.log || (echo "Build output:"; cat /tmp/build.log; echo "Build may have failed, checking for .ko files...")
 
 # Find and copy all built kernel modules to output
-RUN KERNEL_VERSION=$(ls /usr/src/linux-* -d | head -1 | sed 's|/usr/src/linux-||') && \
-    echo "Looking for modules in /lib/modules/${KERNEL_VERSION}..." && \
-    find /lib/modules -name "nvidia*.ko*" -type f -exec cp {} /output/ \; 2>/dev/null || true && \
-    find /usr/src -name "nvidia*.ko" -type f -exec cp {} /output/ \; 2>/dev/null || true && \
-    echo "=== Built modules ===" && \
+RUN echo "Looking for .ko files in /nvidia-src..." && \
+    find /nvidia-src -name "*.ko" -type f 2>/dev/null | head -20 && \
+    find /nvidia-src -name "*.ko" -type f -exec cp {} /output/ \; 2>/dev/null || true && \
+    echo "=== Built modules in output ===" && \
     ls -la /output/
 
 # Verify nvidia-uvm.ko was built
