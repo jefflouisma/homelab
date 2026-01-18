@@ -1001,7 +1001,7 @@ echo "=== Done ==="
 				"UNAME":                      "ubuntu",
 				"XDG_RUNTIME_DIR":            "/tmp/.X11-unix",
 				"PULSE_SERVER":               "unix:/tmp/.X11-unix/pulse-socket",
-				"HOST_APPS_STATE_FOLDER":     "/mnt/data/wolf",
+				"HOST_APPS_STATE_FOLDER":     "/etc/wolf",
 				"WOLF_LOG_LEVEL":             "DEBUG",
 				"WOLF_STREAM_CLIENT_IP":      "10.128.1.0",
 				"WOLF_SOCKET_PATH":           "/etc/wolf/wolf.sock",
