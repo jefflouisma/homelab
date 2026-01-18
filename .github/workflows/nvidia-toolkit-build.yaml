@@ -14,7 +14,7 @@ on:
       driver_version:
         description: 'NVIDIA Driver Version'
         required: false
-        default: '580.119.02'
+        default: '590.48.01'
 
 env:
   REGISTRY: ghcr.io
@@ -49,7 +49,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ inputs.driver_version || '580.119.02' }}
+            type=raw,value=${{ inputs.driver_version || '590.48.01' }}
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha
 
@@ -61,6 +61,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            DRIVER_VERSION=${{ inputs.driver_version || '580.119.02' }}
+            DRIVER_VERSION=${{ inputs.driver_version || '590.48.01' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
