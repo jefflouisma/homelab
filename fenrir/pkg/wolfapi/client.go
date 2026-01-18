@@ -37,10 +37,18 @@ type ClientSettings struct {
 	RunUID              int     `json:"run_uid"`
 	VScrollAcceleration float64 `json:"v_scroll_acceleration"`
 }
+
+// App represents a Wolf application
+type App struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
 type Client interface {
 	AddSession(ctx context.Context, session Session) (string, error)
 	StopSession(ctx context.Context, sessionID string) error
 	ListSessions(ctx context.Context) ([]Session, error)
+	ListApps(ctx context.Context) ([]App, error)
 	SubscribeToEvents(ctx context.Context) (<-chan *sse.Event, error)
 }
 
@@ -134,6 +142,36 @@ func (c *client) ListSessions(ctx context.Context) ([]Session, error) {
 	return sessionsResp.Sessions, nil
 }
 
+// GET /api/v1/apps
+func (c *client) ListApps(ctx context.Context) ([]App, error) {
+	u, err := url.JoinPath(c.apiURL, "/api/v1/apps")
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var appsResp AppsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&appsResp); err != nil {
+		return nil, err
+	}
+
+	if !appsResp.Success {
+		return nil, fmt.Errorf("failed to list apps: %s", appsResp.Error)
+	}
+
+	return appsResp.Apps, nil
+}
+
 func (c *client) StopSession(ctx context.Context, sessionID string) error {
 	type StopSessionRequest struct {
 		SessionID string `json:"session_id"`
@@ -195,6 +233,11 @@ type Response struct {
 type SessionsResponse struct {
 	Response `json:",inline"`
 	Sessions []Session `json:"sessions"`
+}
+
+type AppsResponse struct {
+	Response `json:",inline"`
+	Apps     []App `json:"apps"`
 }
 
 type AddSessionResponse struct {

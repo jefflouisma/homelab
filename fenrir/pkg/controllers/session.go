@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	"games-on-whales.github.io/direwolf/pkg/api/v1alpha1"
@@ -1392,6 +1393,31 @@ func (c *SessionController) reconcileActiveStreams(
 		return fmt.Errorf("failed to list sessions: %s", err)
 	}
 
+	// Get apps list to find the correct app_id
+	// Wolf uses hash-based app_ids, not sequential integers
+	apps, err := wolfclient.ListApps(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list apps: %s", err)
+	}
+
+	// Find app matching the session's game reference
+	var appID string
+	for _, app := range apps {
+		// Use case-insensitive match for flexibility
+		if strings.EqualFold(app.Title, session.Spec.GameReference.Name) {
+			appID = app.ID
+			break
+		}
+	}
+	// Fallback: use first app if no exact match
+	if appID == "" && len(apps) > 0 {
+		klog.Warningf("No app found matching %s, using first app: %s", session.Spec.GameReference.Name, apps[0].Title)
+		appID = apps[0].ID
+	}
+	if appID == "" {
+		return fmt.Errorf("no apps configured in Wolf")
+	}
+
 	keyIVHash := util.Hash([]byte(session.Spec.Config.AESKey), []byte(session.Spec.Config.AESIV))
 	var found bool
 	for _, s := range sessions {
@@ -1420,7 +1446,7 @@ func (c *SessionController) reconcileActiveStreams(
 			VideoWidth:        session.Spec.Config.VideoWidth,
 			VideoHeight:       session.Spec.Config.VideoHeight,
 			VideoRefreshRate:  session.Spec.Config.VideoRefreshRate,
-			AppID:             "1",
+			AppID:             appID, // Dynamic app_id from ListApps
 			AudioChannelCount: 2, // !TODO: parse from audio info
 			ClientIP:          "10.128.1.0",
 			RTSPFakeIP:        "10.128.1.0", // Required by Wolf API for RTSP streaming
