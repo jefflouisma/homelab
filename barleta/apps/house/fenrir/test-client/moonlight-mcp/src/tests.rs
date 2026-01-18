@@ -87,6 +87,13 @@ pub async fn run_test_file(path: &Path) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(&result)?);
 
     if result.passed {
+        // Capture screenshot as proof of success
+        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+        let screenshot_path = format!("e2e_success_{}.png", timestamp);
+        match pairing::capture_screenshot(&screenshot_path).await {
+            Ok(()) => eprintln!("[SUCCESS] Screenshot saved: {}", screenshot_path),
+            Err(e) => eprintln!("[WARNING] Could not capture screenshot: {}", e),
+        }
         Ok(())
     } else {
         anyhow::bail!("Test failed")
@@ -142,11 +149,11 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
                             
                             // Step 2: Launch the app
                             match pairing::native_launch(&test.host, app_info.id).await {
-                                Ok(()) => {
+                                Ok(session_url) => {
                                     steps.push(StepResult {
                                         name: "launch".into(),
                                         passed: true,
-                                        message: format!("Successfully launched '{}''", app_info.title),
+                                        message: format!("Successfully launched '{}' (session: {})", app_info.title, session_url),
                                     });
                                     
                                     // Wait for app to start
@@ -157,6 +164,33 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
                                         passed: true,
                                         message: format!("Waited {}ms for app startup", test.capture_after_ms),
                                     });
+                                    
+                                    // Step 3: Verify stream is actually running
+                                    match pairing::native_verify_stream(&test.host).await {
+                                        Ok(status) => {
+                                            if status.active {
+                                                steps.push(StepResult {
+                                                    name: "verify_stream".into(),
+                                                    passed: true,
+                                                    message: format!("Stream verified: {} active session(s)", status.session_count),
+                                                });
+                                            } else {
+                                                steps.push(StepResult {
+                                                    name: "verify_stream".into(),
+                                                    passed: false,
+                                                    message: format!("Stream NOT active: {}", status.error.unwrap_or_else(|| "unknown".into())),
+                                                });
+                                            }
+                                        }
+                                        Err(e) => {
+                                            // Stream verification is advisory - log but don't fail
+                                            steps.push(StepResult {
+                                                name: "verify_stream".into(),
+                                                passed: false,
+                                                message: format!("Could not verify stream: {}", e),
+                                            });
+                                        }
+                                    }
                                 }
                                 Err(e) => {
                                     steps.push(StepResult {

@@ -537,7 +537,7 @@ pub async fn native_list_apps(host: &str) -> Result<Vec<AppInfo>> {
 }
 
 /// Launch an app on the host using native HTTPS API
-pub async fn native_launch(host: &str, app_id: u32) -> Result<()> {
+pub async fn native_launch(host: &str, app_id: u32) -> Result<String> {
     eprintln!("[DEBUG] native_launch: creating mTLS client...");
     let client = create_mtls_client()?;
     eprintln!("[DEBUG] native_launch: mTLS client created successfully");
@@ -599,9 +599,20 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<()> {
     let body = String::from_utf8_lossy(&output.stdout).to_string();
     eprintln!("[DEBUG] native_launch: curl response: {}", body);
     
+    // Extract session URL from response
+    let session_url = if let Some(start) = body.find("<sessionUrl0>") {
+        if let Some(end) = body.find("</sessionUrl0>") {
+            Some(body[start + 13..end].to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    
     // Check for success
     if body.contains("<gamesession>1</gamesession>") || body.contains("status_code=\"200\"") {
-        return Ok(());
+        return Ok(session_url.unwrap_or_default());
     }
     
     // Check for errors
@@ -610,7 +621,68 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<()> {
     }
     
     // Assume success if no obvious error
-    Ok(())
+    Ok(session_url.unwrap_or_default())
+}
+
+/// Verify stream is actually running by checking Wolf's session status
+pub async fn native_verify_stream(host: &str) -> Result<StreamStatus> {
+    let client = create_mtls_client()?;
+    
+    // Query the wolf-agent's session list
+    let url = format!("https://{}:47984/api/v1/sessions", host);
+    
+    let response = client.get(&url).send().await?;
+    let body = response.text().await?;
+    eprintln!("[DEBUG] verify_stream: sessions response: {}", body);
+    
+    // Parse the JSON response
+    let sessions: serde_json::Value = serde_json::from_str(&body)?;
+    
+    if let Some(sessions_array) = sessions.get("sessions").and_then(|s| s.as_array()) {
+        if sessions_array.is_empty() {
+            return Ok(StreamStatus {
+                active: false,
+                session_count: 0,
+                error: Some("No active sessions found".to_string()),
+            });
+        }
+        
+        // Check if any session is running
+        let active_count = sessions_array.len();
+        return Ok(StreamStatus {
+            active: active_count > 0,
+            session_count: active_count,
+            error: None,
+        });
+    }
+    
+    Ok(StreamStatus {
+        active: false,
+        session_count: 0,
+        error: Some("Could not parse sessions response".to_string()),
+    })
+}
+
+#[derive(Debug, Clone)]
+pub struct StreamStatus {
+    pub active: bool,
+    pub session_count: usize,
+    pub error: Option<String>,
+}
+
+/// Capture a screenshot using macOS screencapture
+pub async fn capture_screenshot(output_path: &str) -> Result<()> {
+    let output = tokio::process::Command::new("screencapture")
+        .args(&["-x", output_path])
+        .output()
+        .await?;
+    
+    if output.status.success() {
+        eprintln!("[DEBUG] Screenshot saved to: {}", output_path);
+        Ok(())
+    } else {
+        Err(anyhow!("Failed to capture screenshot: {}", String::from_utf8_lossy(&output.stderr)))
+    }
 }
 
 #[cfg(test)]
