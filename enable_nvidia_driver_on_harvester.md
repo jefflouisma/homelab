@@ -233,6 +233,112 @@ kubectl exec -n house <wolf-pod> -- env | grep LD_LIBRARY_PATH
 
 ---
 
+## GitOps Configuration (Argo CD)
+
+For reproducible NVIDIA setup via Argo CD, deploy the following manifests.
+
+### nvidia-userspace-libs DaemonSet
+
+This DaemonSet installs all NVIDIA user-space libraries to a persistent host path that survives Harvester's immutable filesystem:
+
+**Path:** `barleta/infrastructure/nvidia-userspace-libs.yaml`
+
+```yaml
+# Applies via Argo CD: infrastructure app
+# Installs 62 NVIDIA libraries + EGL/Vulkan ICD configs
+# Target: /var/lib/nvidia-userspace/ on host
+```
+
+Key features:
+- Downloads and extracts NVIDIA driver 580.119.02
+- Copies ALL `.so` files (62 libraries total)
+- Creates critical symlinks (libcuda.so, libnvidia-ml.so, etc.)
+- Generates EGL vendor ICD (`10_nvidia.json`)
+- Generates Vulkan ICD (`nvidia_icd.json`)
+
+### Fenrir Operator Configuration
+
+The operator automatically configures Wolf pods with NVIDIA access:
+
+```yaml
+env:
+  - name: __EGL_VENDOR_LIBRARY_DIRS
+    value: /nvidia-userspace:/usr/share/glvnd/egl_vendor.d
+  - name: LD_LIBRARY_PATH
+    value: /nvidia-userspace:/nvidia-libs:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib
+  - name: WOLF_RENDER_NODE
+    value: /dev/dri/renderD129
+
+volumeMounts:
+  - name: nvidia-userspace
+    mountPath: /nvidia-userspace
+
+volumes:
+  - name: nvidia-userspace
+    hostPath:
+      path: /var/lib/nvidia-userspace
+      type: DirectoryOrCreate
+```
+
+### DRI Permissions Init Container
+
+Wolf pods include an init container to fix DRI device permissions:
+
+```yaml
+initContainers:
+  - name: dri-permissions
+    image: busybox
+    command: ["sh", "-c"]
+    args:
+      - |
+        chmod 666 /dev/dri/renderD* 2>/dev/null || true
+        chmod 666 /dev/dri/card* 2>/dev/null || true
+    securityContext:
+      privileged: true
+    volumeMounts:
+      - name: dev
+        mountPath: /dev
+```
+
+### Deployment Order
+
+1. **Infrastructure App** → Deploys `nvidia-userspace-libs` DaemonSet
+2. **Fenrir Operator** → Deploys with nvidia volume mounts
+3. **Session Pods** → Auto-created by operator with full GPU access
+
+---
+
+## Verification Checklist
+
+After GitOps deployment, verify:
+
+```bash
+# 1. nvidia-userspace-libs pod completed
+kubectl get pods -n kube-system | grep nvidia-userspace
+
+# 2. Libraries installed on host
+ls /var/lib/nvidia-userspace/*.so* | wc -l  # Expected: 62+
+
+# 3. EGL/Vulkan ICD files created
+ls /var/lib/nvidia-userspace/*.json  # Expected: 10_nvidia.json, nvidia_icd.json
+
+# 4. Wolf detects NVIDIA GPU
+kubectl logs -n house <wolf-pod> | grep "Using zero copy pipeline"
+# Expected: Using zero copy pipeline on Nvidia (/dev/dri/renderD129)
+```
+
+---
+
+## Known Limitations
+
+| Issue | Status | Workaround |
+|-------|--------|------------|
+| CUDA context warning | Known | Streaming works via non-CUDA fallback |
+| DRI permissions reset on reboot | Manual | dri-permissions init container fixes on pod start |
+| nvidia-driver-runtime CrashLoopBackOff | Expected | Driver installs before container exits |
+
+---
+
 ## Quick Setup Script
 
 For fresh Harvester installation:
@@ -269,3 +375,4 @@ echo "Configuration complete. Run 'sudo reboot' to apply."
 - [Harvester NVIDIA Driver Toolkit](https://docs.harvesterhci.io/v1.7/advanced/addons/nvidiadrivertoolkit)
 - [Harvester Configuration](https://docs.harvesterhci.io/v1.7/install/harvester-configuration)
 - [NVIDIA DRM Modesetting](https://wiki.archlinux.org/title/NVIDIA#DRM_kernel_mode_setting)
+- [barleta/infrastructure/nvidia-userspace-libs.yaml](file:///Volumes/4TB_Drive/Documents/homelab/barleta/infrastructure/nvidia-userspace-libs.yaml)
