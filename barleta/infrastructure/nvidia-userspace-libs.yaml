@@ -95,6 +95,42 @@ spec:
           ln -sf libnvidia-encode.so.${DRIVER_VERSION} libnvidia-encode.so.1
           ln -sf libnvidia-encode.so.1 libnvidia-encode.so
           
+          # === Load nvidia-uvm kernel module for CUDA support ===
+          echo "=== Loading nvidia-uvm kernel module ==="
+          if ! grep -q "^nvidia_uvm " /proc/modules; then
+            # Find nvidia-uvm.ko in extracted driver (can be in kernel/ or kernel-open/)
+            UVM_KO=$(find /tmp/nvidia -name 'nvidia-uvm.ko' 2>/dev/null | head -1)
+            if [ -n "$UVM_KO" ]; then
+              echo "Found nvidia-uvm.ko at: $UVM_KO"
+              # Copy to host for persistence
+              cp -v "$UVM_KO" /host-lib/nvidia-uvm.ko
+              # Load module into host kernel using nsenter
+              nsenter -t 1 -m -u -i -n insmod /var/lib/nvidia-userspace/nvidia-uvm.ko && echo "nvidia-uvm loaded successfully!" || echo "insmod failed (may already be loaded or version mismatch)"
+              
+              # Verify and create device nodes if loaded
+              sleep 1
+              if grep -q "nvidia_uvm" /proc/modules; then
+                echo "nvidia-uvm module is now loaded!"
+                # Get major number from /proc/devices
+                MAJOR=$(nsenter -t 1 -m grep nvidia-uvm /proc/devices 2>/dev/null | awk '{print $1}')
+                if [ -n "$MAJOR" ]; then
+                  echo "Creating /dev/nvidia-uvm device nodes with major $MAJOR"
+                  nsenter -t 1 -m mknod -m 666 /dev/nvidia-uvm c $MAJOR 0 2>/dev/null || true
+                  nsenter -t 1 -m mknod -m 666 /dev/nvidia-uvm-tools c $MAJOR 1 2>/dev/null || true
+                  nsenter -t 1 -m ls -la /dev/nvidia-uvm* 2>/dev/null || true
+                fi
+              else
+                echo "WARNING: nvidia-uvm module did not load"
+              fi
+            else
+              echo "WARNING: nvidia-uvm.ko not found in extracted driver"
+              find /tmp/nvidia -name '*.ko' 2>/dev/null | head -10
+            fi
+          else
+            echo "nvidia-uvm already loaded"
+            nsenter -t 1 -m ls -la /dev/nvidia-uvm* 2>/dev/null || true
+          fi
+          
           # Create EGL vendor ICD file for NVIDIA
           cat > /host-lib/10_nvidia.json << 'EOFJ'
           {
