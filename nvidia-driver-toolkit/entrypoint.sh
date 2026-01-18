@@ -101,6 +101,46 @@ create_nvidia_uvm_devices() {
 }
 
 #
+# Install GSP firmware to host filesystem
+# GSP firmware is REQUIRED for CUDA on Turing+ GPUs (including Blackwell RTX 5080)
+#
+install_gsp_firmware() {
+    log_info "=== Installing GSP Firmware ==="
+    
+    local FW_SRC="/firmware"
+    local FW_DST="/lib/firmware/nvidia/${DRIVER_VERSION}"
+    
+    if [ ! -d "$FW_SRC" ]; then
+        log_warn "Firmware source directory $FW_SRC not found"
+        return 1
+    fi
+    
+    # Create destination directory on host
+    nsenter -t 1 -m -u -i -n -p -- mkdir -p "$FW_DST"
+    
+    # Copy firmware files to host
+    local copied=0
+    for fw in "$FW_SRC"/*.bin; do
+        if [ -f "$fw" ]; then
+            local fname=$(basename "$fw")
+            log_info "Installing GSP firmware: $fname"
+            cp "$fw" "$FW_DST/$fname"
+            nsenter -t 1 -m -u -i -n -p -- chmod 644 "$FW_DST/$fname"
+            copied=$((copied + 1))
+        fi
+    done
+    
+    if [ $copied -gt 0 ]; then
+        log_info "SUCCESS: Installed $copied GSP firmware files to $FW_DST"
+        nsenter -t 1 -m -u -i -n -p -- ls -la "$FW_DST"
+        return 0
+    else
+        log_warn "No GSP firmware files found to install"
+        return 1
+    fi
+}
+
+#
 # Install the NVIDIA driver (builds kernel modules)
 #
 install_driver() {
@@ -188,6 +228,7 @@ init() {
         
         if [ ! -f "${NVIDIA_LIB_DIR}/libcuda.so.1" ]; then
             install_libraries
+            install_gsp_firmware
             create_icd_files
         fi
     elif [ "$nvidia_loaded" = "yes" ]; then
@@ -199,6 +240,7 @@ init() {
         
         # Install libraries and create devices
         install_libraries
+        install_gsp_firmware
         create_icd_files
         create_device_nodes
     else
@@ -207,6 +249,7 @@ init() {
         install_driver
         load_all_modules
         install_libraries
+        install_gsp_firmware
         create_icd_files
         create_device_nodes
     fi

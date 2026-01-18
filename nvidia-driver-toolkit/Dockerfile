@@ -24,6 +24,14 @@ ENV DRIVER_VERSION=${DRIVER_VERSION}
 RUN wget -q "https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run" \
     -O /nvidia-driver.run && chmod +x /nvidia-driver.run
 
+# Extract GSP firmware from the driver package
+# GSP firmware is REQUIRED for CUDA on Turing+ GPUs (including Blackwell RTX 5080)
+RUN /nvidia-driver.run --extract-only && \
+    mkdir -p /firmware && \
+    cp NVIDIA-Linux-x86_64-${DRIVER_VERSION}/firmware/*.bin /firmware/ 2>/dev/null || true && \
+    ls -la /firmware/ && \
+    rm -rf NVIDIA-Linux-x86_64-${DRIVER_VERSION}
+
 # Copy entrypoint scripts
 COPY entrypoint.sh common.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.sh
