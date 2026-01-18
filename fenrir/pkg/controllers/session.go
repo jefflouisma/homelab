@@ -238,8 +238,8 @@ func (c *SessionController) Reconcile(namespace, name string, newObj *v1alpha1ty
 			delete(c.trackedGames, name)
 		}
 		return nil
-	} else if newObj.Status.WolfSessionID == "" && newObj.CreationTimestamp.Add(1*time.Minute).Before(time.Now()) {
-		klog.Infof("Session %s/%s is older than 1 minute and has no wolf session ID, deleting", newObj.Namespace, newObj.Name)
+	} else if newObj.Status.WolfSessionID == "" && newObj.CreationTimestamp.Add(5*time.Minute).Before(time.Now()) {
+		klog.Infof("Session %s/%s is older than 5 minutes and has no wolf session ID, deleting", newObj.Namespace, newObj.Name)
 		err := c.SessionClient.Delete(context.TODO(), newObj.Name, metav1.DeleteOptions{})
 		if err != nil && !errors.IsNotFound(err) {
 			klog.Errorf("Failed to delete session %s/%s: %v", newObj.Namespace, newObj.Name, err)
