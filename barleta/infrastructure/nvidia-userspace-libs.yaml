@@ -63,44 +63,64 @@ spec:
           echo "Extracting libraries..."
           /tmp/nvidia-driver.run --extract-only --target /tmp/nvidia
           
-          # Copy only the user-space libraries (not kernel modules)
-          echo "Installing libraries to host..."
-          cp -v /tmp/nvidia/libEGL_nvidia.so.${DRIVER_VERSION} /host-lib/
-          cp -v /tmp/nvidia/libGLESv2_nvidia.so.${DRIVER_VERSION} /host-lib/
-          cp -v /tmp/nvidia/libGLX_nvidia.so.${DRIVER_VERSION} /host-lib/
-          cp -v /tmp/nvidia/libnvidia-glcore.so.${DRIVER_VERSION} /host-lib/
-          cp -v /tmp/nvidia/libnvidia-eglcore.so.${DRIVER_VERSION} /host-lib/
-          cp -v /tmp/nvidia/libnvidia-glsi.so.${DRIVER_VERSION} /host-lib/
-          cp -v /tmp/nvidia/libnvidia-tls.so.${DRIVER_VERSION} /host-lib/
-          cp -v /tmp/nvidia/libGLdispatch.so.* /host-lib/ 2>/dev/null || true
-          cp -v /tmp/nvidia/libnvidia-glvkspirv.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          # Additional NVIDIA driver libraries for DRM/EGL communication
-          cp -v /tmp/nvidia/libnvidia-allocator.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          cp -v /tmp/nvidia/libnvidia-cfg.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          cp -v /tmp/nvidia/libnvidia-ngx.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          cp -v /tmp/nvidia/libcuda.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          cp -v /tmp/nvidia/libnvcuvid.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          cp -v /tmp/nvidia/libnvidia-encode.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          cp -v /tmp/nvidia/libnvidia-fbc.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          cp -v /tmp/nvidia/libnvidia-ptxjitcompiler.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          cp -v /tmp/nvidia/libnvidia-ml.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          cp -v /tmp/nvidia/libnvidia-opencl.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          cp -v /tmp/nvidia/libnvidia-opticalflow.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
-          # Critical for DRI device access
-          cp -v /tmp/nvidia/libnvidia-gpucomp.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          # Copy ALL user-space libraries (not kernel modules)
+          echo "Installing ALL libraries to host..."
+          DRIVER_VERSION="580.119.02"
           
-          # Create symlinks
+          # Copy all .so files from extracted driver
+          for lib in /tmp/nvidia/*.so.*; do
+            if [ -f "$lib" ]; then
+              cp -v "$lib" /host-lib/ 2>/dev/null || true
+            fi
+          done
+          
+          # Also copy .so files without version suffix
+          for lib in /tmp/nvidia/*.so; do
+            if [ -f "$lib" ]; then
+              cp -v "$lib" /host-lib/ 2>/dev/null || true
+            fi
+          done
+          
+          # Create critical symlinks
           cd /host-lib
           ln -sf libEGL_nvidia.so.${DRIVER_VERSION} libEGL_nvidia.so.0
           ln -sf libGLESv2_nvidia.so.${DRIVER_VERSION} libGLESv2_nvidia.so.2
           ln -sf libGLX_nvidia.so.${DRIVER_VERSION} libGLX_nvidia.so.0
+          ln -sf libcuda.so.${DRIVER_VERSION} libcuda.so.1
+          ln -sf libcuda.so.1 libcuda.so
+          ln -sf libnvidia-ml.so.${DRIVER_VERSION} libnvidia-ml.so.1
+          ln -sf libnvidia-ml.so.1 libnvidia-ml.so
+          ln -sf libnvcuvid.so.${DRIVER_VERSION} libnvcuvid.so.1
+          ln -sf libnvcuvid.so.1 libnvcuvid.so
+          ln -sf libnvidia-encode.so.${DRIVER_VERSION} libnvidia-encode.so.1
+          ln -sf libnvidia-encode.so.1 libnvidia-encode.so
           
-          # Update ldconfig cache
-          echo "/usr/lib64" > /host-etc/ld.so.conf.d/nvidia.conf
-          ldconfig -r /host-root 2>/dev/null || true
+          # Create EGL vendor ICD file for NVIDIA
+          cat > /host-lib/10_nvidia.json << 'EOFJ'
+          {
+              "file_format_version" : "1.0.0",
+              "ICD" : {
+                  "library_path" : "libEGL_nvidia.so.0"
+              }
+          }
+          EOFJ
           
-          echo "=== Done ==="
-          ls -la /host-lib/libnvidia* /host-lib/libEGL* /host-lib/libGLX* | head -20
+          # Create Vulkan ICD file
+          cat > /host-lib/nvidia_icd.json << 'EOFV'
+          {
+              "file_format_version" : "1.0.0",
+              "ICD": {
+                  "library_path": "libGLX_nvidia.so.0",
+                  "api_version" : "1.3"
+              }
+          }
+          EOFV
+          
+          # Create libraries listing
+          echo "=== Installed libraries ==="
+          ls /host-lib/*.so* | wc -l
+          ls /host-lib/libnvidia* | head -20
+          
         volumeMounts:
         - name: host-lib
           mountPath: /host-lib
