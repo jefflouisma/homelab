@@ -74,6 +74,20 @@ spec:
           cp -v /tmp/nvidia/libnvidia-tls.so.${DRIVER_VERSION} /host-lib/
           cp -v /tmp/nvidia/libGLdispatch.so.* /host-lib/ 2>/dev/null || true
           cp -v /tmp/nvidia/libnvidia-glvkspirv.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          # Additional NVIDIA driver libraries for DRM/EGL communication
+          cp -v /tmp/nvidia/libnvidia-allocator.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          cp -v /tmp/nvidia/libnvidia-cfg.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          cp -v /tmp/nvidia/libnvidia-ngx.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          cp -v /tmp/nvidia/libcuda.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          cp -v /tmp/nvidia/libnvcuvid.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          cp -v /tmp/nvidia/libnvidia-encode.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          cp -v /tmp/nvidia/libnvidia-fbc.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          cp -v /tmp/nvidia/libnvidia-ptxjitcompiler.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          cp -v /tmp/nvidia/libnvidia-ml.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          cp -v /tmp/nvidia/libnvidia-opencl.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          cp -v /tmp/nvidia/libnvidia-opticalflow.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          # Critical for DRI device access
+          cp -v /tmp/nvidia/libnvidia-gpucomp.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
           
           # Create symlinks
           cd /host-lib
