@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-userspace-libs
+  namespace: kube-system
+  labels:
+    app: nvidia-userspace-libs
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-userspace-libs
+  template:
+    metadata:
+      labels:
+        app: nvidia-userspace-libs
+    spec:
+      hostPID: true
+      containers:
+      - name: pause
+        image: registry.k8s.io/pause:3.9
+        resources:
+          requests:
+            cpu: 1m
+            memory: 1Mi
+          limits:
+            cpu: 10m
+            memory: 10Mi
+      initContainers:
+      - name: install-nvidia-libs
+        image: ubuntu:22.04
+        securityContext:
+          privileged: true
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "=== Installing NVIDIA User-Space Libraries ==="
+          
+          # Check if nvidia module is loaded
+          if ! grep -q "^nvidia " /proc/modules; then
+            echo "NVIDIA module not loaded, skipping library installation"
+            exit 0
+          fi
+          
+          # Check if libraries already installed
+          if [ -f /host-lib/libnvidia-glcore.so.580.119.02 ]; then
+            echo "Libraries already installed"
+            exit 0
+          fi
+          
+          # Install dependencies
+          apt-get update && apt-get install -y wget libarchive-tools
+          
+          # Download the NVIDIA driver package
+          DRIVER_VERSION="580.119.02"
+          DRIVER_URL="https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
+          
+          echo "Downloading NVIDIA driver..."
+          wget -q "$DRIVER_URL" -O /tmp/nvidia-driver.run
+          chmod +x /tmp/nvidia-driver.run
+          
+          echo "Extracting libraries..."
+          /tmp/nvidia-driver.run --extract-only --target /tmp/nvidia
+          
+          # Copy only the user-space libraries (not kernel modules)
+          echo "Installing libraries to host..."
+          cp -v /tmp/nvidia/libEGL_nvidia.so.${DRIVER_VERSION} /host-lib/
+          cp -v /tmp/nvidia/libGLESv2_nvidia.so.${DRIVER_VERSION} /host-lib/
+          cp -v /tmp/nvidia/libGLX_nvidia.so.${DRIVER_VERSION} /host-lib/
+          cp -v /tmp/nvidia/libnvidia-glcore.so.${DRIVER_VERSION} /host-lib/
+          cp -v /tmp/nvidia/libnvidia-eglcore.so.${DRIVER_VERSION} /host-lib/
+          cp -v /tmp/nvidia/libnvidia-glsi.so.${DRIVER_VERSION} /host-lib/
+          cp -v /tmp/nvidia/libnvidia-tls.so.${DRIVER_VERSION} /host-lib/
+          cp -v /tmp/nvidia/libGLdispatch.so.* /host-lib/ 2>/dev/null || true
+          cp -v /tmp/nvidia/libnvidia-glvkspirv.so.${DRIVER_VERSION} /host-lib/ 2>/dev/null || true
+          
+          # Create symlinks
+          cd /host-lib
+          ln -sf libEGL_nvidia.so.${DRIVER_VERSION} libEGL_nvidia.so.0
+          ln -sf libGLESv2_nvidia.so.${DRIVER_VERSION} libGLESv2_nvidia.so.2
+          ln -sf libGLX_nvidia.so.${DRIVER_VERSION} libGLX_nvidia.so.0
+          
+          # Update ldconfig cache
+          echo "/usr/lib64" > /host-etc/ld.so.conf.d/nvidia.conf
+          ldconfig -r /host-root 2>/dev/null || true
+          
+          echo "=== Done ==="
+          ls -la /host-lib/libnvidia* /host-lib/libEGL* /host-lib/libGLX* | head -20
+        volumeMounts:
+        - name: host-lib
+          mountPath: /host-lib
+        - name: host-etc
+          mountPath: /host-etc
+        - name: host-root
+          mountPath: /host-root
+        - name: proc
+          mountPath: /proc
+          readOnly: true
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - operator: Exists
+      volumes:
+      - name: host-lib
+        hostPath:
+          path: /var/lib/nvidia-userspace
+          type: DirectoryOrCreate
+      - name: host-etc
+        hostPath:
+          path: /etc
+      - name: host-root
+        hostPath:
+          path: /
+      - name: proc
+        hostPath:
+          path: /proc

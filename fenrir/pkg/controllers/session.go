@@ -1014,7 +1014,7 @@ echo "=== Done ==="
 				"__GL_SYNC_TO_VBLANK":        "0",
 				// Note: NVIDIA_VISIBLE_DEVICES removed - conflicts with hostPath /dev mount
 				"LIBVA_DRIVER_NAME":          "nvidia",
-				"LD_LIBRARY_PATH":            "/nvidia-libs:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
+				"LD_LIBRARY_PATH":            "/nvidia-userspace:/nvidia-libs:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
 				// DRI device group access - Harvester host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
 				"GOW_VIDEO_GID":              "486",   // video group GID
@@ -1092,6 +1092,10 @@ echo "=== Done ==="
 					Name:      "nvidia-libs",
 					MountPath: "/nvidia-libs",
 				},
+				{
+					Name:      "nvidia-userspace",
+					MountPath: "/nvidia-userspace",
+				},
 			},
 		},
 	)
@@ -1147,6 +1151,15 @@ echo "=== Done ==="
 				HostPath: &corev1.HostPathVolumeSource{
 					Path: "/usr/lib",
 					Type: ptr.To(corev1.HostPathDirectory),
+				},
+			},
+		},
+		corev1.Volume{
+			Name: "nvidia-userspace",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/var/lib/nvidia-userspace",
+					Type: ptr.To(corev1.HostPathDirectoryOrCreate),
 				},
 			},
 		},
