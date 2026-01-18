@@ -62,5 +62,5 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             DRIVER_VERSION=${{ inputs.driver_version || '590.48.01' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Cache disabled - ARG changes don't invalidate cached RUN layers
+          no-cache: true
