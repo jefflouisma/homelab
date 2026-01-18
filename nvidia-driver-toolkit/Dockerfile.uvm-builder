@@ -32,13 +32,10 @@ RUN zypper --non-interactive refresh && \
         openssl-devel \
         && zypper clean --all
 
-# Get kernel version and prepare kernel source
+# Show kernel version we're building for (no prepare needed for external modules)
 RUN KERNEL_VERSION=$(ls /usr/src/linux-* -d | head -1 | sed 's|/usr/src/linux-||') && \
-    echo "Preparing kernel source for: ${KERNEL_VERSION}" && \
-    cd /usr/src/linux-${KERNEL_VERSION} && \
-    make olddefconfig && \
-    make prepare && \
-    make scripts
+    echo "Building for kernel: ${KERNEL_VERSION}" && \
+    ls -la /usr/src/linux-${KERNEL_VERSION}/ | head -10
 
 # Download NVIDIA open-source driver
 RUN wget -q "https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run" \
