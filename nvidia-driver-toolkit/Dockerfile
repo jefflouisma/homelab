@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Driver version - can be overridden at build time
-ARG DRIVER_VERSION=580.119.02
+# UPDATED to 580.126.09 for Blackwell (RTX 5080) GSP firmware support
+ARG DRIVER_VERSION=580.126.09
 ENV DRIVER_VERSION=${DRIVER_VERSION}
 
 # Pre-download the driver for layer caching (saves ~500MB download on each run)
