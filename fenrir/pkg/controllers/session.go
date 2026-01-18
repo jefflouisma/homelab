@@ -1460,12 +1460,9 @@ func (c *SessionController) reconcileActiveStreams(
 			},
 			AESKey: session.Spec.Config.AESKey,
 			AESIV:  session.Spec.Config.AESIV,
-			//!TODO: not this. This is the hash of the client cert we are
-			// hardcoding into wolf config. Should call pair endpoint to genuinely
-			// add it. Though not really needed since user doesnt connect via HTTPS
-			// to wolf, we just need a client ID wolf accepts for this specific
-			// pairing/client...
-			ClientID: "4193251087262667199",
+			// Use the client's fingerprint from the PairingReference
+			// The Pairing CR name IS the client certificate fingerprint
+			ClientID: session.Spec.PairingReference.Name,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create session: %s", err)

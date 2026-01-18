@@ -455,7 +455,7 @@ pub fn has_identity() -> bool {
 fn create_mtls_client() -> Result<reqwest::Client> {
     let client_identity = ClientIdentity::load_or_create()?;
     
-    // Create reqwest identity from cert + key PEM
+    // Create reqwest identity from cert + key PEM (native-tls uses from_pkcs8_pem)
     let identity = reqwest::Identity::from_pkcs8_pem(
         client_identity.cert_pem.as_bytes(),
         client_identity.key_pem.as_bytes(),
@@ -464,7 +464,12 @@ fn create_mtls_client() -> Result<reqwest::Client> {
     let client = reqwest::Client::builder()
         .identity(identity)
         .danger_accept_invalid_certs(true) // Server uses self-signed cert
+        .connect_timeout(std::time::Duration::from_secs(10))
         .timeout(std::time::Duration::from_secs(30))
+        // Force HTTP/1.1 only and disable pooling/proxy for debugging
+        .pool_idle_timeout(std::time::Duration::from_secs(0))
+        .pool_max_idle_per_host(0)
+        .no_proxy()
         .build()?;
     
     Ok(client)
@@ -481,9 +486,13 @@ pub struct AppInfo {
 pub async fn native_list_apps(host: &str) -> Result<Vec<AppInfo>> {
     let client = create_mtls_client()?;
     
+    // Use fingerprint as uniqueid for consistent identity with Wolf
+    let identity = ClientIdentity::load_or_create()?;
+    
     let url = format!(
-        "https://{}:47984/applist?uniqueid=moonlight-mcp-e2e&uuid={}",
+        "https://{}:47984/applist?uniqueid={}&uuid={}",
         host,
+        identity.fingerprint,
         uuid::Uuid::new_v4()
     );
     
@@ -529,7 +538,19 @@ pub async fn native_list_apps(host: &str) -> Result<Vec<AppInfo>> {
 
 /// Launch an app on the host using native HTTPS API
 pub async fn native_launch(host: &str, app_id: u32) -> Result<()> {
+    eprintln!("[DEBUG] native_launch: creating mTLS client...");
     let client = create_mtls_client()?;
+    eprintln!("[DEBUG] native_launch: mTLS client created successfully");
+    
+    // Test: Make a simple request to applist first to check connection
+    let test_url = format!(
+        "https://{}:47984/applist?uniqueid=test&uuid=test123",
+        host
+    );
+    eprintln!("[DEBUG] native_launch: testing connection with applist...");
+    let test_response = client.get(&test_url).send().await?;
+    let test_status = test_response.status();
+    eprintln!("[DEBUG] native_launch: applist test response status: {}", test_status);
     
     // Generate rikey (AES key for stream encryption) - 16 bytes hex encoded
     let mut rikey = [0u8; 16];
@@ -539,17 +560,44 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<()> {
     // Generate rikey ID
     let rikeyid: u32 = rand::random();
     
+    // Load client identity to get the certificate fingerprint as uniqueid
+    // Wolf requires the uniqueid to match the paired client's cert fingerprint
+    let client_identity = ClientIdentity::load_or_create()?;
+    let config_dir = dirs::config_dir().ok_or_else(|| anyhow!("No config directory"))?;
+    let cert_path = config_dir.join("moonlight-mcp").join("client.crt");
+    let key_path = config_dir.join("moonlight-mcp").join("client.key");
+    
+    // Use the client certificate fingerprint as uniqueid (required for Wolf pairing)
+    let uniqueid = &client_identity.fingerprint;
+    
+    let uuid_val = uuid::Uuid::new_v4().to_string();
     let url = format!(
-        "https://{}:47984/launch?uniqueid=moonlight-mcp-e2e&uuid={}&appid={}&mode=1920x1080x60&additionalStates=1&sops=0&rikey={}&rikeyid={}&localAudioPlayMode=0&surroundAudioInfo=196610",
+        "https://{}:47984/launch?uniqueid={}&uuid={}&appid={}&mode=1920x1080x60&additionalStates=1&sops=0&rikey={}&rikeyid={}&localAudioPlayMode=0&surroundAudioInfo=196610",
         host,
-        uuid::Uuid::new_v4(),
+        uniqueid,
+        uuid_val,
         app_id,
         rikey_hex,
         rikeyid
     );
+    eprintln!("[DEBUG] native_launch: calling curl with fingerprint uniqueid: {}", uniqueid);
+    eprintln!("[DEBUG] native_launch: URL: {}", url);
     
-    let response = client.get(&url).send().await?;
-    let body = response.text().await?;
+    // Use curl with long timeout - server can take 45+ seconds to process launch
+    let output = tokio::process::Command::new("curl")
+        .args(&[
+            "-sk",
+            "--cert", cert_path.to_str().unwrap(),
+            "--key", key_path.to_str().unwrap(),
+            "--connect-timeout", "30",
+            "--max-time", "90",
+            &url
+        ])
+        .output()
+        .await?;
+    
+    let body = String::from_utf8_lossy(&output.stdout).to_string();
+    eprintln!("[DEBUG] native_launch: curl response: {}", body);
     
     // Check for success
     if body.contains("<gamesession>1</gamesession>") || body.contains("status_code=\"200\"") {
