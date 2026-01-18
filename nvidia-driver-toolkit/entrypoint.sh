@@ -55,18 +55,13 @@ load_all_modules() {
     log_info "Loading prerequisite modules..."
     modprobe -a i2c_core ipmi_msghandler ipmi_devintf 2>/dev/null || true
     
-    # Load NVIDIA modules in order
+    # Load NVIDIA modules in order - ALL 5 MODULES
     # CRITICAL: nvidia-uvm is required for CUDA context creation!
-    local modules=(nvidia nvidia-modeset nvidia-drm nvidia-uvm)
+    local modules=(nvidia nvidia-modeset nvidia-drm nvidia-uvm nvidia-peermem)
     
     for module in "${modules[@]}"; do
         load_module "$module" || log_warn "Failed to load ${module}"
     done
-    
-    # Optionally load nvidia-peermem for GPU Direct RDMA
-    if [ "${GPU_DIRECT_RDMA_ENABLED:-false}" = "true" ]; then
-        load_module nvidia-peermem || log_warn "nvidia-peermem not loaded"
-    fi
     
     # Verify critical modules
     log_info "=== Module Verification ==="
