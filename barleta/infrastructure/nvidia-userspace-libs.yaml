@@ -39,13 +39,47 @@ spec:
           
           # Check if nvidia module is loaded
           if ! grep -q "^nvidia " /proc/modules; then
-            echo "NVIDIA module not loaded, skipping library installation"
+            echo "NVIDIA module not loaded, skipping"
             exit 0
           fi
           
-          # Check if libraries already installed
-          if [ -f /host-lib/libnvidia-glcore.so.580.119.02 ]; then
-            echo "Libraries already installed"
+          # === Load nvidia-uvm kernel module for CUDA support ===
+          # This runs FIRST, regardless of whether libraries are installed
+          echo "=== Checking nvidia-uvm kernel module ==="
+          if ! grep -q "^nvidia_uvm " /proc/modules; then
+            echo "nvidia-uvm NOT loaded, will load it..."
+            
+            # Check if we have cached nvidia-uvm.ko
+            if [ -f /host-lib/nvidia-uvm.ko ]; then
+              echo "Found cached nvidia-uvm.ko, loading..."
+              nsenter -t 1 -m -u -i -n insmod /var/lib/nvidia-userspace/nvidia-uvm.ko && echo "nvidia-uvm loaded from cache!" || echo "insmod from cache failed"
+            else
+              echo "No cached nvidia-uvm.ko, will extract from driver..."
+            fi
+            
+            # Verify if loaded now
+            if grep -q "nvidia_uvm" /proc/modules; then
+              echo "nvidia-uvm is now loaded!"
+              # Create device nodes
+              MAJOR=$(nsenter -t 1 -m cat /proc/devices 2>/dev/null | grep nvidia-uvm | awk '{print $1}')
+              if [ -n "$MAJOR" ]; then
+                echo "Creating /dev/nvidia-uvm device nodes with major $MAJOR"
+                nsenter -t 1 -m mknod -m 666 /dev/nvidia-uvm c $MAJOR 0 2>/dev/null || true
+                nsenter -t 1 -m mknod -m 666 /dev/nvidia-uvm-tools c $MAJOR 1 2>/dev/null || true
+              fi
+            else
+              echo "nvidia-uvm needs full extraction from driver..."
+              # Mark that we need to download driver (will be done below)
+              NEEDS_UVM_EXTRACT=1
+            fi
+          else
+            echo "nvidia-uvm already loaded"
+            nsenter -t 1 -m ls -la /dev/nvidia-uvm* 2>/dev/null || true
+          fi
+          
+          # Check if user-space libraries already installed AND nvidia-uvm is loaded
+          if [ -f /host-lib/libnvidia-glcore.so.580.119.02 ] && [ -z "$NEEDS_UVM_EXTRACT" ]; then
+            echo "Libraries already installed and nvidia-uvm loaded"
             exit 0
           fi
           
