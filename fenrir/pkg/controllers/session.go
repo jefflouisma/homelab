@@ -984,6 +984,9 @@ echo "=== Done ==="
 				// Note: NVIDIA_VISIBLE_DEVICES removed - conflicts with hostPath /dev mount
 				"LIBVA_DRIVER_NAME":          "nvidia",
 				"LD_LIBRARY_PATH":            "/nvidia-libs:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
+				// DRI device group access - Harvester host GIDs
+				"VIDEO_GID":                  "486",   // video group GID
+				"RENDER_GID":                 "489",   // render group GID
 			}),
 			// Note: Container Ports list is strictly informational. As long
 			// as process is listening on 0.0.0.0 it can be bound by a service.
