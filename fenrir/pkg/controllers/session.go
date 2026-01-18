@@ -985,8 +985,9 @@ echo "=== Done ==="
 				"LIBVA_DRIVER_NAME":          "nvidia",
 				"LD_LIBRARY_PATH":            "/nvidia-libs:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
 				// DRI device group access - Harvester host GIDs
-				"VIDEO_GID":                  "486",   // video group GID
-				"RENDER_GID":                 "489",   // render group GID
+				// Wolf's 15-setup_devices.sh uses GOW_ prefix
+				"GOW_VIDEO_GID":              "486",   // video group GID
+				"GOW_RENDER_GID":             "489",   // render group GID
 			}),
 			// Note: Container Ports list is strictly informational. As long
 			// as process is listening on 0.0.0.0 it can be bound by a service.
