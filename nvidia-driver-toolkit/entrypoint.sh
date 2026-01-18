@@ -83,19 +83,54 @@ init() {
     log_info "  Driver Version: ${DRIVER_VERSION}"
     log_info "========================================"
     
-    # Check if already fully initialized
-    if module_loaded nvidia && module_loaded nvidia-uvm; then
+    # Check current state of nvidia modules
+    local nvidia_loaded=$(module_loaded nvidia && echo "yes" || echo "no")
+    local nvidia_uvm_loaded=$(module_loaded nvidia-uvm && echo "yes" || echo "no")
+    
+    log_info "Current state: nvidia=${nvidia_loaded}, nvidia-uvm=${nvidia_uvm_loaded}"
+    
+    if [ "$nvidia_loaded" = "yes" ] && [ "$nvidia_uvm_loaded" = "yes" ]; then
+        # Both loaded - just ensure devices and libraries are set up
         log_info "NVIDIA driver with UVM already loaded"
-        
-        # Still need to ensure devices and libraries are set up
         create_device_nodes
         
         if [ ! -f "${NVIDIA_LIB_DIR}/libcuda.so.1" ]; then
             install_libraries
             create_icd_files
         fi
+    elif [ "$nvidia_loaded" = "yes" ]; then
+        # nvidia loaded but nvidia-uvm missing - this is the common case on Harvester
+        log_info "nvidia loaded but nvidia-uvm MISSING - building nvidia-uvm only..."
+        
+        # Try modprobe first (in case it was built but not loaded)
+        if modprobe nvidia-uvm 2>/dev/null; then
+            log_info "nvidia-uvm loaded successfully via modprobe"
+        else
+            # Need to build nvidia-uvm - run driver installer with --kernel-module-only
+            log_info "Building nvidia-uvm module..."
+            if [ -f /nvidia-driver.run ]; then
+                /nvidia-driver.run \
+                    --silent \
+                    --no-questions \
+                    --ui=none \
+                    --kernel-module-only \
+                    --no-backup \
+                    --no-nouveau-check \
+                    --no-x-check \
+                    2>&1 || log_warn "nvidia-installer exited with non-zero status"
+                
+                # Try to load nvidia-uvm after build
+                modprobe nvidia-uvm 2>/dev/null || log_warn "modprobe nvidia-uvm failed after build"
+            fi
+        fi
+        
+        # Install libraries and create devices
+        install_libraries
+        create_icd_files
+        create_device_nodes
     else
-        # Full installation needed
+        # No nvidia at all - full installation needed
+        log_info "No NVIDIA modules loaded - full installation required"
         install_driver
         load_all_modules
         install_libraries

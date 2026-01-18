@@ -4,6 +4,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install required packages for driver building and module loading
+# NOTE: gcc and make are required because nvidia-installer builds kernel modules
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
@@ -11,6 +12,8 @@ RUN apt-get update && apt-get install -y \
     binutils \
     pciutils \
     libelf-dev \
+    gcc \
+    make \
     && rm -rf /var/lib/apt/lists/*
 
 # Driver version - can be overridden at build time

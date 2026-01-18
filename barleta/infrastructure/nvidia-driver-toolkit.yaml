@@ -40,7 +40,7 @@ spec:
       
       containers:
         - name: nvidia-driver
-          image: ghcr.io/jefflouisma/homelab/nvidia-driver-toolkit:580.119.02
+          image: ghcr.io/jefflouisma/nvidia-driver-toolkit:sha-eae6fe2
           imagePullPolicy: Always
           args: ["init"]
           env:
