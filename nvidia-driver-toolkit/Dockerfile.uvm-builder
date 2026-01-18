@@ -15,56 +15,70 @@ ARG DRIVER_VERSION=580.119.02
 
 ENV DRIVER_VERSION=${DRIVER_VERSION}
 
-# Install build dependencies - OpenSUSE Leap has these packages
+# Install build dependencies
 RUN zypper --non-interactive refresh && \
     zypper --non-interactive install -y \
         gcc \
         gcc-c++ \
         make \
         kernel-default-devel \
+        bc \
+        flex \
+        bison \
         wget \
         tar \
         gzip \
         libelf-devel \
+        openssl-devel \
         && zypper clean --all
 
-# Show kernel version we're building for
-RUN echo "Building for kernel:" && ls /usr/src/linux-* | head -1
+# Get kernel version and prepare kernel source
+RUN KERNEL_VERSION=$(ls /usr/src/linux-* -d | head -1 | sed 's|/usr/src/linux-||') && \
+    echo "Preparing kernel source for: ${KERNEL_VERSION}" && \
+    cd /usr/src/linux-${KERNEL_VERSION} && \
+    make olddefconfig && \
+    make prepare && \
+    make scripts
 
 # Download NVIDIA open-source driver
 RUN wget -q "https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run" \
     -O /nvidia-driver.run && \
     chmod +x /nvidia-driver.run
 
-# Extract driver (don't run installer, just extract source)
-RUN /nvidia-driver.run --extract-only --target /nvidia-src
-
 # Create output directory
 RUN mkdir -p /output
 
-# Build nvidia kernel modules using the open-source kernel-open
-WORKDIR /nvidia-src/kernel-open
-
-# Get the kernel version from available sources
+# Build kernel modules using nvidia-installer with kernel-only option
 RUN KERNEL_VERSION=$(ls /usr/src/linux-* -d | head -1 | sed 's|/usr/src/linux-||') && \
-    echo "Building for kernel version: ${KERNEL_VERSION}" && \
-    make -j$(nproc) modules \
-        SYSSRC=/usr/src/linux-${KERNEL_VERSION} \
-        KERNEL_SOURCES=/usr/src/linux-${KERNEL_VERSION} \
-    2>&1 || echo "Build may have warnings, checking for .ko files..."
+    echo "Building NVIDIA modules for kernel: ${KERNEL_VERSION}" && \
+    /nvidia-driver.run \
+        --kernel-module-only \
+        --kernel-name=${KERNEL_VERSION} \
+        --kernel-source-path=/usr/src/linux-${KERNEL_VERSION} \
+        --silent \
+        --no-questions \
+        --ui=none \
+        --no-backup \
+        --no-nouveau-check \
+        --no-cc-version-check \
+        --log-file-name=/tmp/nvidia-install.log \
+    2>&1 || (cat /tmp/nvidia-install.log; echo "Installation had issues, checking for built modules...")
 
 # Find and copy all built kernel modules to output
-RUN find /nvidia-src -name "*.ko" -type f -exec cp {} /output/ \; && \
+RUN KERNEL_VERSION=$(ls /usr/src/linux-* -d | head -1 | sed 's|/usr/src/linux-||') && \
+    echo "Looking for modules in /lib/modules/${KERNEL_VERSION}..." && \
+    find /lib/modules -name "nvidia*.ko*" -type f -exec cp {} /output/ \; 2>/dev/null || true && \
+    find /usr/src -name "nvidia*.ko" -type f -exec cp {} /output/ \; 2>/dev/null || true && \
     echo "=== Built modules ===" && \
     ls -la /output/
 
 # Verify nvidia-uvm.ko was built
-RUN if [ -f "/output/nvidia-uvm.ko" ]; then \
+RUN if [ -f "/output/nvidia-uvm.ko" ] || [ -f "/output/nvidia-uvm.ko.xz" ]; then \
         echo "SUCCESS: nvidia-uvm.ko built!"; \
-        file /output/nvidia-uvm.ko; \
+        ls -la /output/nvidia*; \
     else \
-        echo "WARNING: nvidia-uvm.ko not found in output"; \
-        find /nvidia-src -name "nvidia-uvm*" -ls; \
+        echo "WARNING: nvidia-uvm.ko not found in output, checking other locations:"; \
+        find / -name "nvidia-uvm*" -type f 2>/dev/null | head -20; \
     fi
 
 # Default command shows what was built
