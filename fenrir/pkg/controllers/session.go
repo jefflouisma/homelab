@@ -1029,8 +1029,6 @@ echo "=== Done ==="
 				// Point EGL to NVIDIA vendor library - critical for DRI2 screen creation
 				"__EGL_VENDOR_LIBRARY_DIRS":  "/nvidia-userspace:/usr/share/glvnd/egl_vendor.d",
 				"LD_LIBRARY_PATH":            "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
-				// Bypass sm_120 (Blackwell RTX 5080) architecture block in libcuda.so
-				"LD_PRELOAD":                 "/nvidia-libs/libcuda_shim.so",
 				// DRI device group access - Harvester host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
 				"GOW_VIDEO_GID":              "486",   // video group GID

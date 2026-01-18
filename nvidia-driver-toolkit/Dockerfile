@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Driver version - can be overridden at build time
-# UPDATED to 580.126.09 for Blackwell (RTX 5080) GSP firmware support
-ARG DRIVER_VERSION=580.126.09
+# UPDATED to 590.48.01 - FIRST version with official Blackwell (sm_120) CUDA support
+ARG DRIVER_VERSION=590.48.01
 ENV DRIVER_VERSION=${DRIVER_VERSION}
 
 # Pre-download the driver for layer caching (saves ~500MB download on each run)
@@ -37,16 +37,10 @@ RUN /nvidia-driver.run --extract-only && \
 COPY entrypoint.sh common.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.sh
 
-# Build libcuda_shim.so to bypass sm_120 (Blackwell) architecture block
-# Usage: LD_PRELOAD=/nvidia-libs/libcuda_shim.so your_application
-COPY libcuda_shim.c /tmp/
-RUN gcc -shared -fPIC -o /usr/lib/libcuda_shim.so /tmp/libcuda_shim.c -ldl && \
-    rm /tmp/libcuda_shim.c && \
-    ls -la /usr/lib/libcuda_shim.so
-
 # Set working directory
 WORKDIR /
 
 # Entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["init"]
+
