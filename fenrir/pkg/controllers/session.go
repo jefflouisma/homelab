@@ -908,6 +908,23 @@ echo "=== Done ==="
 					Name:  "DIREWOLF_APP",
 					Value: session.Spec.GameReference.Name,
 				},
+				// NVIDIA/CUDA environment for GPU encoding
+				{
+					Name:  "NVIDIA_VISIBLE_DEVICES",
+					Value: "all",
+				},
+				{
+					Name:  "NVIDIA_DRIVER_CAPABILITIES",
+					Value: "all",
+				},
+				{
+					Name:  "CUDA_VISIBLE_DEVICES",
+					Value: "all",
+				},
+				{
+					Name:  "LD_LIBRARY_PATH",
+					Value: "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/x86_64-linux-gnu",
+				},
 				{
 					Name: "POD_NAME",
 					ValueFrom: &corev1.EnvVarSource{
@@ -1004,12 +1021,14 @@ echo "=== Done ==="
 				"GST_VAAPI_ALL_DRIVERS":      "1",
 				"GST_DEBUG":                  "2",
 				"__GL_SYNC_TO_VBLANK":        "0",
-				// Disable CUDA to force software encoding (nvidia-uvm not in open driver)
-				"CUDA_VISIBLE_DEVICES":       "-1",
+				// Enable CUDA for NVENC encoding (nvidia-uvm now loaded via toolkit)
+				"CUDA_VISIBLE_DEVICES":       "all",
+				"NVIDIA_VISIBLE_DEVICES":     "all",
+				"NVIDIA_DRIVER_CAPABILITIES": "all",
 				"LIBVA_DRIVER_NAME":          "nvidia",
 				// Point EGL to NVIDIA vendor library - critical for DRI2 screen creation
 				"__EGL_VENDOR_LIBRARY_DIRS":  "/nvidia-userspace:/usr/share/glvnd/egl_vendor.d",
-				"LD_LIBRARY_PATH":            "/nvidia-userspace:/nvidia-libs:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
+				"LD_LIBRARY_PATH":            "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
 				// DRI device group access - Harvester host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
 				"GOW_VIDEO_GID":              "486",   // video group GID
