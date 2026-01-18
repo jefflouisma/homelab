@@ -1,0 +1,170 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-uvm-loader
+  namespace: kube-system
+  labels:
+    app: nvidia-uvm-loader
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-uvm-loader
+  template:
+    metadata:
+      labels:
+        app: nvidia-uvm-loader
+    spec:
+      hostPID: true
+      containers:
+      - name: pause
+        image: registry.k8s.io/pause:3.9
+        resources:
+          requests:
+            cpu: 1m
+            memory: 1Mi
+          limits:
+            cpu: 10m
+            memory: 10Mi
+      initContainers:
+      - name: load-nvidia-uvm
+        image: ubuntu:22.04
+        securityContext:
+          privileged: true
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "=== NVIDIA UVM Loader ==="
+          
+          # Check host kernel modules via /host-root
+          echo "Checking host kernel modules..."
+          HOST_MODULES=$(cat /host-root/proc/modules 2>/dev/null || echo "")
+          
+          # Check if nvidia module is loaded
+          if ! echo "$HOST_MODULES" | grep -q "^nvidia "; then
+            echo "NVIDIA module not loaded on host, skipping"
+            exit 0
+          fi
+          echo "nvidia module found!"
+          
+          # Check if nvidia-uvm is already loaded
+          if echo "$HOST_MODULES" | grep -q "^nvidia_uvm "; then
+            echo "nvidia-uvm already loaded!"
+            ls -la /host-root/dev/nvidia-uvm* 2>/dev/null || true
+            exit 0
+          fi
+          
+          echo "nvidia-uvm NOT loaded, will build and load it..."
+          
+          # Check if we have a cached nvidia-uvm.ko
+          if [ -f /host-lib/nvidia-uvm.ko ]; then
+            echo "Found cached nvidia-uvm.ko, attempting to load..."
+            chroot /host-root /sbin/insmod /var/lib/nvidia-userspace/nvidia-uvm.ko 2>&1 || echo "insmod of cached module failed"
+            
+            # Check if loaded
+            HOST_MODULES=$(cat /host-root/proc/modules 2>/dev/null || echo "")
+            if echo "$HOST_MODULES" | grep -q "nvidia_uvm"; then
+              echo "SUCCESS: nvidia-uvm loaded from cache!"
+              # Create device nodes
+              MAJOR=$(cat /host-root/proc/devices 2>/dev/null | grep nvidia-uvm | awk '{print $1}')
+              if [ -n "$MAJOR" ]; then
+                mknod -m 666 /host-root/dev/nvidia-uvm c $MAJOR 0 2>/dev/null || true
+                mknod -m 666 /host-root/dev/nvidia-uvm-tools c $MAJOR 1 2>/dev/null || true
+              fi
+              ls -la /host-root/dev/nvidia-uvm* 2>/dev/null
+              exit 0
+            fi
+          fi
+          
+          echo "Need to build nvidia-uvm module from source..."
+          
+          # Install build dependencies
+          apt-get update && apt-get install -y wget build-essential kmod
+          
+          # Download the NVIDIA driver
+          DRIVER_VERSION="580.119.02"
+          DRIVER_URL="https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
+          
+          echo "Downloading NVIDIA driver ${DRIVER_VERSION}..."
+          wget -q "$DRIVER_URL" -O /tmp/nvidia-driver.run
+          chmod +x /tmp/nvidia-driver.run
+          
+          echo "Extracting driver..."
+          /tmp/nvidia-driver.run --extract-only --target /tmp/nvidia
+          
+          # Check if kernel headers are available
+          KERNEL_VERSION=$(cat /host-root/proc/version | awk '{print $3}')
+          echo "Host kernel version: $KERNEL_VERSION"
+          
+          # Link host kernel build to where nvidia expects it
+          mkdir -p /lib/modules/${KERNEL_VERSION}
+          ln -sf /host-root/usr/src/linux-${KERNEL_VERSION} /lib/modules/${KERNEL_VERSION}/build 2>/dev/null || \
+          ln -sf /host-root/lib/modules/${KERNEL_VERSION}/build /lib/modules/${KERNEL_VERSION}/build 2>/dev/null || \
+          echo "WARNING: Could not link kernel headers"
+          
+          # Try to build nvidia-uvm module
+          cd /tmp/nvidia/kernel-open
+          echo "Building nvidia-uvm module..."
+          make -j$(nproc) modules NV_KERNEL_SOURCES=/host-root/usr/src/linux-${KERNEL_VERSION} 2>&1 || {
+            echo "Build failed, trying kernel module from nvidia-installer..."
+            cd /tmp/nvidia
+            ./nvidia-installer --kernel-source-path=/host-root/usr/src/linux-${KERNEL_VERSION} \
+              --no-x-check --no-nouveau-check --no-cc-version-check --no-kernel-module-source \
+              --kernel-name=${KERNEL_VERSION} --no-install-compat32-libs \
+              --kernel-module-build-directory=/tmp/nvidia-build \
+              --silent 2>&1 || echo "nvidia-installer also failed"
+          }
+          
+          # Find the built nvidia-uvm.ko
+          UVM_KO=$(find /tmp -name 'nvidia-uvm.ko' 2>/dev/null | head -1)
+          if [ -n "$UVM_KO" ]; then
+            echo "Found built nvidia-uvm.ko at: $UVM_KO"
+            cp -v "$UVM_KO" /host-lib/nvidia-uvm.ko
+            
+            # Load the module via chroot
+            echo "Loading nvidia-uvm into host kernel..."
+            chroot /host-root /sbin/insmod /var/lib/nvidia-userspace/nvidia-uvm.ko 2>&1 || echo "insmod failed"
+            
+            # Verify
+            HOST_MODULES=$(cat /host-root/proc/modules 2>/dev/null || echo "")
+            if echo "$HOST_MODULES" | grep -q "nvidia_uvm"; then
+              echo "SUCCESS: nvidia-uvm loaded!"
+              MAJOR=$(cat /host-root/proc/devices 2>/dev/null | grep nvidia-uvm | awk '{print $1}')
+              if [ -n "$MAJOR" ]; then
+                mknod -m 666 /host-root/dev/nvidia-uvm c $MAJOR 0 2>/dev/null || true
+                mknod -m 666 /host-root/dev/nvidia-uvm-tools c $MAJOR 1 2>/dev/null || true
+                ls -la /host-root/dev/nvidia-uvm* 2>/dev/null
+              fi
+            else
+              echo "FAILED: nvidia-uvm did not load"
+            fi
+          else
+            echo "FAILED: Could not find/build nvidia-uvm.ko"
+            find /tmp -name '*.ko' 2>/dev/null | head -10
+          fi
+          
+          echo "=== Done ==="
+        volumeMounts:
+        - name: host-root
+          mountPath: /host-root
+        - name: host-lib
+          mountPath: /host-lib
+        - name: proc
+          mountPath: /proc
+          readOnly: true
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - operator: Exists
+      volumes:
+      - name: host-root
+        hostPath:
+          path: /
+      - name: host-lib
+        hostPath:
+          path: /var/lib/nvidia-userspace
+          type: DirectoryOrCreate
+      - name: proc
+        hostPath:
+          path: /proc
