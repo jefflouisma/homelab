@@ -88,7 +88,7 @@ spec:
       containers:
         - name: operator
           # Custom-built Fenrir operator image
-          image: ghcr.io/jefflouisma/fenrir-operator:latest
+          image: ghcr.io/jefflouisma/fenrir-operator:sha-77c7f68
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
