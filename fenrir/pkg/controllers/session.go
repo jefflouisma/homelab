@@ -1456,7 +1456,7 @@ func (c *SessionController) reconcileActiveStreams(
 		actualClientID := session.Spec.PairingReference.Name
 		foundClient := false
 		for _, c := range clients {
-			klog.Infof("Wolf paired client: ID=%s, IP=%s", c.ID, c.IP)
+			klog.Infof("Wolf paired client: ID=%s, AppState=%s", c.ID, c.AppState)
 			// Skip the legacy hardcoded ID if we see it
 			if c.ID == "4193251087262667199" {
 				continue
