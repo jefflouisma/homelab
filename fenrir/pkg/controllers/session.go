@@ -74,8 +74,9 @@ type SessionController struct {
 	SessionClient   v1alpha1client.SessionInterface
 	SessionInformer generic.Informer[*v1alpha1types.Session]
 
-	AppInformer  generic.Informer[*v1alpha1types.App]
-	UserInformer generic.Informer[*v1alpha1types.User]
+	AppInformer     generic.Informer[*v1alpha1types.App]
+	UserInformer    generic.Informer[*v1alpha1types.User]
+	PairingInformer generic.Informer[*v1alpha1types.Pairing]
 
 	TCPRouteClient gatewayv1alpha2.TCPRouteInterface
 	UDPRouteClient gatewayv1alpha2.UDPRouteInterface
@@ -99,8 +100,9 @@ func NewSessionController(
 	sessionInformer generic.Informer[*v1alpha1types.Session],
 	appInformer generic.Informer[*v1alpha1types.App],
 	userInformer generic.Informer[*v1alpha1types.User],
+	pairingInformer generic.Informer[*v1alpha1types.Pairing],
 	deploymentInformer generic.Informer[*appsv1.Deployment],
-	options SessionControllerOptions,
+	opts SessionControllerOptions,
 ) *SessionController {
 	res := &SessionController{
 		K8sClient:                k8sClient,
@@ -110,9 +112,10 @@ func NewSessionController(
 		SessionInformer:          sessionInformer,
 		AppInformer:              appInformer,
 		UserInformer:             userInformer,
+		PairingInformer:          pairingInformer,
 		trackedSessions:          make(map[userGame]sets.Set[string]),
 		trackedGames:             make(map[string]userGame),
-		SessionControllerOptions: options,
+		SessionControllerOptions: opts,
 	}
 
 	res.controller = generic.NewController(
@@ -1242,7 +1245,12 @@ func (c *SessionController) reconcileConfigMap(
 		return fmt.Errorf("failed to get user: %s", err)
 	}
 
-	wolfConfig, err := GenerateWolfConfig(app)
+	pairings, err := c.PairingInformer.Namespaced(session.Namespace).List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("failed to list pairings: %s", err)
+	}
+
+	wolfConfig, err := GenerateWolfConfig(app, pairings)
 	if err != nil {
 		return fmt.Errorf("failed to generate wolf config: %s", err)
 	}
@@ -1481,6 +1489,7 @@ func (c *SessionController) reconcileActiveStreams(
 
 func GenerateWolfConfig(
 	app *v1alpha1.App,
+	pairings []*v1alpha1types.Pairing,
 ) (string, error) {
 	config := app.Spec.WolfConfig
 
@@ -1565,34 +1574,16 @@ func GenerateWolfConfig(
 		// if its not provided? Or start with empty wolf and use api to
 		// populate application
 		"gstreamer": gstreamerConfig,
-
-		//!TODO: Doesnt really matter since we handle moonlight. But
-		// we need a client to associate to streams. It would be better though
-		// to actually mirror the real moonlight clients into wolf via API
-		"paired_clients": []interface{}{
-			map[string]interface{}{
-				"app_state_folder": "state",
-				"client_cert": `-----BEGIN CERTIFICATE-----
-MIICvzCCAaegAwIBAgIBADANBgkqhkiG9w0BAQsFADAjMSEwHwYDVQQDDBhOVklE
-SUEgR2FtZVN0cmVhbSBDbGllbnQwHhcNMjQxMjE2MDgzMTE4WhcNNDQxMjExMDgz
-MTE4WjAjMSEwHwYDVQQDDBhOVklESUEgR2FtZVN0cmVhbSBDbGllbnQwggEiMA0G
-CSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCXcEKK/Desa7EcvntGHxtA3ercOxbd
-kUtkPPacz7mKVZBKayZmbfTMAQV5dS2yqeyZOId+X4JEPO7DeuMkkr9INnvl3etB
-WIj0q8FTuBrGAb+XozFTb3Tvo3plezpLXecl4mquvXA2mEtVILnm6NltdJ+GYNkT
-UBbOjneZIdBfFjIP+0k2JZD+VmnxmwCDlPryMa2nFi8rNAkYSfIWdyIlOzUJfZ/i
-8Hw4wLtSGy5W7YZ3kbQQJzPkW6pLFbREcNmslprwxZduo3mDAyDndj9qsVqopJOF
-Oj3Nlzj53kNRozgB9b/wkNcxi3lvOoQrNGJNTp39WNDmPFVzfBvCKVDJAgMBAAEw
-DQYJKoZIhvcNAQELBQADggEBAA+Rh4KAuTYtcH8X5RdUstjGXiYbONMmEuKl/kE/
-hj8ddefXA4pjf1Vozx6NunMlC4g0QQAZrsxn1NBVe/5L3gxrwyYLn/2kDJUw7P5o
-aTXnL5xYzhcPjQOER9+36S4aUTpwR/rURK0MyOmZOVk3Ex4rAnyetKg3Dd9v6uL3
-zaycOje4fxJpVH713NbFaGLMeKPW61lW+Lh9WlXOKrd0EABVBPmSYlk8gYnPrXxA
-dxohk8q/MqUqcm/k8ZGKYMc998ix6ldXJm5xaPTXSQcSC/xycoLjnUCkcv+sfh1T
-nKI+KlDXa1HikPGT/uB/b+SS6v9bD8kU03Ci4ahdKb6Mw7Q=
------END CERTIFICATE-----
-`,
-			},
-		},
 	}
+	
+	pairedClients := make([]interface{}, 0, len(pairings))
+	for _, p := range pairings {
+		pairedClients = append(pairedClients, map[string]interface{}{
+			"app_state_folder": "state",
+			"client_cert":      p.Spec.ClientCertPEM,
+		})
+	}
+	configMap["paired_clients"] = pairedClients
 
 	data, err := toml.Marshal(configMap)
 	if err != nil {

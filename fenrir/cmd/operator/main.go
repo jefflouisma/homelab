@@ -43,6 +43,7 @@ func main() {
 	appInformer := direwolfFactory.Direwolf().V1alpha1().Apps().Informer()
 	userInformer := direwolfFactory.Direwolf().V1alpha1().Users().Informer()
 	sessionInformer := direwolfFactory.Direwolf().V1alpha1().Sessions().Informer()
+	pairingInformer := direwolfFactory.Direwolf().V1alpha1().Pairings().Informer()
 	direwolfFactory.Start(appContext.Done())
 	defer direwolfFactory.Shutdown()
 
@@ -79,6 +80,7 @@ func main() {
 		generic.NewInformer[*direwolfv1alpha1.Session](sessionInformer),
 		generic.NewInformer[*direwolfv1alpha1.App](appInformer),
 		generic.NewInformer[*direwolfv1alpha1.User](userInformer),
+		generic.NewInformer[*direwolfv1alpha1.Pairing](pairingInformer),
 		generic.NewInformer[*appsv1.Deployment](deploymentInformer),
 		controllers.SessionControllerOptions{
 			WolfAgentImage: *wolfAgentImage,
