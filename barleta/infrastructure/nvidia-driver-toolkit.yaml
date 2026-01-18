@@ -40,7 +40,7 @@ spec:
       
       containers:
         - name: nvidia-driver
-          image: ghcr.io/jefflouisma/nvidia-driver-toolkit:sha-a70e089
+          image: ghcr.io/jefflouisma/nvidia-driver-toolkit:sha-4497f83
           imagePullPolicy: Always
           args: ["init"]
           env:
@@ -64,6 +64,10 @@ spec:
             # Persistent storage for modules, libs, and configs
             - name: nvidia-persist
               mountPath: /var/lib/nvidia
+            # RKE2 containerd (for accessing nvidia-uvm.ko from container overlays)
+            - name: rke2-containerd
+              mountPath: /var/lib/rancher/rke2/agent/containerd
+              readOnly: true
           resources:
             requests:
               cpu: 100m
@@ -109,6 +113,10 @@ spec:
           hostPath:
             path: /var/lib/nvidia
             type: DirectoryOrCreate
+        - name: rke2-containerd
+          hostPath:
+            path: /var/lib/rancher/rke2/agent/containerd
+            type: Directory
       
       # Run on all nodes, tolerate any taints
       tolerations:
