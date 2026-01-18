@@ -44,7 +44,7 @@ var (
 			return im
 		}
 
-		return "ghcr.io/jefflouisma/fenrir-wolf:latest"  // Custom Wolf with graceful DRM fallback
+		return "ghcr.io/games-on-whales/wolf:stable"  // Using stable upstream Wolf
 	}()
 )
 
