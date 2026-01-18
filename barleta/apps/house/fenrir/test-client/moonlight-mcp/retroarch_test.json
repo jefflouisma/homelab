@@ -1,0 +1,11 @@
+{
+  "host": "192.168.1.223",
+  "app": "RetroArch",
+  "action": "test_stream",
+  "timeout_ms": 120000,
+  "capture_after_ms": 30000,
+  "validation": {
+    "expect_visible": ["RetroArch"],
+    "expect_no_errors": true
+  }
+}

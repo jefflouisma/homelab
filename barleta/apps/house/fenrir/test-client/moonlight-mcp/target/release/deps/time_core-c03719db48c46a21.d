@@ -1,0 +1,10 @@
+/Volumes/4TB_Drive/Documents/homelab/barleta/apps/house/fenrir/test-client/moonlight-mcp/target/release/deps/libtime_core-c03719db48c46a21.rmeta: /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/lib.rs /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/convert.rs /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/hint.rs /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/util.rs
+
+/Volumes/4TB_Drive/Documents/homelab/barleta/apps/house/fenrir/test-client/moonlight-mcp/target/release/deps/libtime_core-c03719db48c46a21.rlib: /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/lib.rs /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/convert.rs /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/hint.rs /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/util.rs
+
+/Volumes/4TB_Drive/Documents/homelab/barleta/apps/house/fenrir/test-client/moonlight-mcp/target/release/deps/time_core-c03719db48c46a21.d: /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/lib.rs /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/convert.rs /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/hint.rs /Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/util.rs
+
+/Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/lib.rs:
+/Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/convert.rs:
+/Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/hint.rs:
+/Users/jefflouisma/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/time-core-0.1.7/src/util.rs:

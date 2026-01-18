@@ -142,7 +142,7 @@ resource "kubernetes_secret" "freeipa_network" {
       version = 2
       ethernets = {
         enp1s0 = {
-          dhcp4 = false
+          dhcp4     = false
           addresses = [var.freeipa_ip]
           gateway4  = var.gateway
           nameservers = {
