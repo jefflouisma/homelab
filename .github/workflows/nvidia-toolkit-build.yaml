@@ -18,8 +18,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # Use repo path so package inherits repo's public visibility
-  IMAGE_NAME: ${{ github.repository }}/nvidia-driver-toolkit
+  # Use jefflouisma/nvidia-driver-toolkit (the one user made public)
+  IMAGE_NAME: ${{ github.repository_owner }}/nvidia-driver-toolkit
 
 jobs:
   build:
