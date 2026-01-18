@@ -30,6 +30,7 @@ RUN zypper --non-interactive refresh && \
         gzip \
         libelf-devel \
         openssl-devel \
+        kmod \
         && zypper clean --all
 
 # Show kernel version we're building for (no prepare needed for external modules)
