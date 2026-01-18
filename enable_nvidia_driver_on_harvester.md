@@ -331,11 +331,20 @@ kubectl logs -n house <wolf-pod> | grep "Using zero copy pipeline"
 
 ## Known Limitations
 
-| Issue | Status | Workaround |
-|-------|--------|------------|
-| CUDA context warning | Known | Streaming works via non-CUDA fallback |
-| DRI permissions reset on reboot | Manual | dri-permissions init container fixes on pod start |
-| nvidia-driver-runtime CrashLoopBackOff | Expected | Driver installs before container exits |
+| Issue | Severity | Status | Description |
+|-------|----------|--------|-------------|
+| **nvidia-uvm missing** | **CRITICAL** | Blocker | Open-source NVIDIA driver doesn't include nvidia-uvm module. CUDA context creation fails (0x3e7). Wolf streaming requires CUDA. |
+| CUDA context warning | Known | Documented | GStreamer shows CUDA errors but this is expected without nvidia-uvm |
+| DRI permissions reset on reboot | Minor | Mitigated | dri-permissions init container fixes on pod start |
+| nvidia-driver-runtime CrashLoopBackOff | Expected | By Design | Driver installs before container exits |
+| AMD GPU VA-API failure | Known | Documented | Wolf container lacks Mesa VA-API drivers for AMD GPU |
+
+> [!CAUTION]
+> **Streaming is currently blocked** until one of these solutions is implemented:
+> - **Option A**: Switch to proprietary NVIDIA driver (includes nvidia-uvm)
+> - **Option B**: Build custom Wolf image with Mesa VA-API for AMD GPU
+> - **Option C**: Implement software-only rendering in Wolf
+
 
 ---
 
