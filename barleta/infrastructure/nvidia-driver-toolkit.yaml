@@ -40,7 +40,7 @@ spec:
       
       containers:
         - name: nvidia-driver
-          image: ghcr.io/jefflouisma/nvidia-driver-toolkit:latest
+          image: ghcr.io/jefflouisma/nvidia-driver-toolkit:sha-a70e089
           imagePullPolicy: Always
           args: ["init"]
           env:
