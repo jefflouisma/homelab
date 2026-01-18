@@ -141,6 +141,30 @@ install_gsp_firmware() {
 }
 
 #
+# Install libcuda shim to bypass sm_120 (Blackwell) architecture block
+# This allows CUDA to work on RTX 5080 with open-source kernel modules
+#
+install_cuda_shim() {
+    log_info "=== Installing CUDA Shim (sm_120 bypass) ==="
+    
+    local SHIM_SRC="/usr/lib/libcuda_shim.so"
+    local SHIM_DST="${NVIDIA_LIB_DIR:-/var/lib/nvidia/lib}/libcuda_shim.so"
+    
+    if [ ! -f "$SHIM_SRC" ]; then
+        log_warn "CUDA shim not found at $SHIM_SRC"
+        return 1
+    fi
+    
+    # Copy shim to nvidia lib directory (accessible by containers)
+    cp "$SHIM_SRC" "$SHIM_DST"
+    chmod 755 "$SHIM_DST"
+    
+    log_info "SUCCESS: Installed libcuda_shim.so to $SHIM_DST"
+    log_info "Use LD_PRELOAD=$SHIM_DST to bypass sm_120 block"
+    return 0
+}
+
+#
 # Install the NVIDIA driver (builds kernel modules)
 #
 install_driver() {
@@ -229,6 +253,7 @@ init() {
         if [ ! -f "${NVIDIA_LIB_DIR}/libcuda.so.1" ]; then
             install_libraries
             install_gsp_firmware
+            install_cuda_shim
             create_icd_files
         fi
     elif [ "$nvidia_loaded" = "yes" ]; then
@@ -241,6 +266,7 @@ init() {
         # Install libraries and create devices
         install_libraries
         install_gsp_firmware
+        install_cuda_shim
         create_icd_files
         create_device_nodes
     else
@@ -250,6 +276,7 @@ init() {
         load_all_modules
         install_libraries
         install_gsp_firmware
+        install_cuda_shim
         create_icd_files
         create_device_nodes
     fi

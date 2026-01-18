@@ -37,6 +37,13 @@ RUN /nvidia-driver.run --extract-only && \
 COPY entrypoint.sh common.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.sh
 
+# Build libcuda_shim.so to bypass sm_120 (Blackwell) architecture block
+# Usage: LD_PRELOAD=/nvidia-libs/libcuda_shim.so your_application
+COPY libcuda_shim.c /tmp/
+RUN gcc -shared -fPIC -o /usr/lib/libcuda_shim.so /tmp/libcuda_shim.c -ldl && \
+    rm /tmp/libcuda_shim.c && \
+    ls -la /usr/lib/libcuda_shim.so
+
 # Set working directory
 WORKDIR /
 
