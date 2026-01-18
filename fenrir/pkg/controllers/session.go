@@ -1444,11 +1444,36 @@ func (c *SessionController) reconcileActiveStreams(
 		// Either scenario is invalid. Delete the session
 		return c.SessionClient.Delete(ctx, session.Name, metav1.DeleteOptions{})
 	}
-
 	if !found {
-		//!TODO: Add the ports into the request for this to support multiple
-		// sessions per Gateway.
-		//
+		// Find the correct client ID from Wolf's client list
+		// Wolf calculates IDs from certificates, so we need to match them.
+		clients, err := wolfclient.ListClients(ctx)
+		if err != nil {
+			klog.Warningf("Failed to list clients from wolf: %v", err)
+		}
+		
+		// Default to the fingerprint, but try to find a better match
+		actualClientID := session.Spec.PairingReference.Name
+		foundClient := false
+		for _, c := range clients {
+			klog.Infof("Wolf paired client: ID=%s, IP=%s", c.ID, c.IP)
+			// Skip the legacy hardcoded ID if we see it
+			if c.ID == "4193251087262667199" {
+				continue
+			}
+			// If there is only one other client, it's likely ours!
+			// (Since each pod is isolated for one session)
+			actualClientID = c.ID
+			foundClient = true
+			break
+		}
+		
+		if !foundClient {
+			klog.Warningf("No matching client found in Wolf for fingerprint %s, using fingerprint as ID", session.Spec.PairingReference.Name)
+		} else {
+			klog.Infof("Resolved ClientID %s for session %s (fingerprint %s)", actualClientID, session.Name, session.Spec.PairingReference.Name)
+		}
+
 		// Create the session
 		sessionID, err := wolfclient.AddSession(ctx, wolfapi.Session{
 			VideoWidth:        session.Spec.Config.VideoWidth,
@@ -1468,9 +1493,8 @@ func (c *SessionController) reconcileActiveStreams(
 			},
 			AESKey: session.Spec.Config.AESKey,
 			AESIV:  session.Spec.Config.AESIV,
-			// Use the client's fingerprint from the PairingReference
-			// The Pairing CR name IS the client certificate fingerprint
-			ClientID: session.Spec.PairingReference.Name,
+			// Use the resolved ClientID
+			ClientID: actualClientID,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create session: %s", err)

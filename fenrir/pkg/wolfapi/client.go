@@ -11,6 +11,17 @@ import (
 	"github.com/r3labs/sse/v2"
 )
 
+type ClientInfo struct {
+	ID        string `json:"id"`
+	AppID     string `json:"app_id,omitempty"`
+	IP        string `json:"ip,omitempty"`
+}
+
+type ClientsResponse struct {
+	Response `json:",inline"`
+	Clients  []ClientInfo `json:"clients"`
+}
+
 type Session struct {
 	AppID             string         `json:"app_id"`
 	AudioChannelCount int            `json:"audio_channel_count"`
@@ -49,6 +60,7 @@ type Client interface {
 	StopSession(ctx context.Context, sessionID string) error
 	ListSessions(ctx context.Context) ([]Session, error)
 	ListApps(ctx context.Context) ([]App, error)
+	ListClients(ctx context.Context) ([]ClientInfo, error)
 	SubscribeToEvents(ctx context.Context) (<-chan *sse.Event, error)
 }
 
@@ -170,6 +182,36 @@ func (c *client) ListApps(ctx context.Context) ([]App, error) {
 	}
 
 	return appsResp.Apps, nil
+}
+
+// GET /api/v1/clients
+func (c *client) ListClients(ctx context.Context) ([]ClientInfo, error) {
+	u, err := url.JoinPath(c.apiURL, "/api/v1/clients")
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var clientsResp ClientsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&clientsResp); err != nil {
+		return nil, err
+	}
+
+	if !clientsResp.Success {
+		return nil, fmt.Errorf("failed to list clients: %s", clientsResp.Error)
+	}
+
+	return clientsResp.Clients, nil
 }
 
 func (c *client) StopSession(ctx context.Context, sessionID string) error {
