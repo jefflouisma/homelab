@@ -31,41 +31,43 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $*"
 }
 
-# Check if a kernel module is loaded
+# Check if a kernel module is loaded ON THE HOST
+# Uses nsenter since container has hostPID: true
 module_loaded() {
     local module_name="${1//-/_}"  # Replace hyphens with underscores
-    lsmod | grep -q "^${module_name} "
+    # Use nsenter to check host's loaded modules (requires hostPID: true)
+    nsenter -t 1 -m -u -i -n -p -- cat /proc/modules 2>/dev/null | grep -q "^${module_name} "
 }
 
-# Load a kernel module
+# Load a kernel module ON THE HOST
+# Uses nsenter since container has hostPID: true
 load_module() {
     local module_name="$1"
     local module_underscore="${module_name//-/_}"
     
     if module_loaded "$module_name"; then
-        log_info "${module_name} already loaded"
+        log_info "${module_name} already loaded on HOST"
         return 0
     fi
     
-    # Try loading from persisted .ko first
+    # Try loading via nsenter modprobe on host
+    log_info "Loading ${module_name} on HOST via nsenter..."
+    if nsenter -t 1 -m -u -i -n -p -- modprobe "$module_name" 2>/dev/null; then
+        log_info "${module_name} loaded successfully on HOST"
+        return 0
+    fi
+    
+    # Try loading from persisted .ko via nsenter insmod
     local ko_file="${NVIDIA_MODULE_DIR}/${module_name}.ko"
     if [ -f "$ko_file" ]; then
-        log_info "Loading ${module_name} from persisted module..."
-        if insmod "$ko_file" 2>/dev/null; then
-            log_info "${module_name} loaded successfully from cache"
+        log_info "Loading ${module_name} from persisted module on HOST..."
+        if nsenter -t 1 -m -u -i -n -p -- insmod "$ko_file" 2>/dev/null; then
+            log_info "${module_name} loaded successfully from cache on HOST"
             return 0
-        else
-            log_warn "Failed to load ${module_name} from cache, trying modprobe..."
         fi
     fi
     
-    # Fallback to modprobe
-    if modprobe "$module_name" 2>/dev/null; then
-        log_info "${module_name} loaded successfully via modprobe"
-        return 0
-    fi
-    
-    log_error "Failed to load ${module_name}"
+    log_error "Failed to load ${module_name} on HOST"
     return 1
 }
 
