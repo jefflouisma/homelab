@@ -857,10 +857,11 @@ echo "=== Done ==="
 			Image: "busybox",
 			Command: []string{
 				"sh", "-c", `
-echo "=== Setting DRI device permissions ==="
+echo "=== Setting GPU device permissions ==="
 chmod 666 /dev/dri/renderD* 2>/dev/null || true
 chmod 666 /dev/dri/card* 2>/dev/null || true
-ls -la /dev/dri/
+chmod 666 /dev/nvidia* 2>/dev/null || true
+ls -la /dev/dri/ /dev/nvidia* 2>/dev/null || true
 echo "=== Done ==="
 `,
 			},
