@@ -87,8 +87,8 @@ spec:
       serviceAccountName: fenrir-operator
       containers:
         - name: operator
-          # Custom-built Fenrir operator image
-          image: ghcr.io/jefflouisma/fenrir-operator:sha-77c7f68
+          # Custom-built Fenrir operator image with nvidia RuntimeClass fix
+          image: ghcr.io/jefflouisma/fenrir-operator:sha-ae73d57
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
