@@ -105,7 +105,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: WOLF_IMAGE
-              value: ghcr.io/jefflouisma/fenrir-wolf:734a3a1b64feb8e9d77e93baf17828d2e3c663d0
+              value: ghcr.io/jefflouisma/fenrir-wolf:fc69ceb5ca53fb66c518ec64ea5a6c0dfc4b1685
             - name: IMAGE_PULL_SECRET
               value: ghcr-secret
           resources:
