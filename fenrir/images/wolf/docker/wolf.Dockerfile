@@ -149,8 +149,10 @@ RUN apt-get update -y && \
     libglvnd0 libgl1 libglx0 libegl1 libgles2 xwayland hwdata \
     && rm -rf /var/lib/apt/lists/* \
     # Create GBM directory for nvidia backend symlink (created at runtime by startup.sh)
-    && mkdir -p /usr/lib/x86_64-linux-gnu/gbm \
-    && chmod 777 /usr/lib/x86_64-linux-gnu/gbm \
+    # libgbm searches in /usr/lib/gbm/ by default, NOT /usr/lib/x86_64-linux-gnu/gbm/
+    # startup.sh runs as non-root so needs write permission to this directory
+    && mkdir -p /usr/lib/gbm \
+    && chmod 777 /usr/lib/gbm \
     # Create EGL external platform directory for nvidia config JSON files
     && mkdir -p /usr/share/egl/egl_external_platform.d \
     && chmod 777 /usr/share/egl/egl_external_platform.d
