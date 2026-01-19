@@ -83,7 +83,7 @@ spec:
           apt-get update && apt-get install -y wget build-essential kmod
           
           # Download the NVIDIA driver
-          DRIVER_VERSION="580.119.02"
+          DRIVER_VERSION="590.48.01"
           DRIVER_URL="https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
           
           echo "Downloading NVIDIA driver ${DRIVER_VERSION}..."

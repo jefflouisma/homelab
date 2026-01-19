@@ -16,7 +16,7 @@ data:
     #!/bin/bash
     set -e
     
-    DRIVER_URL="${DRIVER_LOCATION:-https://download.nvidia.com/XFree86/Linux-x86_64/580.119.02/NVIDIA-Linux-x86_64-580.119.02.run}"
+    DRIVER_URL="${DRIVER_LOCATION:-https://download.nvidia.com/XFree86/Linux-x86_64/590.48.01/NVIDIA-Linux-x86_64-590.48.01.run}"
     DRIVER_FILE="/tmp/nvidia-driver.run"
     
     echo "=== NVIDIA Consumer Driver Installer ==="
@@ -93,7 +93,7 @@ spec:
           command: ["/bin/bash", "/scripts/entrypoint.sh"]
           env:
             - name: DRIVER_LOCATION
-              value: "https://download.nvidia.com/XFree86/Linux-x86_64/580.119.02/NVIDIA-Linux-x86_64-580.119.02.run"
+              value: "https://download.nvidia.com/XFree86/Linux-x86_64/590.48.01/NVIDIA-Linux-x86_64-590.48.01.run"
           securityContext:
             privileged: true
           volumeMounts:

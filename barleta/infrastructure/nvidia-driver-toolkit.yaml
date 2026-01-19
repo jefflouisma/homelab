@@ -45,7 +45,7 @@ spec:
           args: ["init"]
           env:
             - name: DRIVER_VERSION
-              value: "580.119.02"
+              value: "590.48.01"
             - name: NVIDIA_BASE_DIR
               value: "/var/lib/nvidia"
           securityContext:

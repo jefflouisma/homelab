@@ -86,7 +86,7 @@ spec:
           fi
           
           # Check if user-space libraries already installed AND nvidia-uvm is loaded
-          if [ -f /host-lib/libnvidia-glcore.so.580.119.02 ] && [ -z "$NEEDS_UVM_EXTRACT" ]; then
+          if [ -f /host-lib/libnvidia-glcore.so.590.48.01 ] && [ -z "$NEEDS_UVM_EXTRACT" ]; then
             echo "Libraries already installed and nvidia-uvm loaded - done!"
             exit 0
           fi
@@ -95,7 +95,7 @@ spec:
           apt-get update && apt-get install -y wget libarchive-tools
           
           # Download the NVIDIA driver package
-          DRIVER_VERSION="580.119.02"
+          DRIVER_VERSION="590.48.01"
           DRIVER_URL="https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
           
           echo "Downloading NVIDIA driver..."
@@ -107,7 +107,7 @@ spec:
           
           # Copy ALL user-space libraries (not kernel modules)
           echo "Installing ALL libraries to host..."
-          DRIVER_VERSION="580.119.02"
+          DRIVER_VERSION="590.48.01"
           
           # Copy all .so files from extracted driver
           for lib in /tmp/nvidia/*.so.*; do
