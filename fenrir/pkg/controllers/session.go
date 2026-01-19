@@ -1048,6 +1048,8 @@ echo "=== Done ==="
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
 				"GOW_VIDEO_GID":  "486", // video group GID
 				"GOW_RENDER_GID": "489", // render group GID
+				// Ensure wolf user gets access to DRI + NVIDIA devices
+				"GOW_REQUIRED_DEVICES": "/dev/uinput /dev/input/event* /dev/dri/renderD* /dev/dri/card* /dev/nvidia*",
 			}),
 			// Note: Container Ports list is strictly informational. As long
 			// as process is listening on 0.0.0.0 it can be bound by a service.
