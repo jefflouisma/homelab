@@ -1053,7 +1053,11 @@ echo "=== Done ==="
 				// Point EGL to NVIDIA vendor library - critical for DRI2 screen creation
 				// Use /etc/wolf/cfg/egl_vendor.d which has the nvidia vendor ICD JSON
 				"__EGL_VENDOR_LIBRARY_DIRS": "/etc/wolf/cfg/egl_vendor.d:/nvidia-libs:/usr/share/glvnd/egl_vendor.d",
-				"LD_LIBRARY_PATH":           "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
+				// Force EGL to use device mode without relying on EGL_EXT_device_enumeration
+				// This is required for headless container environments where the extension fails
+				"EGL_PLATFORM":      "device",
+				"GBM_BACKEND":       "nvidia-drm",
+				"LD_LIBRARY_PATH":   "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
 				// DRI device group access - Harvester host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
 				"GOW_VIDEO_GID":  "486", // video group GID
