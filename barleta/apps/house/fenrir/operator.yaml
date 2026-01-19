@@ -88,8 +88,8 @@ spec:
       serviceAccountName: fenrir-operator
       containers:
         - name: operator
-          # Custom-built Fenrir operator with GBM symlink path fix
-          image: ghcr.io/jefflouisma/fenrir-operator:f542d11
+          # Operator with gbm-backend init container for NVIDIA GBM driver loading
+          image: ghcr.io/jefflouisma/fenrir-operator:f641d40
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
