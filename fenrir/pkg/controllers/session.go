@@ -871,12 +871,13 @@ echo "=== Done ==="
 			Image: "busybox:latest",
 			Command: []string{
 				"sh", "-c", `
-echo "=== Creating GBM backend symlink for NVIDIA ==="
+echo "=== Creating GBM backend for NVIDIA ==="
 if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
-    echo "Found libnvidia-egl-gbm.so.1, creating symlink..."
-    ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /gbm-backend/nvidia-drm_gbm.so
+    echo "Found libnvidia-egl-gbm.so.1, copying library directly..."
+    # Copy library instead of symlink - ensures libgbm can directly load without symlink resolution issues
+    cp -v /nvidia-libs/libnvidia-egl-gbm.so.1 /gbm-backend/nvidia-drm_gbm.so
     ls -la /gbm-backend/
-    echo "SUCCESS: GBM symlink created"
+    echo "SUCCESS: GBM library copied"
     
     # Create EGL external platform config for NVIDIA GBM backend
     # This tells libgbm how to initialize the NVIDIA driver
