@@ -41,9 +41,24 @@ RUN <<_GST_WAYLAND_DISPLAY
     #!/bin/bash
     set -e
 
+    # Clone patched smithay that skips EGL_EXT_device_enumeration check
+    # when EGL_EXT_device_base is present (fixes NVIDIA 590 containers)
+    git clone https://github.com/games-on-whales/smithay /tmp/smithay-patched
+    cd /tmp/smithay-patched
+    # Apply patch: skip EGL_EXT_device_enumeration check when device_base is present
+    sed -i '/EGL_EXT_device_enumeration/,+2d' src/backend/egl/device.rs
+
     git clone https://github.com/games-on-whales/gst-wayland-display
     cd gst-wayland-display
     git checkout 67b1183
+    
+    # Configure Cargo to use our patched smithay
+    mkdir -p .cargo
+    cat > .cargo/config.toml << 'EOF'
+[patch.'https://github.com/games-on-whales/smithay']
+smithay = { path = "/tmp/smithay-patched" }
+EOF
+
     cargo install cargo-c
     cargo cinstall --features="cuda" --prefix=/usr/local/lib/x86_64-linux-gnu/ --libdir=/usr/local/lib/x86_64-linux-gnu/gstreamer-1.0
 _GST_WAYLAND_DISPLAY
