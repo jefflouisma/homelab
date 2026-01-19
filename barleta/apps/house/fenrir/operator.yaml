@@ -89,7 +89,7 @@ spec:
       containers:
         - name: operator
           # Custom-built Fenrir operator image with nvidia RuntimeClass fix
-          image: ghcr.io/jefflouisma/fenrir-operator:c56eccc
+          image: ghcr.io/jefflouisma/fenrir-operator:7321d37
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
