@@ -1,9 +1,74 @@
 ARG BASE_IMAGE=ghcr.io/games-on-whales/gstreamer:1.26.7
+
+########################################################
+# STAGE 1: gst-wayland-display builder (Rust, ~11 min)
+# Independent stage - only rebuilds when:
+# - GST_COMMIT changes (fork updates)
+# - SMITHAY_COMMIT changes
+# - Rust version changes
+########################################################
+FROM $BASE_IMAGE AS gst-builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Minimal deps for Rust build
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    git \
+    build-essential \
+    pkg-config \
+    libwayland-dev libwayland-server0 libinput-dev libxkbcommon-dev libgbm-dev \
+    libglib2.0-dev libegl-dev libgles-dev libopengl-dev libdrm-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="$HOME/.cargo/bin:${PATH}"
+
+ARG RUST_VERSION=1.91.1
+ENV RUST_VERSION=$RUST_VERSION
+RUN rustup install $RUST_VERSION && rustup default $RUST_VERSION
+
+# ARGs for cache invalidation - only change these when repos are updated
+ARG SMITHAY_COMMIT=a166cf4c94b5aedc332a65aa1dd753e8148829c3
+ARG GST_COMMIT=8bcb5f9
+
+WORKDIR /tmp/
+
+# Clone and patch Smithay for NVIDIA EGL compatibility
+RUN git clone https://github.com/games-on-whales/smithay /tmp/smithay-patched && \
+    cd /tmp/smithay-patched && \
+    git checkout $SMITHAY_COMMIT && \
+    # Delete EGL_EXT_device_enumeration and EGL_EXT_device_query checks
+    # EGL_EXT_device_base (NVIDIA 590) is composite extension including both
+    sed -i '35,41d' src/backend/egl/device.rs
+
+# Clone, configure and build gst-wayland-display with cargo cache mount
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    git clone https://github.com/jefflouisma/gst-wayland-display && \
+    cd gst-wayland-display && \
+    git checkout $GST_COMMIT && \
+    mkdir -p .cargo && \
+    echo '[patch."https://github.com/games-on-whales/smithay"]' > .cargo/config.toml && \
+    echo 'smithay = { path = "/tmp/smithay-patched" }' >> .cargo/config.toml && \
+    cargo install cargo-c && \
+    cargo cinstall --features="cuda" --prefix=/usr/local/lib/x86_64-linux-gnu/ --libdir=/usr/local/lib/x86_64-linux-gnu/gstreamer-1.0
+
+########################################################
+# STAGE 2: Wolf C++ builder (~16 min)
+# Independent stage - only rebuilds when:
+# - wolf/ source code changes
+# - C++ build flags change
+# Does NOT depend on gst-wayland-display!
 ########################################################
 FROM $BASE_IMAGE AS wolf-builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Wolf build dependencies (C++ toolchain)
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
     curl \
@@ -28,49 +93,12 @@ RUN apt-get update -y && \
     libglib2.0-dev libegl-dev libgles-dev libopengl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-## Install Rust in order to build our custom compositor
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="$HOME/.cargo/bin:${PATH}"
-
-ARG RUST_VERSION=1.91.1
-ENV RUST_VERSION=$RUST_VERSION
-RUN rustup install $RUST_VERSION && rustup default $RUST_VERSION
-
-WORKDIR /tmp/
-RUN <<_GST_WAYLAND_DISPLAY
-    #!/bin/bash
-    set -e
-
-    # Clone patched smithay that skips EGL_EXT_device_enumeration/query checks
-    # when EGL_EXT_device_base is present (fixes NVIDIA 590 containers)
-    git clone https://github.com/games-on-whales/smithay /tmp/smithay-patched
-    cd /tmp/smithay-patched
-    # Checkout the exact revision that gst-wayland-display (67b1183) expects
-    git checkout a166cf4c94b5aedc332a65aa1dd753e8148829c3
-    # Delete lines 35-41: both EGL_EXT_device_enumeration and EGL_EXT_device_query checks
-    # EGL_EXT_device_base (NVIDIA 590) is composite extension including both per NVIDIA docs
-    sed -i '35,41d' src/backend/egl/device.rs
-
-    git clone https://github.com/jefflouisma/gst-wayland-display
-    cd gst-wayland-display
-    git checkout 8bcb5f9  # stable branch with NVIDIA GBM Modifier::Linear fallback fix
-    
-    # Configure Cargo to use our patched smithay
-    mkdir -p .cargo
-    cat > .cargo/config.toml << 'EOF'
-[patch.'https://github.com/games-on-whales/smithay']
-smithay = { path = "/tmp/smithay-patched" }
-EOF
-
-    cargo install cargo-c
-    cargo cinstall --features="cuda" --prefix=/usr/local/lib/x86_64-linux-gnu/ --libdir=/usr/local/lib/x86_64-linux-gnu/gstreamer-1.0
-_GST_WAYLAND_DISPLAY
-
 COPY . /wolf/
 WORKDIR /wolf
 
 ENV CCACHE_DIR=/cache/ccache
 ENV CMAKE_BUILD_DIR=/cache/cmake-build
+
 RUN --mount=type=cache,target=/cache/ccache \
     cmake -B$CMAKE_BUILD_DIR \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
@@ -84,10 +112,14 @@ RUN --mount=type=cache,target=/cache/ccache \
     -G Ninja && \
     ninja -C $CMAKE_BUILD_DIR wolf && \
     ninja -C $CMAKE_BUILD_DIR fake-udev && \
-    # We have to copy out the built executables because this will only be available inside the buildkit cache
+    # Copy out built executables from buildkit cache
     cp $CMAKE_BUILD_DIR/src/moonlight-server/wolf /wolf/wolf && \
     cp $CMAKE_BUILD_DIR/src/fake-udev/fake-udev /wolf/fake-udev
 
+########################################################
+# STAGE 3: Runtime image
+# Copies artifacts from both builder stages
+# Only rebuilds on runtime config changes (~1 min)
 ########################################################
 FROM $BASE_IMAGE AS runner
 ENV DEBIAN_FRONTEND=noninteractive
@@ -115,34 +147,28 @@ RUN apt-get update -y && \
     # Create GBM directory for nvidia backend symlink (created at runtime by startup.sh)
     && mkdir -p /usr/lib/x86_64-linux-gnu/gbm \
     && chmod 777 /usr/lib/x86_64-linux-gnu/gbm \
-    # Create EGL external platform directory for nvidia config JSON files (created at runtime by startup.sh)
+    # Create EGL external platform directory for nvidia config JSON files
     && mkdir -p /usr/share/egl/egl_external_platform.d \
     && chmod 777 /usr/share/egl/egl_external_platform.d
 
 ENV GST_PLUGIN_PATH=/usr/local/lib/x86_64-linux-gnu/gstreamer-1.0/
-# Copying out our custom compositor from the build stage
-COPY --from=wolf-builder /usr/local/lib/x86_64-linux-gnu/gstreamer-1.0/* $GST_PLUGIN_PATH
-COPY --from=wolf-builder /usr/local/lib/liblibgstwaylanddisplay* /usr/local/lib/
 
-# CRITICAL: Must chmod directories AFTER all apt-get installs and COPY commands
-# to ensure permissions apply even if directories pre-exist from base image or packages
-# CACHEBUST forces rebuild of this layer when changed
-ARG CACHEBUST=20260119_0949
-RUN echo "Cache bust: ${CACHEBUST}" && \
-    chmod 777 /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d 2>/dev/null || \
-    (mkdir -p /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d && \
-     chmod 777 /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d) && \
-    # CRITICAL: Make existing EGL platform config files writable for non-root users
-    # Base image has 15_nvidia_gbm.json and 10_nvidia_wayland.json owned by root:644
-    # startup-app.sh runs as 'ubuntu' and needs to overwrite these with NVIDIA-specific configs
+# Copy gst-wayland-display from gst-builder stage
+COPY --from=gst-builder /usr/local/lib/x86_64-linux-gnu/gstreamer-1.0/* $GST_PLUGIN_PATH
+COPY --from=gst-builder /usr/local/lib/liblibgstwaylanddisplay* /usr/local/lib/
+
+# Copy Wolf executables from wolf-builder stage  
+COPY --from=wolf-builder /wolf/wolf /wolf/wolf
+COPY --from=wolf-builder /wolf/fake-udev /wolf/fake-udev
+
+# CRITICAL: Make existing EGL platform config files writable for non-root users
+# Base image has 15_nvidia_gbm.json and 10_nvidia_wayland.json owned by root:644
+RUN chmod 777 /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d 2>/dev/null || true && \
     chmod 666 /usr/share/egl/egl_external_platform.d/*.json 2>/dev/null || true
 
 WORKDIR /wolf
 
 ENV WOLF_CFG_FOLDER=/etc/wolf/cfg
-
-COPY --from=wolf-builder /wolf/wolf /wolf/wolf
-COPY --from=wolf-builder /wolf/fake-udev /wolf/fake-udev
 
 ENV GST_GL_API=gles2 \
     GST_GL_PLATFORM=egl \
@@ -164,7 +190,7 @@ ENV GST_GL_API=gles2 \
     PGID=0 \
     UNAME="root"
 
-# Setting up XDG_RUNTIME_DIR this will automatically create a volume when starting the container
+# XDG_RUNTIME_DIR - auto-creates volume when starting
 VOLUME /run/user/wolf/
 ENV XDG_RUNTIME_DIR=/run/user/wolf
 
