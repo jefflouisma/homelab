@@ -127,11 +127,15 @@ COPY --from=wolf-builder /usr/local/lib/liblibgstwaylanddisplay* /usr/local/lib/
 # CRITICAL: Must chmod directories AFTER all apt-get installs and COPY commands
 # to ensure permissions apply even if directories pre-exist from base image or packages
 # CACHEBUST forces rebuild of this layer when changed
-ARG CACHEBUST=20260119_0903
+ARG CACHEBUST=20260119_0949
 RUN echo "Cache bust: ${CACHEBUST}" && \
     chmod 777 /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d 2>/dev/null || \
     (mkdir -p /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d && \
-     chmod 777 /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d)
+     chmod 777 /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d) && \
+    # CRITICAL: Make existing EGL platform config files writable for non-root users
+    # Base image has 15_nvidia_gbm.json and 10_nvidia_wayland.json owned by root:644
+    # startup-app.sh runs as 'ubuntu' and needs to overwrite these with NVIDIA-specific configs
+    chmod 666 /usr/share/egl/egl_external_platform.d/*.json 2>/dev/null || true
 
 WORKDIR /wolf
 
