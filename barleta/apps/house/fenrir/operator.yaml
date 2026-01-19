@@ -104,6 +104,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: WOLF_IMAGE
+              value: ghcr.io/jefflouisma/fenrir-wolf:latest
           resources:
             requests:
               cpu: 100m
