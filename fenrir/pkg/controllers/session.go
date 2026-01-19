@@ -1110,6 +1110,27 @@ echo "=== Done ==="
 					Name:      "nvidia-userspace",
 					MountPath: "/nvidia-userspace",
 				},
+				// Explicit nvidia device bind mounts - override devtmpfs devices
+				{
+					Name:      "nvidia-ctl",
+					MountPath: "/dev/nvidiactl",
+				},
+				{
+					Name:      "nvidia0",
+					MountPath: "/dev/nvidia0",
+				},
+				{
+					Name:      "nvidia-modeset",
+					MountPath: "/dev/nvidia-modeset",
+				},
+				{
+					Name:      "nvidia-uvm",
+					MountPath: "/dev/nvidia-uvm",
+				},
+				{
+					Name:      "nvidia-uvm-tools",
+					MountPath: "/dev/nvidia-uvm-tools",
+				},
 			},
 		},
 	)
@@ -1162,6 +1183,55 @@ echo "=== Done ==="
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
 					Path: "/dev",
+				},
+			},
+		},
+		// Explicit nvidia device node bind mounts - required because /dev hostPath
+		// doesn't actually bind mount on Linux, containers get their own devtmpfs
+		// with stale device inodes. These CharDevice mounts ensure fresh device
+		// access after GPU driver reloads or node reboots.
+		corev1.Volume{
+			Name: "nvidia-ctl",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/dev/nvidiactl",
+					Type: ptr.To(corev1.HostPathCharDev),
+				},
+			},
+		},
+		corev1.Volume{
+			Name: "nvidia0",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/dev/nvidia0",
+					Type: ptr.To(corev1.HostPathCharDev),
+				},
+			},
+		},
+		corev1.Volume{
+			Name: "nvidia-modeset",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/dev/nvidia-modeset",
+					Type: ptr.To(corev1.HostPathCharDev),
+				},
+			},
+		},
+		corev1.Volume{
+			Name: "nvidia-uvm",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/dev/nvidia-uvm",
+					Type: ptr.To(corev1.HostPathCharDev),
+				},
+			},
+		},
+		corev1.Volume{
+			Name: "nvidia-uvm-tools",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/dev/nvidia-uvm-tools",
+					Type: ptr.To(corev1.HostPathCharDev),
 				},
 			},
 		},
