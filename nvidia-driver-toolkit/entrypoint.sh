@@ -277,8 +277,18 @@ init() {
     log_info "  - /dev/nvidia-uvm exists: $([ -e /dev/nvidia-uvm ] && echo 'YES' || echo 'NO')"
     
     # Keep container alive
-    log_info "Entering sleep loop (container alive for library serving)..."
-    exec sleep infinity
+    log_info "Entering nvidia-uvm watchdog loop..."
+    
+    # Keep nvidia_uvm loaded - it tends to unload when no processes are using it
+    while true; do
+        if ! nsenter -t 1 -m -u -i -n -p -- lsmod 2>/dev/null | grep -q nvidia_uvm; then
+            log_warn "nvidia_uvm unloaded, reloading..."
+            if [ -f "${NVIDIA_BASE_DIR}/modules/nvidia-uvm.ko" ]; then
+                nsenter -t 1 -m -u -i -n -p -- insmod "${NVIDIA_BASE_DIR}/modules/nvidia-uvm.ko" 2>/dev/null && log_info "nvidia_uvm reloaded" || log_error "Failed to reload nvidia_uvm"
+            fi
+        fi
+        sleep 30
+    done
 }
 
 #
@@ -291,7 +301,18 @@ load() {
     create_device_nodes
     
     log_info "Module loading complete"
-    exec sleep infinity
+    log_info "Entering nvidia-uvm watchdog loop..."
+    
+    # Keep nvidia_uvm loaded - it tends to unload when no processes are using it
+    while true; do
+        if ! nsenter -t 1 -m -u -i -n -p -- lsmod 2>/dev/null | grep -q nvidia_uvm; then
+            log_warn "nvidia_uvm unloaded, reloading..."
+            if [ -f "${NVIDIA_BASE_DIR}/modules/nvidia-uvm.ko" ]; then
+                nsenter -t 1 -m -u -i -n -p -- insmod "${NVIDIA_BASE_DIR}/modules/nvidia-uvm.ko" 2>/dev/null && log_info "nvidia_uvm reloaded" || log_error "Failed to reload nvidia_uvm"
+            fi
+        fi
+        sleep 30
+    done
 }
 
 #
