@@ -704,6 +704,15 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 		489, // render group
 	)
 
+	// Set RuntimeClass for GPU access if not already specified in app template
+	// The nvidia RuntimeClass uses nvidia-container-runtime to mount GPU devices
+	// This is CRITICAL for NVENC hardware encoding - without it, GStreamer can't find nvh265enc
+	if podToCreate.Spec.RuntimeClassName == nil || *podToCreate.Spec.RuntimeClassName == "" {
+		runtimeClassName := "nvidia"
+		podToCreate.Spec.RuntimeClassName = &runtimeClassName
+		klog.Infof("Setting RuntimeClassName to 'nvidia' for GPU access")
+	}
+
 	mapToEnvApplyList := func(m map[string]string) []corev1.EnvVar {
 		var res []corev1.EnvVar
 		for k, v := range m {

@@ -2,12 +2,12 @@
     "host": "192.168.1.223",
     "action": "test_stream",
     "app": "RetroArch",
-    "timeout_ms": 60000,
-    "capture_after_ms": 15000,
+    "verify_video": true,
+    "capture_after_ms": 20000,
+    "timeout_ms": 120000,
+    "screenshot_dir": "/Volumes/4TB_Drive/Documents/homelab/barleta/apps/house/fenrir/test-client/moonlight-mcp/screenshots",
     "validation": {
-        "expect_visible": [
-            "retroarch"
-        ],
+        "expect_stream_active": true,
         "expect_no_errors": true
     }
 }

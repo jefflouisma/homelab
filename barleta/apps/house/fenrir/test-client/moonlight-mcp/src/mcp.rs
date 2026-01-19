@@ -1,13 +1,13 @@
 //! MCP stdio protocol handler
 //!
-//! Implements the Model Context Protocol for AI agent integration
+//! Implements the Model Context Protocol for AI agent integration.
+//! Exposes Moonlight client capabilities as MCP tools.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::tests::{self, TestAction, TestDefinition, TestResult, ValidationConfig};
-use crate::validator;
+use crate::tests::{self, TestAction, TestDefinition, ValidationConfig};
 
 /// JSON-RPC 2.0 Request
 #[derive(Debug, Deserialize)]
@@ -172,6 +172,7 @@ async fn handle_initialize() -> Result<serde_json::Value> {
 
 async fn handle_tools_list() -> Result<serde_json::Value> {
     let tools = vec![
+        // === Discovery & Connection ===
         Tool {
             name: "moonlight_list_apps".into(),
             description: "List available apps on the Fenrir/GameStream host".into(),
@@ -186,6 +187,26 @@ async fn handle_tools_list() -> Result<serde_json::Value> {
                 "required": ["host"]
             }),
         },
+        Tool {
+            name: "moonlight_pair".into(),
+            description: "Pair with a GameStream host using PIN".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Host address"
+                    },
+                    "pin": {
+                        "type": "string",
+                        "description": "4-digit PIN code"
+                    }
+                },
+                "required": ["host", "pin"]
+            }),
+        },
+        
+        // === Streaming ===
         Tool {
             name: "moonlight_test_stream".into(),
             description: "Stream an app, capture screenshot, and validate with AI vision".into(),
@@ -210,24 +231,6 @@ async fn handle_tools_list() -> Result<serde_json::Value> {
             }),
         },
         Tool {
-            name: "moonlight_pair".into(),
-            description: "Pair with a GameStream host using PIN".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "host": {
-                        "type": "string",
-                        "description": "Host address"
-                    },
-                    "pin": {
-                        "type": "string",
-                        "description": "4-digit PIN code"
-                    }
-                },
-                "required": ["host", "pin"]
-            }),
-        },
-        Tool {
             name: "moonlight_quit".into(),
             description: "Quit the currently running app on the host".into(),
             input_schema: serde_json::json!({
@@ -236,6 +239,125 @@ async fn handle_tools_list() -> Result<serde_json::Value> {
                     "host": {
                         "type": "string",
                         "description": "Host address"
+                    }
+                },
+                "required": ["host"]
+            }),
+        },
+        Tool {
+            name: "moonlight_verify_stream".into(),
+            description: "Verify that the stream is active and receiving video".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Host address"
+                    }
+                },
+                "required": ["host"]
+            }),
+        },
+        
+        // === Input ===
+        Tool {
+            name: "moonlight_send_keyboard".into(),
+            description: "Send keyboard input to the stream".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Host address"
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "Key to send (e.g., 'enter', 'escape', 'a', 'space', 'f1')"
+                    },
+                    "action": {
+                        "type": "string",
+                        "description": "Key action: 'tap' (default), 'press', or 'release'",
+                        "default": "tap"
+                    }
+                },
+                "required": ["host", "key"]
+            }),
+        },
+        Tool {
+            name: "moonlight_send_mouse".into(),
+            description: "Send mouse input to the stream".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Host address"
+                    },
+                    "action": {
+                        "type": "string",
+                        "description": "Mouse action: 'move', 'click', 'scroll'"
+                    },
+                    "x": {
+                        "type": "integer",
+                        "description": "X coordinate (for move/click)"
+                    },
+                    "y": {
+                        "type": "integer",
+                        "description": "Y coordinate (for move/click)"
+                    },
+                    "button": {
+                        "type": "string",
+                        "description": "Mouse button: 'left', 'right', 'middle'"
+                    },
+                    "scroll_delta": {
+                        "type": "integer",
+                        "description": "Scroll amount (for scroll action)"
+                    }
+                },
+                "required": ["host", "action"]
+            }),
+        },
+        Tool {
+            name: "moonlight_send_gamepad".into(),
+            description: "Send gamepad/controller input to the stream".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Host address"
+                    },
+                    "button": {
+                        "type": "string",
+                        "description": "Button: 'a', 'b', 'x', 'y', 'lb', 'rb', 'start', 'select', 'dpad_up', etc."
+                    },
+                    "button_action": {
+                        "type": "string",
+                        "description": "Button action: 'tap', 'press', 'release'"
+                    },
+                    "left_stick_x": {
+                        "type": "integer",
+                        "description": "Left stick X axis (-32768 to 32767)"
+                    },
+                    "left_stick_y": {
+                        "type": "integer",
+                        "description": "Left stick Y axis"
+                    },
+                    "right_stick_x": {
+                        "type": "integer",
+                        "description": "Right stick X axis"
+                    },
+                    "right_stick_y": {
+                        "type": "integer",
+                        "description": "Right stick Y axis"
+                    },
+                    "left_trigger": {
+                        "type": "integer",
+                        "description": "Left trigger (0-255)"
+                    },
+                    "right_trigger": {
+                        "type": "integer",
+                        "description": "Right trigger (0-255)"
                     }
                 },
                 "required": ["host"]
@@ -285,10 +407,14 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
 
             let test = TestDefinition {
                 host: host.into(),
-                action: TestAction::TestStream,
+                action: TestAction::TestStream { 
+                    verify_video: true,
+                    capture_after_ms,
+                },
                 app: Some(app.into()),
-                timeout_ms: 60000,
-                capture_after_ms,
+                timeout_ms: 120000,
+                delay_ms: 5000,
+                screenshot_dir: "/tmp".into(),
                 validation: ValidationConfig::default(),
             };
 
@@ -333,13 +459,141 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
         }
 
         "moonlight_quit" => {
-            // No-op for now since we don't have a native cancel implementation
-            ToolResult {
-                content: vec![ContentItem {
-                    content_type: "text".into(),
-                    text: "Quit action (no-op for native implementation)".into(),
-                }],
-                is_error: false,
+            let host = arguments["host"].as_str().unwrap_or("localhost");
+
+            match crate::pairing::native_quit(host).await {
+                Ok(()) => ToolResult {
+                    content: vec![ContentItem {
+                        content_type: "text".into(),
+                        text: "Session stopped".into(),
+                    }],
+                    is_error: false,
+                },
+                Err(e) => ToolResult {
+                    content: vec![ContentItem {
+                        content_type: "text".into(),
+                        text: format!("Failed to quit: {}", e),
+                    }],
+                    is_error: true,
+                },
+            }
+        }
+        
+        "moonlight_verify_stream" => {
+            let host = arguments["host"].as_str().unwrap_or("localhost");
+
+            match crate::pairing::native_verify_stream(host).await {
+                Ok(status) => {
+                    let result_json = serde_json::json!({
+                        "active": status.active,
+                        "session_count": status.session_count,
+                        "error": status.error
+                    });
+                    ToolResult {
+                        content: vec![ContentItem {
+                            content_type: "text".into(),
+                            text: result_json.to_string(),
+                        }],
+                        is_error: !status.active,
+                    }
+                }
+                Err(e) => ToolResult {
+                    content: vec![ContentItem {
+                        content_type: "text".into(),
+                        text: format!("Failed to verify stream: {}", e),
+                    }],
+                    is_error: true,
+                },
+            }
+        }
+        
+        "moonlight_send_keyboard" => {
+            let host = arguments["host"].as_str().unwrap_or("localhost");
+            let key = arguments["key"].as_str().unwrap_or("enter");
+            let action = arguments["action"].as_str().unwrap_or("tap");
+
+            match crate::pairing::send_keyboard_input(host, key, action).await {
+                Ok(()) => ToolResult {
+                    content: vec![ContentItem {
+                        content_type: "text".into(),
+                        text: format!("Sent keyboard: {} {}", action, key),
+                    }],
+                    is_error: false,
+                },
+                Err(e) => ToolResult {
+                    content: vec![ContentItem {
+                        content_type: "text".into(),
+                        text: format!("Failed: {}", e),
+                    }],
+                    is_error: true,
+                },
+            }
+        }
+        
+        "moonlight_send_mouse" => {
+            let host = arguments["host"].as_str().unwrap_or("localhost");
+            let action = arguments["action"].as_str().unwrap_or("click");
+            let x = arguments["x"].as_i64().map(|v| v as i32);
+            let y = arguments["y"].as_i64().map(|v| v as i32);
+            let button = arguments["button"].as_str();
+            let scroll_delta = arguments["scroll_delta"].as_i64().map(|v| v as i32);
+
+            match crate::pairing::send_mouse_input(host, action, x, y, button, scroll_delta).await {
+                Ok(()) => ToolResult {
+                    content: vec![ContentItem {
+                        content_type: "text".into(),
+                        text: format!("Sent mouse: {}", action),
+                    }],
+                    is_error: false,
+                },
+                Err(e) => ToolResult {
+                    content: vec![ContentItem {
+                        content_type: "text".into(),
+                        text: format!("Failed: {}", e),
+                    }],
+                    is_error: true,
+                },
+            }
+        }
+        
+        "moonlight_send_gamepad" => {
+            let host = arguments["host"].as_str().unwrap_or("localhost");
+            let button = arguments["button"].as_str();
+            let button_action = arguments["button_action"].as_str();
+            let left_stick_x = arguments["left_stick_x"].as_i64().map(|v| v as i16);
+            let left_stick_y = arguments["left_stick_y"].as_i64().map(|v| v as i16);
+            let right_stick_x = arguments["right_stick_x"].as_i64().map(|v| v as i16);
+            let right_stick_y = arguments["right_stick_y"].as_i64().map(|v| v as i16);
+            let left_trigger = arguments["left_trigger"].as_u64().map(|v| v as u8);
+            let right_trigger = arguments["right_trigger"].as_u64().map(|v| v as u8);
+
+            match crate::pairing::send_gamepad_input(
+                host, button, button_action,
+                left_stick_x, left_stick_y,
+                right_stick_x, right_stick_y,
+                left_trigger, right_trigger
+            ).await {
+                Ok(()) => {
+                    let msg = if let Some(b) = button {
+                        format!("Sent gamepad button: {}", b)
+                    } else {
+                        "Sent gamepad analog input".into()
+                    };
+                    ToolResult {
+                        content: vec![ContentItem {
+                            content_type: "text".into(),
+                            text: msg,
+                        }],
+                        is_error: false,
+                    }
+                }
+                Err(e) => ToolResult {
+                    content: vec![ContentItem {
+                        content_type: "text".into(),
+                        text: format!("Failed: {}", e),
+                    }],
+                    is_error: true,
+                },
             }
         }
 

@@ -632,35 +632,55 @@ pub async fn native_verify_stream(host: &str) -> Result<StreamStatus> {
     let url = format!("https://{}:47984/api/v1/sessions", host);
     
     let response = client.get(&url).send().await?;
+    let status_code = response.status();
     let body = response.text().await?;
-    eprintln!("[DEBUG] verify_stream: sessions response: {}", body);
+    eprintln!("[DEBUG] verify_stream: sessions response ({}): {}", status_code, body);
     
-    // Parse the JSON response
-    let sessions: serde_json::Value = serde_json::from_str(&body)?;
-    
-    if let Some(sessions_array) = sessions.get("sessions").and_then(|s| s.as_array()) {
-        if sessions_array.is_empty() {
-            return Ok(StreamStatus {
-                active: false,
-                session_count: 0,
-                error: Some("No active sessions found".to_string()),
-            });
-        }
-        
-        // Check if any session is running
-        let active_count = sessions_array.len();
+    // Handle non-success status codes
+    if !status_code.is_success() {
         return Ok(StreamStatus {
-            active: active_count > 0,
-            session_count: active_count,
-            error: None,
+            active: false,
+            session_count: 0,
+            error: Some(format!("Wolf API returned {}: {}", status_code, body.chars().take(100).collect::<String>())),
         });
     }
     
-    Ok(StreamStatus {
-        active: false,
-        session_count: 0,
-        error: Some("Could not parse sessions response".to_string()),
-    })
+    // Try to parse the JSON response
+    match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(sessions) => {
+            if let Some(sessions_array) = sessions.get("sessions").and_then(|s| s.as_array()) {
+                if sessions_array.is_empty() {
+                    return Ok(StreamStatus {
+                        active: false,
+                        session_count: 0,
+                        error: Some("No active sessions found".to_string()),
+                    });
+                }
+                
+                // Check if any session is running
+                let active_count = sessions_array.len();
+                return Ok(StreamStatus {
+                    active: active_count > 0,
+                    session_count: active_count,
+                    error: None,
+                });
+            }
+            
+            Ok(StreamStatus {
+                active: false,
+                session_count: 0,
+                error: Some("Sessions response missing 'sessions' array".to_string()),
+            })
+        }
+        Err(_) => {
+            // Response was not JSON - provide clear error
+            Ok(StreamStatus {
+                active: false,
+                session_count: 0,
+                error: Some(format!("Wolf API returned non-JSON response: {}", body.chars().take(100).collect::<String>())),
+            })
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -670,7 +690,277 @@ pub struct StreamStatus {
     pub error: Option<String>,
 }
 
-/// Capture a screenshot using macOS screencapture
+/// Quit/stop the current streaming session
+pub async fn native_quit(host: &str) -> Result<()> {
+    let client = create_mtls_client()?;
+    let identity = ClientIdentity::load_or_create()?;
+    
+    let url = format!(
+        "https://{}:47984/cancel?uniqueid={}&uuid={}",
+        host,
+        identity.fingerprint,
+        uuid::Uuid::new_v4()
+    );
+    
+    let response = client.get(&url).send().await?;
+    let body = response.text().await?;
+    
+    if body.contains("cancel=\"1\"") || body.contains("status_code=\"200\"") {
+        Ok(())
+    } else {
+        Err(anyhow!("Failed to quit session: {}", body))
+    }
+}
+
+/// Send keyboard input to the stream
+/// Uses the Wolf/Sunshine input API
+pub async fn send_keyboard_input(host: &str, key: &str, action: &str) -> Result<()> {
+    let client = create_mtls_client()?;
+    
+    // Map key names to virtual key codes (subset for common keys)
+    let vk_code = match key.to_lowercase().as_str() {
+        "enter" | "return" => 0x0D,
+        "escape" | "esc" => 0x1B,
+        "space" => 0x20,
+        "backspace" => 0x08,
+        "tab" => 0x09,
+        "up" => 0x26,
+        "down" => 0x28,
+        "left" => 0x25,
+        "right" => 0x27,
+        "a" => 0x41, "b" => 0x42, "c" => 0x43, "d" => 0x44,
+        "e" => 0x45, "f" => 0x46, "g" => 0x47, "h" => 0x48,
+        "i" => 0x49, "j" => 0x4A, "k" => 0x4B, "l" => 0x4C,
+        "m" => 0x4D, "n" => 0x4E, "o" => 0x4F, "p" => 0x50,
+        "q" => 0x51, "r" => 0x52, "s" => 0x53, "t" => 0x54,
+        "u" => 0x55, "v" => 0x56, "w" => 0x57, "x" => 0x58,
+        "y" => 0x59, "z" => 0x5A,
+        "0" => 0x30, "1" => 0x31, "2" => 0x32, "3" => 0x33,
+        "4" => 0x34, "5" => 0x35, "6" => 0x36, "7" => 0x37,
+        "8" => 0x38, "9" => 0x39,
+        "f1" => 0x70, "f2" => 0x71, "f3" => 0x72, "f4" => 0x73,
+        "f5" => 0x74, "f6" => 0x75, "f7" => 0x76, "f8" => 0x77,
+        "f9" => 0x78, "f10" => 0x79, "f11" => 0x7A, "f12" => 0x7B,
+        "ctrl" | "control" => 0x11,
+        "alt" => 0x12,
+        "shift" => 0x10,
+        _ => return Err(anyhow!("Unknown key: {}", key)),
+    };
+    
+    // Wolf input API endpoint
+    let url = format!("https://{}:47984/input", host);
+    
+    #[derive(serde::Serialize)]
+    struct KeyboardInput {
+        #[serde(rename = "type")]
+        input_type: String,
+        key_code: u32,
+        action: String,  // "down", "up"
+    }
+    
+    match action {
+        "tap" => {
+            // Send key down then key up
+            let down = KeyboardInput {
+                input_type: "keyboard".into(),
+                key_code: vk_code,
+                action: "down".into(),
+            };
+            let up = KeyboardInput {
+                input_type: "keyboard".into(),
+                key_code: vk_code,
+                action: "up".into(),
+            };
+            
+            client.post(&url).json(&down).send().await?;
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            client.post(&url).json(&up).send().await?;
+        }
+        "press" | "down" => {
+            let input = KeyboardInput {
+                input_type: "keyboard".into(),
+                key_code: vk_code,
+                action: "down".into(),
+            };
+            client.post(&url).json(&input).send().await?;
+        }
+        "release" | "up" => {
+            let input = KeyboardInput {
+                input_type: "keyboard".into(),
+                key_code: vk_code,
+                action: "up".into(),
+            };
+            client.post(&url).json(&input).send().await?;
+        }
+        _ => return Err(anyhow!("Unknown key action: {}", action)),
+    }
+    
+    Ok(())
+}
+
+/// Send mouse input to the stream
+pub async fn send_mouse_input(
+    host: &str,
+    action: &str,
+    x: Option<i32>,
+    y: Option<i32>,
+    button: Option<&str>,
+    scroll_delta: Option<i32>,
+) -> Result<()> {
+    let client = create_mtls_client()?;
+    let url = format!("https://{}:47984/input", host);
+    
+    #[derive(serde::Serialize)]
+    struct MouseInput {
+        #[serde(rename = "type")]
+        input_type: String,
+        action: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        x: Option<i32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        y: Option<i32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        button: Option<u8>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        delta: Option<i32>,
+    }
+    
+    let button_code = button.map(|b| match b.to_lowercase().as_str() {
+        "left" => 1,
+        "right" => 2,
+        "middle" => 3,
+        _ => 1,
+    });
+    
+    let input = MouseInput {
+        input_type: "mouse".into(),
+        action: action.to_string(),
+        x,
+        y,
+        button: button_code,
+        delta: scroll_delta,
+    };
+    
+    client.post(&url).json(&input).send().await?;
+    Ok(())
+}
+
+/// Send gamepad/controller input to the stream
+pub async fn send_gamepad_input(
+    host: &str,
+    button: Option<&str>,
+    button_action: Option<&str>,
+    left_stick_x: Option<i16>,
+    left_stick_y: Option<i16>,
+    right_stick_x: Option<i16>,
+    right_stick_y: Option<i16>,
+    left_trigger: Option<u8>,
+    right_trigger: Option<u8>,
+) -> Result<()> {
+    let client = create_mtls_client()?;
+    let url = format!("https://{}:47984/input", host);
+    
+    // Map button names to Xbox-style button flags
+    let button_flag = button.map(|b| match b.to_lowercase().as_str() {
+        "a" => 0x1000,
+        "b" => 0x2000,
+        "x" => 0x4000,
+        "y" => 0x8000,
+        "lb" | "left_bumper" => 0x0100,
+        "rb" | "right_bumper" => 0x0200,
+        "start" => 0x0010,
+        "select" | "back" => 0x0020,
+        "left_stick" | "ls" => 0x0040,
+        "right_stick" | "rs" => 0x0080,
+        "dpad_up" => 0x0001,
+        "dpad_down" => 0x0002,
+        "dpad_left" => 0x0004,
+        "dpad_right" => 0x0008,
+        _ => 0,
+    });
+    
+    #[derive(serde::Serialize)]
+    struct GamepadInput {
+        #[serde(rename = "type")]
+        input_type: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        button_flags: Option<u16>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        button_action: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        left_stick_x: Option<i16>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        left_stick_y: Option<i16>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        right_stick_x: Option<i16>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        right_stick_y: Option<i16>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        left_trigger: Option<u8>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        right_trigger: Option<u8>,
+    }
+    
+    let input = GamepadInput {
+        input_type: "gamepad".into(),
+        button_flags: button_flag,
+        button_action: button_action.map(|s| s.to_string()),
+        left_stick_x,
+        left_stick_y,
+        right_stick_x,
+        right_stick_y,
+        left_trigger,
+        right_trigger,
+    };
+    
+    client.post(&url).json(&input).send().await?;
+    Ok(())
+}
+
+/// Capture a frame from an RTSP video stream using ffmpeg
+/// This captures the actual Moonlight stream output, not a desktop screenshot
+pub async fn capture_rtsp_frame(rtsp_url: &str, output_path: &str, timeout_secs: u32) -> Result<()> {
+    eprintln!("[DEBUG] Capturing frame from RTSP stream: {}", rtsp_url);
+    
+    // Use ffmpeg to grab a single frame from the RTSP stream
+    // -rtsp_transport tcp: Use TCP for RTSP (more reliable)
+    // -i: Input URL
+    // -frames:v 1: Capture only 1 video frame
+    // -y: Overwrite output file
+    let output = tokio::process::Command::new("ffmpeg")
+        .args(&[
+            "-rtsp_transport", "tcp",
+            "-t", &timeout_secs.to_string(),  // Max time to wait for stream
+            "-i", rtsp_url,
+            "-frames:v", "1",
+            "-q:v", "2",  // High quality JPEG
+            "-y",  // Overwrite
+            output_path,
+        ])
+        .output()
+        .await?;
+    
+    if output.status.success() {
+        eprintln!("[DEBUG] RTSP frame captured to: {}", output_path);
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Check for common RTSP errors
+        if stderr.contains("Connection refused") {
+            Err(anyhow!("RTSP connection refused - stream not available"))
+        } else if stderr.contains("Connection timed out") || stderr.contains("timeout") {
+            Err(anyhow!("RTSP connection timeout - stream may not be sending video"))
+        } else if stderr.contains("Invalid data found") {
+            Err(anyhow!("RTSP stream has invalid video data - encoder may have failed"))
+        } else if stderr.contains("does not contain any stream") {
+            Err(anyhow!("RTSP stream has no video - streaming pipeline may have crashed"))
+        } else {
+            Err(anyhow!("Failed to capture RTSP frame: {}", stderr.chars().take(500).collect::<String>()))
+        }
+    }
+}
+
+/// Capture a screenshot using macOS screencapture (fallback for non-streaming tests)
 pub async fn capture_screenshot(output_path: &str) -> Result<()> {
     let output = tokio::process::Command::new("screencapture")
         .args(&["-x", output_path])
