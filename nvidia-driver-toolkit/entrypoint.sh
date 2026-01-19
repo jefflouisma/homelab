@@ -74,6 +74,86 @@ load_nvidia_uvm_from_overlay() {
 }
 
 #
+# Install nvidia-container-toolkit binaries to host and configure containerd
+# This enables proper GPU device passthrough for containers using RuntimeClass
+#
+install_container_toolkit() {
+    log_info "=== Installing nvidia-container-toolkit to host ==="
+    
+    local NVIDIA_BIN_HOST="${NVIDIA_BASE_DIR:-/var/lib/nvidia}/bin"
+    local NVIDIA_LIB_HOST="${NVIDIA_BASE_DIR:-/var/lib/nvidia}/lib"
+    
+    # Create bin directory on host
+    nsenter -t 1 -m -u -i -n -p -- mkdir -p "$NVIDIA_BIN_HOST"
+    
+    # Copy nvidia-container-toolkit binaries to host
+    # These are installed in the container from the NVIDIA package repo
+    local binaries=(
+        "nvidia-container-runtime"
+        "nvidia-container-runtime-hook"
+        "nvidia-ctk"
+        "nvidia-container-cli"
+    )
+    
+    for binary in "${binaries[@]}"; do
+        if [ -f "/usr/bin/$binary" ]; then
+            log_info "Installing $binary to $NVIDIA_BIN_HOST"
+            nsenter -t 1 -m -u -i -n -p -- cp "/usr/bin/$binary" "$NVIDIA_BIN_HOST/"
+            nsenter -t 1 -m -u -i -n -p -- chmod +x "$NVIDIA_BIN_HOST/$binary"
+        else
+            log_warn "Binary not found: /usr/bin/$binary"
+        fi
+    done
+    
+    # Copy libnvidia-container library
+    if ls /usr/lib/x86_64-linux-gnu/libnvidia-container*.so* >/dev/null 2>&1; then
+        log_info "Installing libnvidia-container libraries"
+        nsenter -t 1 -m -u -i -n -p -- cp /usr/lib/x86_64-linux-gnu/libnvidia-container*.so* "$NVIDIA_LIB_HOST/"
+    fi
+    
+    log_info "nvidia-container-toolkit binaries installed to $NVIDIA_BIN_HOST"
+}
+
+#
+# Configure RKE2 containerd to use nvidia runtime
+# Creates containerd config drop-in with nvidia runtime handler
+#
+configure_containerd_nvidia() {
+    log_info "=== Configuring containerd for nvidia runtime ==="
+    
+    local NVIDIA_BIN_HOST="${NVIDIA_BASE_DIR:-/var/lib/nvidia}/bin"
+    local CONTAINERD_CONFIG_DIR="/var/lib/rancher/rke2/agent/etc/containerd"
+    
+    # Create containerd config directory
+    nsenter -t 1 -m -u -i -n -p -- mkdir -p "$CONTAINERD_CONFIG_DIR"
+    
+    # Check if nvidia runtime already configured
+    if nsenter -t 1 -m -u -i -n -p -- grep -q "nvidia-container-runtime" "$CONTAINERD_CONFIG_DIR/config.toml" 2>/dev/null; then
+        log_info "nvidia runtime already configured in containerd"
+        return 0
+    fi
+    
+    # Create containerd config template with nvidia runtime
+    log_info "Creating containerd config.toml.tmpl with nvidia runtime"
+    
+    nsenter -t 1 -m -u -i -n -p -- sh -c "cat > $CONTAINERD_CONFIG_DIR/config.toml.tmpl << 'EOF'
+# NVIDIA Container Toolkit - nvidia runtime handler
+# This is a template that RKE2 will use to generate containerd config
+# Added by nvidia-driver-toolkit
+
+[plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.\"nvidia\"]
+  runtime_type = \"io.containerd.runc.v2\"
+
+[plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.\"nvidia\".options]
+  BinaryName = \"${NVIDIA_BIN_HOST}/nvidia-container-runtime\"
+
+EOF"
+    
+    log_info "containerd nvidia runtime configured"
+    log_info "NOTE: RKE2 restart required to pick up new containerd config"
+}
+
+#
 # Create nvidia-uvm device nodes
 #
 create_nvidia_uvm_devices() {
@@ -253,6 +333,11 @@ init() {
         create_icd_files
         create_device_nodes
     fi
+    
+    # Install nvidia-container-toolkit binaries and configure containerd
+    # This enables proper GPU device passthrough for containers using RuntimeClass
+    install_container_toolkit
+    configure_containerd_nvidia
     
     # Final status
     log_info "========================================"
