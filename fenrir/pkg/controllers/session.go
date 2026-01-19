@@ -713,6 +713,13 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 		klog.Infof("Setting RuntimeClassName to 'nvidia' for GPU access")
 	}
 
+	if pullSecret := os.Getenv("IMAGE_PULL_SECRET"); pullSecret != "" {
+		podToCreate.Spec.ImagePullSecrets = append(
+			podToCreate.Spec.ImagePullSecrets,
+			corev1.LocalObjectReference{Name: pullSecret},
+		)
+	}
+
 	mapToEnvApplyList := func(m map[string]string) []corev1.EnvVar {
 		var res []corev1.EnvVar
 		for k, v := range m {

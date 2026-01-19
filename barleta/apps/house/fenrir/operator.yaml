@@ -106,6 +106,8 @@ spec:
                   fieldPath: metadata.name
             - name: WOLF_IMAGE
               value: ghcr.io/jefflouisma/fenrir-wolf:latest
+            - name: IMAGE_PULL_SECRET
+              value: ghcr-secret
           resources:
             requests:
               cpu: 100m
