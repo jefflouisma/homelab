@@ -21,4 +21,12 @@ export GST_GL_DRM_DEVICE=${GST_GL_DRM_DEVICE:-$WOLF_ENCODER_NODE}
 export WOLF_DOCKER_FAKE_UDEV_PATH=${WOLF_DOCKER_FAKE_UDEV_PATH:-$HOST_APPS_STATE_FOLDER/fake-udev}
 cp /wolf/fake-udev $WOLF_DOCKER_FAKE_UDEV_PATH
 
+# Create nvidia GBM backend symlink for MESA-LOADER
+# NVIDIA container toolkit mounts libraries at /nvidia-libs but MESA looks
+# in /usr/lib/x86_64-linux-gnu/gbm/ for nvidia-drm_gbm.so
+mkdir -p /usr/lib/x86_64-linux-gnu/gbm
+if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
+    ln -sf /nvidia-libs/libnvidia-egl-gbm.so.1 /usr/lib/x86_64-linux-gnu/gbm/nvidia-drm_gbm.so
+fi
+
 exec /wolf/wolf
