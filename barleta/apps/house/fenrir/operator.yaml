@@ -88,8 +88,8 @@ spec:
       serviceAccountName: fenrir-operator
       containers:
         - name: operator
-          # Custom-built Fenrir operator image with UNAME=root fix for DRM access
-          image: ghcr.io/jefflouisma/fenrir-operator:4e40b3d
+          # Custom-built Fenrir operator with GBM_BACKENDS_PATH for NVIDIA
+          image: ghcr.io/jefflouisma/fenrir-operator:b0570a0
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
