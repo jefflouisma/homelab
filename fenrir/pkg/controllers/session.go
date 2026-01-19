@@ -1028,7 +1028,7 @@ echo "=== Done ==="
 				"PUID":                   "1000",
 				"PGID":                   "1000",
 				"TZ":                     "America/Los_Angeles",
-				"UNAME":                  "ubuntu",
+				"UNAME":                  "root",  // Must be root to preserve supplementalGroups for DRM access (gosu clears groups when dropping privs)
 				"XDG_RUNTIME_DIR":        "/tmp/.X11-unix",
 				"PULSE_SERVER":           "unix:/tmp/.X11-unix/pulse-socket",
 				"HOST_APPS_STATE_FOLDER": "/etc/wolf",
