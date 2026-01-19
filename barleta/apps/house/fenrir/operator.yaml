@@ -105,7 +105,8 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: WOLF_IMAGE
-              value: ghcr.io/jefflouisma/fenrir-wolf:9a92adf4aa217c265f1100de73b4b0acac0e5906
+              # Wolf with GBM symlink at /usr/lib/gbm/ for NVIDIA driver loading
+              value: ghcr.io/jefflouisma/fenrir-wolf:f542d111b2cde10db90f329127cf888025fec6bf
             - name: IMAGE_PULL_SECRET
               value: ghcr-secret
           resources:
