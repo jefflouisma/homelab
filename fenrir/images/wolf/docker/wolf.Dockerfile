@@ -126,7 +126,10 @@ COPY --from=wolf-builder /usr/local/lib/liblibgstwaylanddisplay* /usr/local/lib/
 
 # CRITICAL: Must chmod directories AFTER all apt-get installs and COPY commands
 # to ensure permissions apply even if directories pre-exist from base image or packages
-RUN chmod 777 /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d 2>/dev/null || \
+# CACHEBUST forces rebuild of this layer when changed
+ARG CACHEBUST=20260119_0903
+RUN echo "Cache bust: ${CACHEBUST}" && \
+    chmod 777 /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d 2>/dev/null || \
     (mkdir -p /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d && \
      chmod 777 /usr/lib/x86_64-linux-gnu/gbm /usr/share/egl/egl_external_platform.d)
 
