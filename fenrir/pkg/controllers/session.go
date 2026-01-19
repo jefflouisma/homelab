@@ -861,6 +861,42 @@ echo "=== Done ==="
 		},
 	)
 
+	// Init container to create GBM backend symlink for NVIDIA driver loading
+	// This runs as root before wolf starts (which runs as non-root via gosu)
+	// Creates symlink: /usr/lib/gbm/nvidia-drm_gbm.so -> /nvidia-libs/libnvidia-egl-gbm.so.1
+	podToCreate.Spec.InitContainers = append(podToCreate.Spec.InitContainers,
+		corev1.Container{
+			Name:  "gbm-backend-init",
+			Image: "busybox:latest",
+			Command: []string{
+				"sh", "-c", `
+echo "=== Creating GBM backend symlink for NVIDIA ==="
+if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
+    echo "Found libnvidia-egl-gbm.so.1, creating symlink..."
+    ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /gbm-backend/nvidia-drm_gbm.so
+    ls -la /gbm-backend/
+    echo "SUCCESS: GBM symlink created"
+else
+    echo "ERROR: /nvidia-libs/libnvidia-egl-gbm.so.1 NOT FOUND"
+    echo "Contents of /nvidia-libs/:"
+    ls -la /nvidia-libs/
+fi
+`,
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "nvidia-libs",
+					MountPath: "/nvidia-libs",
+					ReadOnly:  true,
+				},
+				{
+					Name:      "gbm-backend",
+					MountPath: "/gbm-backend",
+				},
+			},
+		},
+	)
+
 	// Init container to fix DRI device permissions for Wolf
 	// Wolf runs as ubuntu (uid 1000) which doesn't have access to render group files
 	podToCreate.Spec.InitContainers = append(podToCreate.Spec.InitContainers,
@@ -1147,6 +1183,12 @@ echo "=== Done ==="
 					Name:      "nvidia-userspace",
 					MountPath: "/nvidia-userspace",
 				},
+				// GBM backend symlink created by gbm-backend-init container
+				// libgbm searches /usr/lib/gbm/ for nvidia-drm_gbm.so
+				{
+					Name:      "gbm-backend",
+					MountPath: "/usr/lib/gbm",
+				},
 				// Explicit nvidia device bind mounts - override devtmpfs devices
 				{
 					Name:      "nvidia-ctl",
@@ -1191,6 +1233,12 @@ echo "=== Done ==="
 		},
 		corev1.Volume{
 			Name: "wolf-runtime",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+		corev1.Volume{
+			Name: "gbm-backend",
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
