@@ -168,20 +168,27 @@ configure_containerd_nvidia() {
     fi
     
     # Create containerd config template with nvidia runtime
+    # CRITICAL: Must use {{ template "base" . }} to merge with RKE2 defaults
+    # See: https://docs.rke2.io/advanced#containerd-config-templates
     log_info "Creating containerd config.toml.tmpl with nvidia runtime"
     
-    nsenter -t 1 -m -u -i -n -p -- sh -c "cat > $CONTAINERD_CONFIG_DIR/config.toml.tmpl << 'EOF'
+    # Get NVIDIA_BIN_HOST resolved path for the template
+    local RUNTIME_PATH="${NVIDIA_BIN_HOST}/nvidia-container-runtime"
+    
+    nsenter -t 1 -m -u -i -n -p -- sh -c "cat > $CONTAINERD_CONFIG_DIR/config.toml.tmpl << 'ENDOFTEMPLATE'
+{{ template \"base\" . }}
+
 # NVIDIA Container Toolkit - nvidia runtime handler
-# This is a template that RKE2 will use to generate containerd config
+# Merges with RKE2 base containerd config
 # Added by nvidia-driver-toolkit
 
-[plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.\"nvidia\"]
-  runtime_type = \"io.containerd.runc.v2\"
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'nvidia']
+runtime_type = \"io.containerd.runc.v2\"
 
-[plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.\"nvidia\".options]
-  BinaryName = \"${NVIDIA_BIN_HOST}/nvidia-container-runtime\"
-
-EOF"
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'nvidia'.options]
+BinaryName = \"$RUNTIME_PATH\"
+SystemdCgroup = true
+ENDOFTEMPLATE"
     
     log_info "containerd nvidia runtime configured"
     log_info "NOTE: RKE2 restart required to pick up new containerd config"
