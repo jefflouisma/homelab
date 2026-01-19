@@ -12,65 +12,153 @@ source "${SCRIPT_DIR}/common.sh"
 # Find and load nvidia-uvm.ko from Harvester's nvidia-driver-runtime container overlay
 # This is the solution for Harvester's immutable OS where we can't compile modules
 #
-load_nvidia_uvm_from_overlay() {
-    log_info "=== Loading nvidia-uvm from Container Overlay ==="
+#
+# Generic function to load any nvidia module from container overlay
+# This is needed for Harvester's immutable OS where modules aren't in /lib/modules
+#
+load_module_from_overlay() {
+    local MODULE_NAME="$1"
+    local MODULE_UNDERSCORE="${MODULE_NAME//-/_}"
+    
+    log_info "=== Loading ${MODULE_NAME} from Container Overlay ==="
     
     # Check if already loaded
-    if module_loaded nvidia-uvm; then
-        log_info "nvidia-uvm already loaded"
+    if module_loaded "$MODULE_NAME"; then
+        log_info "${MODULE_NAME} already loaded"
         return 0
     fi
     
     # Define cache location
     local CACHE_DIR="${NVIDIA_BASE_DIR:-/var/lib/nvidia}/modules"
-    local CACHED_MODULE="${CACHE_DIR}/nvidia-uvm.ko"
+    local CACHED_MODULE="${CACHE_DIR}/${MODULE_NAME}.ko"
     
     # Try cached module first
     if [ -f "$CACHED_MODULE" ]; then
-        log_info "Found cached nvidia-uvm.ko at ${CACHED_MODULE}"
+        log_info "Found cached ${MODULE_NAME}.ko at ${CACHED_MODULE}"
         if nsenter -t 1 -m -u -i -n -p -- insmod "$CACHED_MODULE" 2>/dev/null; then
-            log_info "SUCCESS: Loaded nvidia-uvm from cache"
-            create_nvidia_uvm_devices
+            log_info "SUCCESS: Loaded ${MODULE_NAME} from cache"
             return 0
         else
-            log_warn "Cached module failed to load, searching for fresh copy..."
+            log_warn "Cached ${MODULE_NAME} failed to load, searching for fresh copy..."
         fi
     fi
     
-    # Search for nvidia-uvm.ko in containerd overlays
-    log_info "Searching containerd overlays for nvidia-uvm.ko..."
+    # Search for module.ko in containerd overlays
+    log_info "Searching containerd overlays for ${MODULE_NAME}.ko..."
     local OVERLAY_BASE="/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots"
     
-    # Use host namespace to find the module  
-    local UVM_PATH=$(nsenter -t 1 -m -u -i -n -p -- find "$OVERLAY_BASE" -name "nvidia-uvm.ko" -path "*/usr/lib/modules/*/kernel/drivers/video/*" -type f 2>/dev/null | head -1)
+    # Use host namespace to find the module - search multiple locations
+    local MODULE_PATH=$(nsenter -t 1 -m -u -i -n -p -- find "$OVERLAY_BASE" -name "${MODULE_NAME}.ko" -path "*/usr/lib/modules/*/kernel/drivers/video/*" -type f 2>/dev/null | head -1)
     
-    if [ -z "$UVM_PATH" ]; then
-        # Try alternate location (build directory)
-        UVM_PATH=$(nsenter -t 1 -m -u -i -n -p -- find "$OVERLAY_BASE" -name "nvidia-uvm.ko" -path "*/kernel-open/*" -type f 2>/dev/null | head -1)
+    if [ -z "$MODULE_PATH" ]; then
+        # Try alternate location (kernel-open directory for open-source modules)
+        MODULE_PATH=$(nsenter -t 1 -m -u -i -n -p -- find "$OVERLAY_BASE" -name "${MODULE_NAME}.ko" -path "*/kernel-open/*" -type f 2>/dev/null | head -1)
     fi
     
-    if [ -z "$UVM_PATH" ]; then
-        log_error "nvidia-uvm.ko not found in container overlays"
-        log_error "Make sure the nvidia-driver-runtime addon has run at least once"
+    if [ -z "$MODULE_PATH" ]; then
+        # Try broader search (any .ko file with matching name)
+        MODULE_PATH=$(nsenter -t 1 -m -u -i -n -p -- find "$OVERLAY_BASE" -name "${MODULE_NAME}.ko" -type f 2>/dev/null | head -1)
+    fi
+    
+    if [ -z "$MODULE_PATH" ]; then
+        log_error "${MODULE_NAME}.ko not found in container overlays"
         return 1
     fi
     
-    log_info "Found nvidia-uvm.ko at: ${UVM_PATH}"
+    log_info "Found ${MODULE_NAME}.ko at: ${MODULE_PATH}"
     
     # Create cache directory and copy module
     nsenter -t 1 -m -u -i -n -p -- mkdir -p "$CACHE_DIR"
-    nsenter -t 1 -m -u -i -n -p -- cp "$UVM_PATH" "$CACHED_MODULE"
-    log_info "Cached nvidia-uvm.ko to ${CACHED_MODULE}"
+    nsenter -t 1 -m -u -i -n -p -- cp "$MODULE_PATH" "$CACHED_MODULE"
+    log_info "Cached ${MODULE_NAME}.ko to ${CACHED_MODULE}"
     
     # Load the module via insmod on host
     if nsenter -t 1 -m -u -i -n -p -- insmod "$CACHED_MODULE" 2>/dev/null; then
-        log_info "SUCCESS: nvidia-uvm loaded via insmod"
-        create_nvidia_uvm_devices
+        log_info "SUCCESS: ${MODULE_NAME} loaded via insmod"
         return 0
     else
-        log_error "Failed to load nvidia-uvm.ko"
+        log_error "Failed to load ${MODULE_NAME}.ko"
         return 1
     fi
+}
+
+#
+# Load nvidia-uvm from overlay (wrapper for backward compatibility)
+#
+load_nvidia_uvm_from_overlay() {
+    if load_module_from_overlay "nvidia-uvm"; then
+        create_nvidia_uvm_devices
+        return 0
+    fi
+    return 1
+}
+
+#
+# Load nvidia-drm and nvidia-modeset from overlay
+# These are REQUIRED for DRI device creation (/dev/dri/card1, renderD129)
+# which Wolf's Wayland compositor needs for headless rendering
+#
+load_drm_modules_from_overlay() {
+    log_info "=== Loading DRM Modules from Container Overlay ==="
+    
+    # nvidia-modeset must be loaded before nvidia-drm
+    # Order: nvidia -> nvidia-modeset -> nvidia-drm
+    
+    # Load nvidia-modeset first
+    if ! module_loaded nvidia-modeset; then
+        load_module_from_overlay "nvidia-modeset" || {
+            log_warn "Failed to load nvidia-modeset from overlay"
+            return 1
+        }
+    else
+        log_info "nvidia-modeset already loaded"
+    fi
+    
+    # Load nvidia-drm (depends on nvidia-modeset)
+    if ! module_loaded nvidia-drm; then
+        # nvidia-drm needs modeset=1 parameter for DRI support
+        local CACHE_DIR="${NVIDIA_BASE_DIR:-/var/lib/nvidia}/modules"
+        local DRM_MODULE="${CACHE_DIR}/nvidia-drm.ko"
+        
+        # First ensure we have the module cached
+        if [ ! -f "$DRM_MODULE" ]; then
+            # Search and cache it
+            local OVERLAY_BASE="/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots"
+            local DRM_PATH=$(nsenter -t 1 -m -u -i -n -p -- find "$OVERLAY_BASE" -name "nvidia-drm.ko" -type f 2>/dev/null | head -1)
+            
+            if [ -z "$DRM_PATH" ]; then
+                log_error "nvidia-drm.ko not found in container overlays"
+                return 1
+            fi
+            
+            log_info "Found nvidia-drm.ko at: ${DRM_PATH}"
+            nsenter -t 1 -m -u -i -n -p -- mkdir -p "$CACHE_DIR"
+            nsenter -t 1 -m -u -i -n -p -- cp "$DRM_PATH" "$DRM_MODULE"
+        fi
+        
+        # Load with modeset=1 parameter
+        log_info "Loading nvidia-drm with modeset=1..."
+        if nsenter -t 1 -m -u -i -n -p -- insmod "$DRM_MODULE" modeset=1 2>/dev/null; then
+            log_info "SUCCESS: nvidia-drm loaded with modeset=1"
+        else
+            log_error "Failed to load nvidia-drm.ko"
+            return 1
+        fi
+    else
+        log_info "nvidia-drm already loaded"
+    fi
+    
+    # Verify DRI devices were created
+    sleep 1  # Give kernel time to create devices
+    log_info "Checking DRI devices..."
+    if nsenter -t 1 -m -u -i -n -p -- ls /dev/dri/card* 2>/dev/null; then
+        log_info "DRI devices available:"
+        nsenter -t 1 -m -u -i -n -p -- ls -la /dev/dri/
+    else
+        log_warn "No DRI devices found after loading nvidia-drm"
+    fi
+    
+    return 0
 }
 
 #
@@ -353,10 +441,14 @@ init() {
             create_icd_files
         fi
     elif [ "$nvidia_loaded" = "yes" ]; then
-        # nvidia loaded but nvidia-uvm missing - this is the common case on Harvester
-        log_info "nvidia loaded but nvidia-uvm MISSING - loading from container overlay..."
+        # nvidia loaded but other modules missing - this is the common case on Harvester
+        log_info "nvidia loaded - checking for missing modules..."
         
         # Use the overlay extraction method (works on Harvester's immutable OS)
+        # Load DRM modules first (needed for /dev/dri/card1)
+        load_drm_modules_from_overlay || log_warn "Failed to load DRM modules from overlay"
+        
+        # Load nvidia-uvm (needed for CUDA)
         load_nvidia_uvm_from_overlay || log_warn "Failed to load nvidia-uvm from overlay"
         
         # Install libraries and create devices
@@ -400,19 +492,38 @@ init() {
     log_info "  - Persisted modules: ${module_count}"
     log_info "  - Installed libraries: ${lib_count}"
     log_info "  - nvidia-uvm loaded: $(module_loaded nvidia-uvm && echo 'YES' || echo 'NO')"
+    log_info "  - nvidia-drm loaded: $(module_loaded nvidia-drm && echo 'YES' || echo 'NO')"
+    log_info "  - nvidia-modeset loaded: $(module_loaded nvidia-modeset && echo 'YES' || echo 'NO')"
     log_info "  - /dev/nvidia-uvm exists: $([ -e /dev/nvidia-uvm ] && echo 'YES' || echo 'NO')"
+    log_info "  - /dev/dri/card1 exists: $(nsenter -t 1 -m -u -i -n -p -- test -e /dev/dri/card1 && echo 'YES' || echo 'NO')"
     
     # Keep container alive
     log_info "Entering nvidia-uvm watchdog loop..."
     
-    # Keep nvidia_uvm loaded - it tends to unload when no processes are using it
+    # Keep nvidia modules loaded - they tend to unload when no processes are using them
     while true; do
+        # Check and reload nvidia-uvm if unloaded
         if ! nsenter -t 1 -m -u -i -n -p -- lsmod 2>/dev/null | grep -q nvidia_uvm; then
             log_warn "nvidia_uvm unloaded, reloading..."
             if [ -f "${NVIDIA_BASE_DIR}/modules/nvidia-uvm.ko" ]; then
                 nsenter -t 1 -m -u -i -n -p -- insmod "${NVIDIA_BASE_DIR}/modules/nvidia-uvm.ko" 2>/dev/null && log_info "nvidia_uvm reloaded" || log_error "Failed to reload nvidia_uvm"
             fi
         fi
+        
+        # Check and reload nvidia-drm if unloaded (critical for DRI)
+        if ! nsenter -t 1 -m -u -i -n -p -- lsmod 2>/dev/null | grep -q nvidia_drm; then
+            log_warn "nvidia_drm unloaded, reloading..."
+            # Must reload nvidia-modeset first if also unloaded
+            if ! nsenter -t 1 -m -u -i -n -p -- lsmod 2>/dev/null | grep -q nvidia_modeset; then
+                if [ -f "${NVIDIA_BASE_DIR}/modules/nvidia-modeset.ko" ]; then
+                    nsenter -t 1 -m -u -i -n -p -- insmod "${NVIDIA_BASE_DIR}/modules/nvidia-modeset.ko" 2>/dev/null && log_info "nvidia_modeset reloaded" || log_error "Failed to reload nvidia_modeset"
+                fi
+            fi
+            if [ -f "${NVIDIA_BASE_DIR}/modules/nvidia-drm.ko" ]; then
+                nsenter -t 1 -m -u -i -n -p -- insmod "${NVIDIA_BASE_DIR}/modules/nvidia-drm.ko" modeset=1 2>/dev/null && log_info "nvidia_drm reloaded" || log_error "Failed to reload nvidia_drm"
+            fi
+        fi
+        
         sleep 30
     done
 }
