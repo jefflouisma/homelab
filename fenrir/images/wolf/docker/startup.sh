@@ -29,4 +29,34 @@ if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
     ln -sf /nvidia-libs/libnvidia-egl-gbm.so.1 /usr/lib/x86_64-linux-gnu/gbm/nvidia-drm_gbm.so
 fi
 
+# Create EGL external platform configuration for NVIDIA GBM backend
+# Required for libgbm to find nvidia-drm driver and create DMA buffers
+# See: https://github.com/games-on-whales/wolf/issues/301
+mkdir -p /usr/share/egl/egl_external_platform.d
+chmod 777 /usr/share/egl/egl_external_platform.d 2>/dev/null || true
+
+# Create NVIDIA GBM platform config if nvidia-egl-gbm library exists
+if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
+    cat > /usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json << 'EOF'
+{
+    "file_format_version" : "1.0.0",
+    "ICD" : {
+        "library_path" : "libnvidia-egl-gbm.so.1"
+    }
+}
+EOF
+fi
+
+# Create NVIDIA Wayland platform config if library exists
+if [ -f /nvidia-libs/libnvidia-egl-wayland.so.1 ]; then
+    cat > /usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json << 'EOF'
+{
+    "file_format_version" : "1.0.0",
+    "ICD" : {
+        "library_path" : "libnvidia-egl-wayland.so.1"
+    }
+}
+EOF
+fi
+
 exec /wolf/wolf

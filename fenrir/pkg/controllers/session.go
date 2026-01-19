@@ -1053,6 +1053,9 @@ echo "=== Done ==="
 				// Point EGL to NVIDIA vendor library - critical for DRI2 screen creation
 				// Use /etc/wolf/cfg/egl_vendor.d which has the nvidia vendor ICD JSON
 				"__EGL_VENDOR_LIBRARY_DIRS": "/etc/wolf/cfg/egl_vendor.d:/nvidia-libs:/usr/share/glvnd/egl_vendor.d",
+				// Point to EGL external platform configs for NVIDIA GBM/Wayland backends
+				// These JSON files tell libgbm how to load libnvidia-egl-gbm.so.1
+				"__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS": "/usr/share/egl/egl_external_platform.d:/nvidia-libs",
 				// Force EGL to use device mode without relying on EGL_EXT_device_enumeration
 				// This is required for headless container environments where the extension fails
 				"EGL_PLATFORM":      "device",
