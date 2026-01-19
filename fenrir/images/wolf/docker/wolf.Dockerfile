@@ -24,14 +24,15 @@ RUN apt-get update -y && \
     libglib2.0-dev libegl-dev libgles-dev libopengl-dev libdrm-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Rust and set version (combined to ensure PATH works)
+# Install Rust and set version
+# Explicitly set HOME and Cargo/Rustup directories to avoid path issues
+ENV HOME=/root
+ENV CARGO_HOME=/root/.cargo
+ENV RUSTUP_HOME=/root/.rustup
 ARG RUST_VERSION=1.91.1
 ENV RUST_VERSION=$RUST_VERSION
-ENV PATH="/root/.cargo/bin:${PATH}"
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-    . /root/.cargo/env && \
-    rustup install $RUST_VERSION && \
-    rustup default $RUST_VERSION
+ENV PATH="${CARGO_HOME}/bin:${PATH}"
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION}
 
 # ARGs for cache invalidation - only change these when repos are updated
 ARG SMITHAY_COMMIT=a166cf4c94b5aedc332a65aa1dd753e8148829c3
