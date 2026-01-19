@@ -88,8 +88,8 @@ spec:
       serviceAccountName: fenrir-operator
       containers:
         - name: operator
-          # Operator with direct library copy for NVIDIA GBM (not symlink)
-          image: ghcr.io/jefflouisma/fenrir-operator:868398f
+          # Operator with startup.sh fix to preserve direct GBM library copy
+          image: ghcr.io/jefflouisma/fenrir-operator:1ad2e07
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
@@ -105,8 +105,8 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: WOLF_IMAGE
-              # Wolf with debug logging for GBM symlink creation
-              value: ghcr.io/jefflouisma/fenrir-wolf:d112d3d7d8a7c33169c098f75304dbee17ca5ba4
+              # Wolf with startup.sh fix to skip symlink if library exists
+              value: ghcr.io/jefflouisma/fenrir-wolf:1ad2e07
             - name: IMAGE_PULL_SECRET
               value: ghcr-secret
           resources:
