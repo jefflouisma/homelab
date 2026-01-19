@@ -794,6 +794,11 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				chmod 1777 -R /tmp/.X11-unix
 				mkdir -p /etc/wolf/cfg
 				cp -LR /cfg/* /etc/wolf/cfg
+				# Create EGL vendor directory with nvidia ICD JSON
+				# This is required for libglvnd to find NVIDIA EGL implementation
+				mkdir -p /etc/wolf/cfg/egl_vendor.d
+				cp /cfg/10_nvidia.json /etc/wolf/cfg/egl_vendor.d/ 2>/dev/null || true
+				cp /cfg/nvidia_icd.json /etc/wolf/cfg/egl_vendor.d/ 2>/dev/null || true
 				chown -R ubuntu:ubuntu /etc/wolf
 				chmod 777 -R /etc/wolf
 			`,
@@ -1036,7 +1041,8 @@ echo "=== Done ==="
 				"NVIDIA_DRIVER_CAPABILITIES": "all",
 				"LIBVA_DRIVER_NAME":          "nvidia",
 				// Point EGL to NVIDIA vendor library - critical for DRI2 screen creation
-				"__EGL_VENDOR_LIBRARY_DIRS":  "/nvidia-userspace:/usr/share/glvnd/egl_vendor.d",
+				// Use /etc/wolf/cfg/egl_vendor.d which has the nvidia vendor ICD JSON
+				"__EGL_VENDOR_LIBRARY_DIRS":  "/etc/wolf/cfg/egl_vendor.d:/nvidia-libs:/usr/share/glvnd/egl_vendor.d",
 				"LD_LIBRARY_PATH":            "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
 				// DRI device group access - Harvester host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
@@ -1394,6 +1400,22 @@ func (c *SessionController) reconcileConfigMap(
 				).
 				WithData(map[string]string{
 					"config.toml": wolfConfig,
+					// NVIDIA EGL vendor ICD - tells libglvnd where to find NVIDIA EGL implementation
+					// This is critical for Wolf's WaylandDisplay to find the correct EGL device
+					"10_nvidia.json": `{
+    "file_format_version": "1.0.0",
+    "ICD": {
+        "library_path": "/nvidia-libs/libEGL_nvidia.so.0"
+    }
+}`,
+					// Vulkan ICD for nvidia
+					"nvidia_icd.json": `{
+    "file_format_version": "1.0.0",
+    "ICD": {
+        "library_path": "/nvidia-libs/libGLX_nvidia.so.0",
+        "api_version": "1.3"
+    }
+}`,
 				}),
 			metav1.ApplyOptions{
 				FieldManager: "direwolf-session-controller",
