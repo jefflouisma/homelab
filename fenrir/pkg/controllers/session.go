@@ -864,6 +864,7 @@ echo "=== Done ==="
 	// Init container to create GBM backend symlink for NVIDIA driver loading
 	// This runs as root before wolf starts (which runs as non-root via gosu)
 	// Creates symlink: /usr/lib/gbm/nvidia-drm_gbm.so -> /nvidia-libs/libnvidia-egl-gbm.so.1
+	// Also creates EGL external platform config for NVIDIA GBM backend initialization
 	podToCreate.Spec.InitContainers = append(podToCreate.Spec.InitContainers,
 		corev1.Container{
 			Name:  "gbm-backend-init",
@@ -876,6 +877,28 @@ if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
     ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /gbm-backend/nvidia-drm_gbm.so
     ls -la /gbm-backend/
     echo "SUCCESS: GBM symlink created"
+    
+    # Create EGL external platform config for NVIDIA GBM backend
+    # This tells libgbm how to initialize the NVIDIA driver
+    echo "Creating EGL external platform config..."
+    cat > /egl-platform/15_nvidia_gbm.json << 'EOFJ'
+{
+    "file_format_version" : "1.0.0",
+    "ICD" : {
+        "library_path" : "/nvidia-libs/libnvidia-egl-gbm.so.1"
+    }
+}
+EOFJ
+    cat > /egl-platform/10_nvidia_wayland.json << 'EOFJ'
+{
+    "file_format_version" : "1.0.0",
+    "ICD" : {
+        "library_path" : "/nvidia-libs/libnvidia-egl-wayland.so.1"
+    }
+}
+EOFJ
+    ls -la /egl-platform/
+    echo "SUCCESS: EGL platform configs created"
 else
     echo "ERROR: /nvidia-libs/libnvidia-egl-gbm.so.1 NOT FOUND"
     echo "Contents of /nvidia-libs/:"
@@ -892,6 +915,10 @@ fi
 				{
 					Name:      "gbm-backend",
 					MountPath: "/gbm-backend",
+				},
+				{
+					Name:      "egl-platform",
+					MountPath: "/egl-platform",
 				},
 			},
 		},
@@ -1189,6 +1216,12 @@ echo "=== Done ==="
 					Name:      "gbm-backend",
 					MountPath: "/usr/lib/gbm",
 				},
+				// EGL external platform configs created by gbm-backend-init container
+				// Required for libgbm to initialize NVIDIA GBM backend
+				{
+					Name:      "egl-platform",
+					MountPath: "/usr/share/egl/egl_external_platform.d",
+				},
 				// Explicit nvidia device bind mounts - override devtmpfs devices
 				{
 					Name:      "nvidia-ctl",
@@ -1239,6 +1272,12 @@ echo "=== Done ==="
 		},
 		corev1.Volume{
 			Name: "gbm-backend",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+		corev1.Volume{
+			Name: "egl-platform",
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
