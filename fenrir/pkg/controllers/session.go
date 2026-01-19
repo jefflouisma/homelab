@@ -940,7 +940,7 @@ echo "=== Done ==="
 				},
 				{
 					Name:  "CUDA_VISIBLE_DEVICES",
-					Value: "all",
+					Value: "0",
 				},
 				{
 					Name:  "LD_LIBRARY_PATH",
@@ -1043,7 +1043,10 @@ echo "=== Done ==="
 				"GST_DEBUG":              "2",
 				"__GL_SYNC_TO_VBLANK":    "0",
 				// Enable CUDA for NVENC encoding (nvidia-uvm now loaded via toolkit)
-				"CUDA_VISIBLE_DEVICES":       "all",
+				// CRITICAL: Must use "0" (or specific GPU index), not "all"
+				// "all" causes cuInit() to return CUDA_ERROR_NO_DEVICE (error 100)
+				// which prevents GStreamer nvcodec plugin from registering nvh264enc/nvh265enc
+				"CUDA_VISIBLE_DEVICES":       "0",
 				"NVIDIA_VISIBLE_DEVICES":     "all",
 				"NVIDIA_DRIVER_CAPABILITIES": "all",
 				"LIBVA_DRIVER_NAME":          "nvidia",
