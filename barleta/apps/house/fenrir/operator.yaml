@@ -88,8 +88,8 @@ spec:
       serviceAccountName: fenrir-operator
       containers:
         - name: operator
-          # Custom-built Fenrir operator image with CUDA_VISIBLE_DEVICES=0 fix for nvcodec
-          image: ghcr.io/jefflouisma/fenrir-operator:3efee5a
+          # Custom-built Fenrir operator image with CUDA + EGL headless fixes
+          image: ghcr.io/jefflouisma/fenrir-operator:53941e2
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
