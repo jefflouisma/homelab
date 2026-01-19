@@ -1113,6 +1113,10 @@ echo "=== Done ==="
 				"NVIDIA_VISIBLE_DEVICES":     "all",
 				"NVIDIA_DRIVER_CAPABILITIES": "all",
 				"LIBVA_DRIVER_NAME":          "nvidia",
+				// Force GLX to use NVIDIA vendor library for proper GPU access
+				"__GLX_VENDOR_LIBRARY_NAME": "nvidia",
+				// NVD_BACKEND for nvidia-vaapi-driver (used by some GStreamer pipelines)
+				"NVD_BACKEND": "direct",
 				// Point EGL to NVIDIA vendor library - critical for DRI2 screen creation
 				// Use /etc/wolf/cfg/egl_vendor.d which has the nvidia vendor ICD JSON
 				"__EGL_VENDOR_LIBRARY_DIRS": "/etc/wolf/cfg/egl_vendor.d:/nvidia-libs:/usr/share/glvnd/egl_vendor.d",
