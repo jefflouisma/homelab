@@ -111,7 +111,10 @@ RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
     libwayland-server0 libinput10 libxkbcommon0 libgbm1 \
     libglvnd0 libgl1 libglx0 libegl1 libgles2 xwayland hwdata \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # Create GBM directory for nvidia backend symlink (created at runtime by startup.sh)
+    && mkdir -p /usr/lib/x86_64-linux-gnu/gbm \
+    && chmod 777 /usr/lib/x86_64-linux-gnu/gbm
 
 ENV GST_PLUGIN_PATH=/usr/local/lib/x86_64-linux-gnu/gstreamer-1.0/
 # Copying out our custom compositor from the build stage
