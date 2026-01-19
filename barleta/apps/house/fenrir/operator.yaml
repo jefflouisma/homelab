@@ -89,7 +89,7 @@ spec:
       containers:
         - name: operator
           # Custom-built Fenrir operator image with CUDA + EGL headless fixes
-          image: ghcr.io/jefflouisma/fenrir-operator:53941e2
+          image: ghcr.io/jefflouisma/fenrir-operator:53ba670
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
