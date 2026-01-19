@@ -29,9 +29,9 @@ echo "[startup.sh] === GBM Backend Check ===" >&2
 echo "[startup.sh] Checking /usr/lib/gbm/ directory..." >&2
 ls -la /usr/lib/gbm/ 2>&1 | head -5 >&2 || echo "[startup.sh] /usr/lib/gbm/ does not exist!" >&2
 
-# Only create symlink if nvidia-drm_gbm.so doesn't exist (init container may have copied it)
+# Only create symlink if nvidia-drm_gbm.so doesn't exist (-f returns true for files AND symlinks)
 if [ -f /usr/lib/gbm/nvidia-drm_gbm.so ]; then
-    echo "[startup.sh] nvidia-drm_gbm.so already exists, skipping symlink creation" >&2
+    echo "[startup.sh] nvidia-drm_gbm.so already exists (from init container), skipping symlink creation" >&2
 elif [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
     echo "[startup.sh] Creating symlink to nvidia-drm_gbm.so..." >&2
     ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /usr/lib/gbm/nvidia-drm_gbm.so 2>&1 >&2
