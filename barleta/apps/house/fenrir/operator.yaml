@@ -16,7 +16,8 @@ rules:
     resources: ["apps", "sessions", "pairings", "users", "sessions/status"]
     verbs: ["*"]
   - apiGroups: [""]
-    resources: ["pods", "services", "persistentvolumeclaims", "secrets", "configmaps"]
+    resources:
+      ["pods", "services", "persistentvolumeclaims", "secrets", "configmaps"]
     verbs: ["*"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
@@ -88,7 +89,7 @@ spec:
       containers:
         - name: operator
           # Custom-built Fenrir operator image with nvidia RuntimeClass fix
-          image: ghcr.io/jefflouisma/fenrir-operator:sha-ae73d57
+          image: ghcr.io/jefflouisma/fenrir-operator:d75da84
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
