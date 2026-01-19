@@ -16,7 +16,7 @@ spec:
     path: barleta/apps/house/fenrir
     directory:
       recurse: true
-      include: '*.yaml'
+      include: "*.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: house
@@ -26,3 +26,4 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - ServerSideApply=true
