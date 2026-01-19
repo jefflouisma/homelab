@@ -11,7 +11,7 @@ FROM $BASE_IMAGE AS gst-builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Minimal deps for Rust build + curl dependencies
+# Minimal deps for Rust build + openssl for cargo-c
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
     curl \
@@ -20,6 +20,7 @@ RUN apt-get update -y && \
     build-essential \
     pkg-config \
     libicu76 \
+    libssl-dev \
     libwayland-dev libwayland-server0 libinput-dev libxkbcommon-dev libgbm-dev \
     libglib2.0-dev libegl-dev libgles-dev libopengl-dev libdrm-dev \
     && rm -rf /var/lib/apt/lists/*
