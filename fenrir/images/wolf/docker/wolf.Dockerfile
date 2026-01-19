@@ -25,7 +25,7 @@ RUN apt-get update -y && \
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="$HOME/.cargo/bin:${PATH}"
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 ARG RUST_VERSION=1.91.1
 ENV RUST_VERSION=$RUST_VERSION
