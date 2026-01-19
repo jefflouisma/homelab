@@ -51,9 +51,9 @@ RUN <<_GST_WAYLAND_DISPLAY
     # EGL_EXT_device_base (NVIDIA 590) is composite extension including both per NVIDIA docs
     sed -i '35,41d' src/backend/egl/device.rs
 
-    git clone https://github.com/games-on-whales/gst-wayland-display
+    git clone https://github.com/jefflouisma/gst-wayland-display
     cd gst-wayland-display
-    git checkout 67b1183
+    git checkout 8bcb5f9  # stable branch with NVIDIA GBM Modifier::Linear fallback fix
     
     # Configure Cargo to use our patched smithay
     mkdir -p .cargo
