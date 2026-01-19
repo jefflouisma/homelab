@@ -2,7 +2,7 @@
 //!
 //! Implements the 4-phase pairing protocol without depending on moonlight-qt:
 //! - Phase 1: Send salt + client cert, receive server cert
-//! - Phase 2: Send client challenge, receive challenge response  
+//! - Phase 2: Send client challenge, receive challenge response
 //! - Phase 3: Send server challenge response, receive pairing secret
 //! - Phase 4: Send client pairing secret, receive paired confirmation
 
@@ -52,24 +52,23 @@ impl ClientIdentity {
 
     fn generate() -> Result<Self> {
         use rsa::pkcs8::EncodePrivateKey;
-        
+
         // Generate RSA-2048 key pair using rsa crate
         let mut rng = rand::thread_rng();
         let bits = 2048;
         let private_key = RsaPrivateKey::new(&mut rng, bits)?;
-        
+
         // Export private key to PKCS8 PEM format
         let key_pem = private_key.to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)?;
-        
+
         // Load the key into rcgen's KeyPair
         let key_pair = KeyPair::from_pem(&key_pem)?;
-        
+
         // Create certificate params
         let mut params = CertificateParams::new(vec!["NVIDIA GameStream Client".to_string()])?;
-        params.distinguished_name.push(
-            rcgen::DnType::CommonName,
-            "NVIDIA GameStream Client",
-        );
+        params
+            .distinguished_name
+            .push(rcgen::DnType::CommonName, "NVIDIA GameStream Client");
 
         // Generate self-signed cert using the RSA key
         let cert = params.self_signed(&key_pair)?;
@@ -454,13 +453,13 @@ pub fn has_identity() -> bool {
 /// Create an mTLS client using our client certificate
 fn create_mtls_client() -> Result<reqwest::Client> {
     let client_identity = ClientIdentity::load_or_create()?;
-    
+
     // Create reqwest identity from cert + key PEM (native-tls uses from_pkcs8_pem)
     let identity = reqwest::Identity::from_pkcs8_pem(
         client_identity.cert_pem.as_bytes(),
         client_identity.key_pem.as_bytes(),
     )?;
-    
+
     let client = reqwest::Client::builder()
         .identity(identity)
         .danger_accept_invalid_certs(true) // Server uses self-signed cert
@@ -471,7 +470,7 @@ fn create_mtls_client() -> Result<reqwest::Client> {
         .pool_max_idle_per_host(0)
         .no_proxy()
         .build()?;
-    
+
     Ok(client)
 }
 
@@ -485,54 +484,62 @@ pub struct AppInfo {
 /// List apps on the host using native HTTPS API
 pub async fn native_list_apps(host: &str) -> Result<Vec<AppInfo>> {
     let client = create_mtls_client()?;
-    
+
     // Use fingerprint as uniqueid for consistent identity with Wolf
     let identity = ClientIdentity::load_or_create()?;
-    
+
     let url = format!(
         "https://{}:47984/applist?uniqueid={}&uuid={}",
         host,
         identity.fingerprint,
         uuid::Uuid::new_v4()
     );
-    
+
     let response = client.get(&url).send().await?;
     let body = response.text().await?;
-    
+
     // Parse XML response for apps
     let mut apps = Vec::new();
-    
+
     // Simple XML parsing for <App><ID>N</ID><AppTitle>Name</AppTitle></App>
     let mut pos = 0;
     while let Some(app_start) = body[pos..].find("<App>") {
         let app_start = pos + app_start;
         if let Some(app_end) = body[app_start..].find("</App>") {
             let app_xml = &body[app_start..app_start + app_end + 6];
-            
+
             // Extract ID
             let id = if let Some(id_start) = app_xml.find("<ID>") {
                 if let Some(id_end) = app_xml.find("</ID>") {
                     app_xml[id_start + 4..id_end].parse().unwrap_or(0)
-                } else { 0 }
-            } else { 0 };
-            
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+
             // Extract title
             let title = if let Some(title_start) = app_xml.find("<AppTitle>") {
                 if let Some(title_end) = app_xml.find("</AppTitle>") {
                     app_xml[title_start + 10..title_end].to_string()
-                } else { String::new() }
-            } else { String::new() };
-            
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
             if id > 0 && !title.is_empty() {
                 apps.push(AppInfo { id, title });
             }
-            
+
             pos = app_start + app_end + 6;
         } else {
             break;
         }
     }
-    
+
     Ok(apps)
 }
 
@@ -541,35 +548,35 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<String> {
     eprintln!("[DEBUG] native_launch: creating mTLS client...");
     let client = create_mtls_client()?;
     eprintln!("[DEBUG] native_launch: mTLS client created successfully");
-    
+
     // Test: Make a simple request to applist first to check connection
-    let test_url = format!(
-        "https://{}:47984/applist?uniqueid=test&uuid=test123",
-        host
-    );
+    let test_url = format!("https://{}:47984/applist?uniqueid=test&uuid=test123", host);
     eprintln!("[DEBUG] native_launch: testing connection with applist...");
     let test_response = client.get(&test_url).send().await?;
     let test_status = test_response.status();
-    eprintln!("[DEBUG] native_launch: applist test response status: {}", test_status);
-    
+    eprintln!(
+        "[DEBUG] native_launch: applist test response status: {}",
+        test_status
+    );
+
     // Generate rikey (AES key for stream encryption) - 16 bytes hex encoded
     let mut rikey = [0u8; 16];
     rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut rikey);
     let rikey_hex = hex::encode(&rikey).to_uppercase();
-    
+
     // Generate rikey ID
     let rikeyid: u32 = rand::random();
-    
+
     // Load client identity to get the certificate fingerprint as uniqueid
     // Wolf requires the uniqueid to match the paired client's cert fingerprint
     let client_identity = ClientIdentity::load_or_create()?;
     let config_dir = dirs::config_dir().ok_or_else(|| anyhow!("No config directory"))?;
     let cert_path = config_dir.join("moonlight-mcp").join("client.crt");
     let key_path = config_dir.join("moonlight-mcp").join("client.key");
-    
+
     // Use the client certificate fingerprint as uniqueid (required for Wolf pairing)
     let uniqueid = &client_identity.fingerprint;
-    
+
     let uuid_val = uuid::Uuid::new_v4().to_string();
     let url = format!(
         "https://{}:47984/launch?uniqueid={}&uuid={}&appid={}&mode=1920x1080x60&additionalStates=1&sops=0&rikey={}&rikeyid={}&localAudioPlayMode=0&surroundAudioInfo=196610",
@@ -580,25 +587,32 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<String> {
         rikey_hex,
         rikeyid
     );
-    eprintln!("[DEBUG] native_launch: calling curl with fingerprint uniqueid: {}", uniqueid);
+    eprintln!(
+        "[DEBUG] native_launch: calling curl with fingerprint uniqueid: {}",
+        uniqueid
+    );
     eprintln!("[DEBUG] native_launch: URL: {}", url);
-    
+
     // Use curl with long timeout - server can take 45+ seconds to process launch
     let output = tokio::process::Command::new("curl")
         .args(&[
             "-sk",
-            "--cert", cert_path.to_str().unwrap(),
-            "--key", key_path.to_str().unwrap(),
-            "--connect-timeout", "30",
-            "--max-time", "90",
-            &url
+            "--cert",
+            cert_path.to_str().unwrap(),
+            "--key",
+            key_path.to_str().unwrap(),
+            "--connect-timeout",
+            "30",
+            "--max-time",
+            "90",
+            &url,
         ])
         .output()
         .await?;
-    
+
     let body = String::from_utf8_lossy(&output.stdout).to_string();
     eprintln!("[DEBUG] native_launch: curl response: {}", body);
-    
+
     // Extract session URL from response
     let session_url = if let Some(start) = body.find("<sessionUrl0>") {
         if let Some(end) = body.find("</sessionUrl0>") {
@@ -609,17 +623,17 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<String> {
     } else {
         None
     };
-    
+
     // Check for success
     if body.contains("<gamesession>1</gamesession>") || body.contains("status_code=\"200\"") {
         return Ok(session_url.unwrap_or_default());
     }
-    
+
     // Check for errors
     if body.contains("status_code=\"4") || body.contains("status_code=\"5") {
         return Err(anyhow!("Launch failed: {}", body));
     }
-    
+
     // Assume success if no obvious error
     Ok(session_url.unwrap_or_default())
 }
@@ -627,60 +641,81 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<String> {
 /// Verify stream is actually running by checking Wolf's session status
 pub async fn native_verify_stream(host: &str) -> Result<StreamStatus> {
     let client = create_mtls_client()?;
-    
-    // Query the wolf-agent's session list
-    let url = format!("https://{}:47984/api/v1/sessions", host);
-    
-    let response = client.get(&url).send().await?;
-    let status_code = response.status();
-    let body = response.text().await?;
-    eprintln!("[DEBUG] verify_stream: sessions response ({}): {}", status_code, body);
-    
-    // Handle non-success status codes
-    if !status_code.is_success() {
-        return Ok(StreamStatus {
-            active: false,
-            session_count: 0,
-            error: Some(format!("Wolf API returned {}: {}", status_code, body.chars().take(100).collect::<String>())),
-        });
-    }
-    
-    // Try to parse the JSON response
-    match serde_json::from_str::<serde_json::Value>(&body) {
-        Ok(sessions) => {
-            if let Some(sessions_array) = sessions.get("sessions").and_then(|s| s.as_array()) {
-                if sessions_array.is_empty() {
-                    return Ok(StreamStatus {
+
+    // Query the wolf-agent's session list (prefer the session LB port)
+    let urls = [
+        format!("https://{}:8443/api/v1/sessions", host),
+        format!("https://{}:47984/api/v1/sessions", host),
+    ];
+
+    let mut last_error: Option<String> = None;
+    for url in urls {
+        let response = match client.get(&url).send().await {
+            Ok(resp) => resp,
+            Err(err) => {
+                last_error = Some(format!("Wolf API request failed: {}", err));
+                continue;
+            }
+        };
+
+        let status_code = response.status();
+        let body = response.text().await?;
+        eprintln!(
+            "[DEBUG] verify_stream: sessions response ({}): {}",
+            status_code, body
+        );
+
+        // Handle non-success status codes
+        if !status_code.is_success() {
+            last_error = Some(format!(
+                "Wolf API returned {}: {}",
+                status_code,
+                body.chars().take(100).collect::<String>()
+            ));
+            continue;
+        }
+
+        // Try to parse the JSON response
+        return match serde_json::from_str::<serde_json::Value>(&body) {
+            Ok(sessions) => {
+                if let Some(sessions_array) = sessions.get("sessions").and_then(|s| s.as_array()) {
+                    if sessions_array.is_empty() {
+                        Ok(StreamStatus {
+                            active: false,
+                            session_count: 0,
+                            error: Some("No active sessions found".to_string()),
+                        })
+                    } else {
+                        Ok(StreamStatus {
+                            active: true,
+                            session_count: sessions_array.len(),
+                            error: None,
+                        })
+                    }
+                } else {
+                    Ok(StreamStatus {
                         active: false,
                         session_count: 0,
-                        error: Some("No active sessions found".to_string()),
-                    });
+                        error: Some("Sessions response missing 'sessions' array".to_string()),
+                    })
                 }
-                
-                // Check if any session is running
-                let active_count = sessions_array.len();
-                return Ok(StreamStatus {
-                    active: active_count > 0,
-                    session_count: active_count,
-                    error: None,
-                });
             }
-            
-            Ok(StreamStatus {
+            Err(_) => Ok(StreamStatus {
                 active: false,
                 session_count: 0,
-                error: Some("Sessions response missing 'sessions' array".to_string()),
-            })
-        }
-        Err(_) => {
-            // Response was not JSON - provide clear error
-            Ok(StreamStatus {
-                active: false,
-                session_count: 0,
-                error: Some(format!("Wolf API returned non-JSON response: {}", body.chars().take(100).collect::<String>())),
-            })
-        }
+                error: Some(format!(
+                    "Wolf API returned non-JSON response: {}",
+                    body.chars().take(100).collect::<String>()
+                )),
+            }),
+        };
     }
+
+    Ok(StreamStatus {
+        active: false,
+        session_count: 0,
+        error: last_error,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -694,17 +729,17 @@ pub struct StreamStatus {
 pub async fn native_quit(host: &str) -> Result<()> {
     let client = create_mtls_client()?;
     let identity = ClientIdentity::load_or_create()?;
-    
+
     let url = format!(
         "https://{}:47984/cancel?uniqueid={}&uuid={}",
         host,
         identity.fingerprint,
         uuid::Uuid::new_v4()
     );
-    
+
     let response = client.get(&url).send().await?;
     let body = response.text().await?;
-    
+
     if body.contains("cancel=\"1\"") || body.contains("status_code=\"200\"") {
         Ok(())
     } else {
@@ -716,7 +751,7 @@ pub async fn native_quit(host: &str) -> Result<()> {
 /// Uses the Wolf/Sunshine input API
 pub async fn send_keyboard_input(host: &str, key: &str, action: &str) -> Result<()> {
     let client = create_mtls_client()?;
-    
+
     // Map key names to virtual key codes (subset for common keys)
     let vk_code = match key.to_lowercase().as_str() {
         "enter" | "return" => 0x0D,
@@ -728,36 +763,71 @@ pub async fn send_keyboard_input(host: &str, key: &str, action: &str) -> Result<
         "down" => 0x28,
         "left" => 0x25,
         "right" => 0x27,
-        "a" => 0x41, "b" => 0x42, "c" => 0x43, "d" => 0x44,
-        "e" => 0x45, "f" => 0x46, "g" => 0x47, "h" => 0x48,
-        "i" => 0x49, "j" => 0x4A, "k" => 0x4B, "l" => 0x4C,
-        "m" => 0x4D, "n" => 0x4E, "o" => 0x4F, "p" => 0x50,
-        "q" => 0x51, "r" => 0x52, "s" => 0x53, "t" => 0x54,
-        "u" => 0x55, "v" => 0x56, "w" => 0x57, "x" => 0x58,
-        "y" => 0x59, "z" => 0x5A,
-        "0" => 0x30, "1" => 0x31, "2" => 0x32, "3" => 0x33,
-        "4" => 0x34, "5" => 0x35, "6" => 0x36, "7" => 0x37,
-        "8" => 0x38, "9" => 0x39,
-        "f1" => 0x70, "f2" => 0x71, "f3" => 0x72, "f4" => 0x73,
-        "f5" => 0x74, "f6" => 0x75, "f7" => 0x76, "f8" => 0x77,
-        "f9" => 0x78, "f10" => 0x79, "f11" => 0x7A, "f12" => 0x7B,
+        "a" => 0x41,
+        "b" => 0x42,
+        "c" => 0x43,
+        "d" => 0x44,
+        "e" => 0x45,
+        "f" => 0x46,
+        "g" => 0x47,
+        "h" => 0x48,
+        "i" => 0x49,
+        "j" => 0x4A,
+        "k" => 0x4B,
+        "l" => 0x4C,
+        "m" => 0x4D,
+        "n" => 0x4E,
+        "o" => 0x4F,
+        "p" => 0x50,
+        "q" => 0x51,
+        "r" => 0x52,
+        "s" => 0x53,
+        "t" => 0x54,
+        "u" => 0x55,
+        "v" => 0x56,
+        "w" => 0x57,
+        "x" => 0x58,
+        "y" => 0x59,
+        "z" => 0x5A,
+        "0" => 0x30,
+        "1" => 0x31,
+        "2" => 0x32,
+        "3" => 0x33,
+        "4" => 0x34,
+        "5" => 0x35,
+        "6" => 0x36,
+        "7" => 0x37,
+        "8" => 0x38,
+        "9" => 0x39,
+        "f1" => 0x70,
+        "f2" => 0x71,
+        "f3" => 0x72,
+        "f4" => 0x73,
+        "f5" => 0x74,
+        "f6" => 0x75,
+        "f7" => 0x76,
+        "f8" => 0x77,
+        "f9" => 0x78,
+        "f10" => 0x79,
+        "f11" => 0x7A,
+        "f12" => 0x7B,
         "ctrl" | "control" => 0x11,
         "alt" => 0x12,
         "shift" => 0x10,
         _ => return Err(anyhow!("Unknown key: {}", key)),
     };
-    
+
     // Wolf input API endpoint
     let url = format!("https://{}:47984/input", host);
-    
+
     #[derive(serde::Serialize)]
     struct KeyboardInput {
         #[serde(rename = "type")]
         input_type: String,
         key_code: u32,
-        action: String,  // "down", "up"
+        action: String, // "down", "up"
     }
-    
+
     match action {
         "tap" => {
             // Send key down then key up
@@ -771,7 +841,7 @@ pub async fn send_keyboard_input(host: &str, key: &str, action: &str) -> Result<
                 key_code: vk_code,
                 action: "up".into(),
             };
-            
+
             client.post(&url).json(&down).send().await?;
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             client.post(&url).json(&up).send().await?;
@@ -794,7 +864,7 @@ pub async fn send_keyboard_input(host: &str, key: &str, action: &str) -> Result<
         }
         _ => return Err(anyhow!("Unknown key action: {}", action)),
     }
-    
+
     Ok(())
 }
 
@@ -809,7 +879,7 @@ pub async fn send_mouse_input(
 ) -> Result<()> {
     let client = create_mtls_client()?;
     let url = format!("https://{}:47984/input", host);
-    
+
     #[derive(serde::Serialize)]
     struct MouseInput {
         #[serde(rename = "type")]
@@ -824,14 +894,14 @@ pub async fn send_mouse_input(
         #[serde(skip_serializing_if = "Option::is_none")]
         delta: Option<i32>,
     }
-    
+
     let button_code = button.map(|b| match b.to_lowercase().as_str() {
         "left" => 1,
         "right" => 2,
         "middle" => 3,
         _ => 1,
     });
-    
+
     let input = MouseInput {
         input_type: "mouse".into(),
         action: action.to_string(),
@@ -840,7 +910,7 @@ pub async fn send_mouse_input(
         button: button_code,
         delta: scroll_delta,
     };
-    
+
     client.post(&url).json(&input).send().await?;
     Ok(())
 }
@@ -859,7 +929,7 @@ pub async fn send_gamepad_input(
 ) -> Result<()> {
     let client = create_mtls_client()?;
     let url = format!("https://{}:47984/input", host);
-    
+
     // Map button names to Xbox-style button flags
     let button_flag = button.map(|b| match b.to_lowercase().as_str() {
         "a" => 0x1000,
@@ -878,7 +948,7 @@ pub async fn send_gamepad_input(
         "dpad_right" => 0x0008,
         _ => 0,
     });
-    
+
     #[derive(serde::Serialize)]
     struct GamepadInput {
         #[serde(rename = "type")]
@@ -900,7 +970,7 @@ pub async fn send_gamepad_input(
         #[serde(skip_serializing_if = "Option::is_none")]
         right_trigger: Option<u8>,
     }
-    
+
     let input = GamepadInput {
         input_type: "gamepad".into(),
         button_flags: button_flag,
@@ -912,16 +982,20 @@ pub async fn send_gamepad_input(
         left_trigger,
         right_trigger,
     };
-    
+
     client.post(&url).json(&input).send().await?;
     Ok(())
 }
 
 /// Capture a frame from an RTSP video stream using ffmpeg
 /// This captures the actual Moonlight stream output, not a desktop screenshot
-pub async fn capture_rtsp_frame(rtsp_url: &str, output_path: &str, timeout_secs: u32) -> Result<()> {
+pub async fn capture_rtsp_frame(
+    rtsp_url: &str,
+    output_path: &str,
+    timeout_secs: u32,
+) -> Result<()> {
     eprintln!("[DEBUG] Capturing frame from RTSP stream: {}", rtsp_url);
-    
+
     // Use ffmpeg to grab a single frame from the RTSP stream
     // -rtsp_transport tcp: Use TCP for RTSP (more reliable)
     // -i: Input URL
@@ -929,17 +1003,22 @@ pub async fn capture_rtsp_frame(rtsp_url: &str, output_path: &str, timeout_secs:
     // -y: Overwrite output file
     let output = tokio::process::Command::new("ffmpeg")
         .args(&[
-            "-rtsp_transport", "tcp",
-            "-t", &timeout_secs.to_string(),  // Max time to wait for stream
-            "-i", rtsp_url,
-            "-frames:v", "1",
-            "-q:v", "2",  // High quality JPEG
-            "-y",  // Overwrite
+            "-rtsp_transport",
+            "tcp",
+            "-t",
+            &timeout_secs.to_string(), // Max time to wait for stream
+            "-i",
+            rtsp_url,
+            "-frames:v",
+            "1",
+            "-q:v",
+            "2",  // High quality JPEG
+            "-y", // Overwrite
             output_path,
         ])
         .output()
         .await?;
-    
+
     if output.status.success() {
         eprintln!("[DEBUG] RTSP frame captured to: {}", output_path);
         Ok(())
@@ -949,13 +1028,22 @@ pub async fn capture_rtsp_frame(rtsp_url: &str, output_path: &str, timeout_secs:
         if stderr.contains("Connection refused") {
             Err(anyhow!("RTSP connection refused - stream not available"))
         } else if stderr.contains("Connection timed out") || stderr.contains("timeout") {
-            Err(anyhow!("RTSP connection timeout - stream may not be sending video"))
+            Err(anyhow!(
+                "RTSP connection timeout - stream may not be sending video"
+            ))
         } else if stderr.contains("Invalid data found") {
-            Err(anyhow!("RTSP stream has invalid video data - encoder may have failed"))
+            Err(anyhow!(
+                "RTSP stream has invalid video data - encoder may have failed"
+            ))
         } else if stderr.contains("does not contain any stream") {
-            Err(anyhow!("RTSP stream has no video - streaming pipeline may have crashed"))
+            Err(anyhow!(
+                "RTSP stream has no video - streaming pipeline may have crashed"
+            ))
         } else {
-            Err(anyhow!("Failed to capture RTSP frame: {}", stderr.chars().take(500).collect::<String>()))
+            Err(anyhow!(
+                "Failed to capture RTSP frame: {}",
+                stderr.chars().take(500).collect::<String>()
+            ))
         }
     }
 }
@@ -966,12 +1054,15 @@ pub async fn capture_screenshot(output_path: &str) -> Result<()> {
         .args(&["-x", output_path])
         .output()
         .await?;
-    
+
     if output.status.success() {
         eprintln!("[DEBUG] Screenshot saved to: {}", output_path);
         Ok(())
     } else {
-        Err(anyhow!("Failed to capture screenshot: {}", String::from_utf8_lossy(&output.stderr)))
+        Err(anyhow!(
+            "Failed to capture screenshot: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
     }
 }
 
@@ -991,10 +1082,10 @@ mod tests {
     fn test_aes_roundtrip() {
         let key = vec![0u8; 16];
         let plaintext = b"Hello, World!!!"; // 16 bytes
-        
+
         let encrypted = PairingSession::aes_encrypt_ecb(plaintext, &key).unwrap();
         let decrypted = PairingSession::aes_decrypt_ecb(&encrypted, &key).unwrap();
-        
+
         assert_eq!(&decrypted[..16], plaintext);
     }
 }

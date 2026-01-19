@@ -45,7 +45,7 @@ var (
 			return im
 		}
 
-		return "ghcr.io/games-on-whales/wolf:stable"  // Using stable upstream Wolf
+		return "ghcr.io/games-on-whales/wolf:stable" // Using stable upstream Wolf
 	}()
 )
 
@@ -1018,23 +1018,23 @@ echo "=== Done ==="
 			Name:  "wolf",
 			Image: WOLF_IMAGE,
 			Env: mapToEnvApplyList(map[string]string{
-				"PUID":                       "1000",
-				"PGID":                       "1000",
-				"TZ":                         "America/Los_Angeles",
-				"UNAME":                      "ubuntu",
-				"XDG_RUNTIME_DIR":            "/tmp/.X11-unix",
-				"PULSE_SERVER":               "unix:/tmp/.X11-unix/pulse-socket",
-				"HOST_APPS_STATE_FOLDER":     "/etc/wolf",
-				"WOLF_LOG_LEVEL":             "DEBUG",
-				"WOLF_STREAM_CLIENT_IP":      "10.128.1.0",
-				"WOLF_SOCKET_PATH":           "/etc/wolf/wolf.sock",
-				"WOLF_CFG_FILE":              "/etc/wolf/cfg/config.toml",
-				"WOLF_PULSE_IMAGE":           "ghcr.io/games-on-whales/pulseaudio:master",
-				"WOLF_CFG_FOLDER":            "/etc/wolf/cfg",
-				"WOLF_RENDER_NODE":           "/dev/dri/renderD129",  // renderD129=NVIDIA
-				"GST_VAAPI_ALL_DRIVERS":      "1",
-				"GST_DEBUG":                  "2",
-				"__GL_SYNC_TO_VBLANK":        "0",
+				"PUID":                   "1000",
+				"PGID":                   "1000",
+				"TZ":                     "America/Los_Angeles",
+				"UNAME":                  "ubuntu",
+				"XDG_RUNTIME_DIR":        "/tmp/.X11-unix",
+				"PULSE_SERVER":           "unix:/tmp/.X11-unix/pulse-socket",
+				"HOST_APPS_STATE_FOLDER": "/etc/wolf",
+				"WOLF_LOG_LEVEL":         "DEBUG",
+				"WOLF_STREAM_CLIENT_IP":  "10.128.1.0",
+				"WOLF_SOCKET_PATH":       "/etc/wolf/wolf.sock",
+				"WOLF_CFG_FILE":          "/etc/wolf/cfg/config.toml",
+				"WOLF_PULSE_IMAGE":       "ghcr.io/games-on-whales/pulseaudio:master",
+				"WOLF_CFG_FOLDER":        "/etc/wolf/cfg",
+				"WOLF_RENDER_NODE":       "/dev/dri/renderD129", // renderD129=NVIDIA
+				"GST_VAAPI_ALL_DRIVERS":  "1",
+				"GST_DEBUG":              "2",
+				"__GL_SYNC_TO_VBLANK":    "0",
 				// Enable CUDA for NVENC encoding (nvidia-uvm now loaded via toolkit)
 				"CUDA_VISIBLE_DEVICES":       "all",
 				"NVIDIA_VISIBLE_DEVICES":     "all",
@@ -1042,12 +1042,12 @@ echo "=== Done ==="
 				"LIBVA_DRIVER_NAME":          "nvidia",
 				// Point EGL to NVIDIA vendor library - critical for DRI2 screen creation
 				// Use /etc/wolf/cfg/egl_vendor.d which has the nvidia vendor ICD JSON
-				"__EGL_VENDOR_LIBRARY_DIRS":  "/etc/wolf/cfg/egl_vendor.d:/nvidia-libs:/usr/share/glvnd/egl_vendor.d",
-				"LD_LIBRARY_PATH":            "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
+				"__EGL_VENDOR_LIBRARY_DIRS": "/etc/wolf/cfg/egl_vendor.d:/nvidia-libs:/usr/share/glvnd/egl_vendor.d",
+				"LD_LIBRARY_PATH":           "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
 				// DRI device group access - Harvester host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
-				"GOW_VIDEO_GID":              "486",   // video group GID
-				"GOW_RENDER_GID":             "489",   // render group GID
+				"GOW_VIDEO_GID":  "486", // video group GID
+				"GOW_RENDER_GID": "489", // render group GID
 			}),
 			// Note: Container Ports list is strictly informational. As long
 			// as process is listening on 0.0.0.0 it can be bound by a service.
@@ -1086,8 +1086,8 @@ echo "=== Done ==="
 			},
 			SecurityContext: &corev1.SecurityContext{
 				Privileged: ptr.To(true),
-				RunAsUser:  ptr.To(int64(0)),  // Run as root for DRM access
-				RunAsGroup: ptr.To(int64(0)),  // Run as root group
+				RunAsUser:  ptr.To(int64(0)), // Run as root for DRM access
+				RunAsGroup: ptr.To(int64(0)), // Run as root group
 				Capabilities: &corev1.Capabilities{
 					Add: []corev1.Capability{"SYS_ADMIN"},
 				},
@@ -1570,7 +1570,9 @@ func (c *SessionController) reconcileActiveStreams(
 		}
 	}
 
-	if found != (session.Status.WolfSessionID != "") {
+	if found && session.Status.WolfSessionID == "" {
+		klog.Warningf("Session %s/%s exists in Wolf but status is empty; skipping delete to allow status reconciliation", session.Namespace, session.Name)
+	} else if !found && session.Status.WolfSessionID != "" {
 		klog.Infof("Session %s/%s found: %v, status: %v", session.Namespace, session.Name, found, session.Status.WolfSessionID)
 		// Either the session was already added but not in the list, or
 		// the session was already in the list without being added.
@@ -1585,7 +1587,7 @@ func (c *SessionController) reconcileActiveStreams(
 		if err != nil {
 			klog.Warningf("Failed to list clients from wolf: %v", err)
 		}
-		
+
 		// Default to the fingerprint, but try to find a better match
 		actualClientID := session.Spec.PairingReference.Name
 		foundClient := false
@@ -1601,7 +1603,7 @@ func (c *SessionController) reconcileActiveStreams(
 			foundClient = true
 			break
 		}
-		
+
 		if !foundClient {
 			klog.Warningf("No matching client found in Wolf for fingerprint %s, using fingerprint as ID", session.Spec.PairingReference.Name)
 		} else {
@@ -1614,7 +1616,7 @@ func (c *SessionController) reconcileActiveStreams(
 			VideoHeight:       session.Spec.Config.VideoHeight,
 			VideoRefreshRate:  session.Spec.Config.VideoRefreshRate,
 			AppID:             appID, // Dynamic app_id from ListApps
-			AudioChannelCount: 2, // !TODO: parse from audio info
+			AudioChannelCount: 2,     // !TODO: parse from audio info
 			ClientIP:          "10.128.1.0",
 			RTSPFakeIP:        "10.128.1.0", // Required by Wolf API for RTSP streaming
 			ClientSettings: wolfapi.ClientSettings{
@@ -1641,7 +1643,18 @@ func (c *SessionController) reconcileActiveStreams(
 		// assert wolf session ID non-empty and matches what we expect
 	}
 
-	session.Status.StreamURL = fmt.Sprintf("rtsp://%s:%d", service.Spec.ClusterIP, session.Status.Ports.RTSP)
+	streamHost := ""
+	if len(service.Status.LoadBalancer.Ingress) > 0 {
+		if ip := service.Status.LoadBalancer.Ingress[0].IP; ip != "" {
+			streamHost = ip
+		} else if hostname := service.Status.LoadBalancer.Ingress[0].Hostname; hostname != "" {
+			streamHost = hostname
+		}
+	}
+	if streamHost == "" {
+		return fmt.Errorf("waiting for LoadBalancer ingress on service %s/%s", service.Namespace, service.Name)
+	}
+	session.Status.StreamURL = fmt.Sprintf("rtsp://%s:%d", streamHost, session.Status.Ports.RTSP)
 	return nil
 }
 
@@ -1733,7 +1746,7 @@ func GenerateWolfConfig(
 		// populate application
 		"gstreamer": gstreamerConfig,
 	}
-	
+
 	pairedClients := make([]interface{}, 0, len(pairings))
 	for _, p := range pairings {
 		pairedClients = append(pairedClients, map[string]interface{}{
