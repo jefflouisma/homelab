@@ -24,9 +24,19 @@ cp /wolf/fake-udev $WOLF_DOCKER_FAKE_UDEV_PATH
 # Create nvidia GBM backend symlink where libgbm searches by default
 # NVIDIA container toolkit mounts libraries at /nvidia-libs but libgbm
 # looks in /usr/lib/gbm/ for nvidia-drm_gbm.so (NOT /usr/lib/x86_64-linux-gnu/gbm/)
-mkdir -p /usr/lib/gbm
+echo "[startup.sh] === GBM Backend Symlink Setup ===" >&2
+echo "[startup.sh] Checking /usr/lib/gbm/ directory..." >&2
+ls -la /usr/lib/gbm/ 2>&1 | head -5 >&2 || echo "[startup.sh] /usr/lib/gbm/ does not exist!" >&2
+echo "[startup.sh] Checking /nvidia-libs/libnvidia-egl-gbm.so.1..." >&2
 if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
-    ln -sf /nvidia-libs/libnvidia-egl-gbm.so.1 /usr/lib/gbm/nvidia-drm_gbm.so
+    echo "[startup.sh] Found libnvidia-egl-gbm.so.1, creating symlink..." >&2
+    ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /usr/lib/gbm/nvidia-drm_gbm.so 2>&1 >&2
+    echo "[startup.sh] Symlink result: $?" >&2
+    ls -la /usr/lib/gbm/ 2>&1 >&2
+else
+    echo "[startup.sh] WARNING: /nvidia-libs/libnvidia-egl-gbm.so.1 NOT FOUND!" >&2
+    echo "[startup.sh] Contents of /nvidia-libs/:" >&2
+    ls -la /nvidia-libs/ 2>&1 | head -20 >&2
 fi
 
 # Create EGL external platform configuration for NVIDIA GBM backend
