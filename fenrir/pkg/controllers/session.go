@@ -1060,6 +1060,10 @@ echo "=== Done ==="
 				// This is required for headless container environments where the extension fails
 				"EGL_PLATFORM":      "device",
 				"GBM_BACKEND":       "nvidia-drm",
+				// Tell libgbm where to find nvidia-drm_gbm.so (created by startup.sh)
+				// Without this, GBM uses fallback path that calls DRM_IOCTL_MODE_CREATE_DUMB
+				// which NVIDIA doesn't support (returns Permission denied)
+				"GBM_BACKENDS_PATH": "/usr/lib/x86_64-linux-gnu/gbm",
 				"LD_LIBRARY_PATH":   "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
 				// DRI device group access - Harvester host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
