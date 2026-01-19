@@ -45,8 +45,9 @@ RUN <<_GST_WAYLAND_DISPLAY
     # when EGL_EXT_device_base is present (fixes NVIDIA 590 containers)
     git clone https://github.com/games-on-whales/smithay /tmp/smithay-patched
     cd /tmp/smithay-patched
-    # Apply patch: skip EGL_EXT_device_enumeration check when device_base is present
-    sed -i '/EGL_EXT_device_enumeration/,+2d' src/backend/egl/device.rs
+    # Apply patch: delete the 3-line if block that checks for EGL_EXT_device_enumeration
+    # The block is: if (!..enumeration) { return Err(..); }
+    sed -i '/EGL_EXT_device_enumeration/{N;N;d}' src/backend/egl/device.rs
 
     git clone https://github.com/games-on-whales/gst-wayland-display
     cd gst-wayland-display
