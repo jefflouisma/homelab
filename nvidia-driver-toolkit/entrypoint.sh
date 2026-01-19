@@ -86,32 +86,66 @@ install_container_toolkit() {
     # Create bin directory on host
     nsenter -t 1 -m -u -i -n -p -- mkdir -p "$NVIDIA_BIN_HOST"
     
-    # Copy nvidia-container-toolkit binaries to host
-    # These are installed in the container from the NVIDIA package repo
-    local binaries=(
-        "nvidia-container-runtime"
-        "nvidia-container-runtime-hook"
-        "nvidia-ctk"
-        "nvidia-container-cli"
+    # Search paths for nvidia-container-toolkit binaries
+    local search_paths=(
+        "/usr/bin"
+        "/usr/local/bin"
+        "/opt/nvidia/toolkit/bin"
+        "/usr/lib/x86_64-linux-gnu/nvidia/toolkit"
     )
     
+    # Binaries to try to install (some may not exist in newer toolkit versions)
+    local binaries=(
+        "nvidia-ctk"
+        "nvidia-container-cli"
+        "nvidia-container-runtime"
+        "nvidia-container-runtime.cdi"
+        "nvidia-container-runtime.legacy"
+        "nvidia-container-runtime-hook"
+    )
+    
+    local found_any=false
+    
     for binary in "${binaries[@]}"; do
-        if [ -f "/usr/bin/$binary" ]; then
-            log_info "Installing $binary to $NVIDIA_BIN_HOST"
-            nsenter -t 1 -m -u -i -n -p -- cp "/usr/bin/$binary" "$NVIDIA_BIN_HOST/"
-            nsenter -t 1 -m -u -i -n -p -- chmod +x "$NVIDIA_BIN_HOST/$binary"
-        else
-            log_warn "Binary not found: /usr/bin/$binary"
-        fi
+        for path in "${search_paths[@]}"; do
+            if [ -f "$path/$binary" ]; then
+                log_info "Installing $binary from $path to $NVIDIA_BIN_HOST"
+                cp "$path/$binary" "$NVIDIA_BIN_HOST/" 2>/dev/null || \
+                    nsenter -t 1 -m -u -i -n -p -- cp "$path/$binary" "$NVIDIA_BIN_HOST/" 2>/dev/null
+                nsenter -t 1 -m -u -i -n -p -- chmod +x "$NVIDIA_BIN_HOST/$binary" 2>/dev/null || true
+                found_any=true
+                break
+            fi
+        done
     done
     
     # Copy libnvidia-container library
-    if ls /usr/lib/x86_64-linux-gnu/libnvidia-container*.so* >/dev/null 2>&1; then
-        log_info "Installing libnvidia-container libraries"
-        nsenter -t 1 -m -u -i -n -p -- cp /usr/lib/x86_64-linux-gnu/libnvidia-container*.so* "$NVIDIA_LIB_HOST/"
-    fi
+    local lib_paths=(
+        "/usr/lib/x86_64-linux-gnu"
+        "/usr/lib64"
+        "/usr/lib"
+    )
     
-    log_info "nvidia-container-toolkit binaries installed to $NVIDIA_BIN_HOST"
+    for lib_path in "${lib_paths[@]}"; do
+        if ls $lib_path/libnvidia-container*.so* >/dev/null 2>&1; then
+            log_info "Installing libnvidia-container libraries from $lib_path"
+            for lib in $lib_path/libnvidia-container*.so*; do
+                cp "$lib" "$NVIDIA_LIB_HOST/" 2>/dev/null || \
+                    nsenter -t 1 -m -u -i -n -p -- cp "$lib" "$NVIDIA_LIB_HOST/" 2>/dev/null || true
+            done
+            break
+        fi
+    done
+    
+    # Debug: list what we found
+    log_info "Searching for nvidia toolkit binaries in container..."
+    find /usr -name "nvidia*" -type f 2>/dev/null | head -20 || true
+    
+    if [ "$found_any" = "true" ]; then
+        log_info "nvidia-container-toolkit binaries installed to $NVIDIA_BIN_HOST"
+    else
+        log_warn "No nvidia-container-toolkit binaries found - container runtime integration may not work"
+    fi
 }
 
 #
