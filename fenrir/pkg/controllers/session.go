@@ -1135,10 +1135,11 @@ echo "=== Done ==="
 				// Default libgbm search path is /usr/lib/gbm/ (NOT /usr/lib/x86_64-linux-gnu/gbm/)
 				"GBM_BACKENDS_PATH": "/usr/lib/gbm",
 				// Debug: verbose EGL/Mesa logging to diagnose GBM init failure
-				"EGL_LOG_LEVEL":      "debug",
-				"MESA_DEBUG":         "1",
-				"MESA_LOADER_DEBUG":  "1", // dlopen/dlsym trace for GBM backend
-				"LIBGL_DEBUG":        "verbose",
+				"EGL_LOG_LEVEL":         "debug",
+				"MESA_DEBUG":            "1",
+				"MESA_LOADER_DEBUG":     "1", // dlopen/dlsym trace for GBM backend
+				"__NV_GBM_TRACE_ENABLED": "1", // NVIDIA GBM backend trace for probe debug
+				"LIBGL_DEBUG":           "verbose",
 				"LD_LIBRARY_PATH":   "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
 				// DRI device group access - Harvester host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
