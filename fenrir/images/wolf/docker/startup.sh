@@ -21,21 +21,23 @@ export GST_GL_DRM_DEVICE=${GST_GL_DRM_DEVICE:-$WOLF_ENCODER_NODE}
 export WOLF_DOCKER_FAKE_UDEV_PATH=${WOLF_DOCKER_FAKE_UDEV_PATH:-$HOST_APPS_STATE_FOLDER/fake-udev}
 cp /wolf/fake-udev $WOLF_DOCKER_FAKE_UDEV_PATH
 
-# Create nvidia GBM backend symlink where libgbm searches by default
-# NVIDIA container toolkit mounts libraries at /nvidia-libs but libgbm
-# IMPORTANT: Mesa libgbm IGNORES GBM_BACKEND env var and always tries dri_gbm.so first!
-# By naming our symlink dri_gbm.so, we trick libgbm into loading NVIDIA's GBM backend.
-# NOTE: gbm-backend-init container may have already created this file
+# Create nvidia GBM backend symlinks where libgbm searches by default
+# NVIDIA container toolkit mounts libraries at /nvidia-libs but libgbm probes via TWO paths:
+# 1. Default fallback: always tries dri_gbm.so first (ignores GBM_BACKEND env var)
+# 2. Vendor-specific: queries DRM driver name (nvidia-drm) and tries nvidia-drm_gbm.so
+# Create BOTH symlinks to cover all libgbm probing paths for NVIDIA GPU
+# NOTE: gbm-backend-init container may have already created these files
 echo "[startup.sh] === GBM Backend Check ===" >&2
 echo "[startup.sh] Checking /usr/lib/gbm/ directory..." >&2
 ls -la /usr/lib/gbm/ 2>&1 | head -5 >&2 || echo "[startup.sh] /usr/lib/gbm/ does not exist!" >&2
 
-# Only create symlink if dri_gbm.so doesn't exist (-f returns true for files AND symlinks)
-if [ -f /usr/lib/gbm/dri_gbm.so ]; then
-    echo "[startup.sh] dri_gbm.so already exists (from init container), skipping symlink creation" >&2
+# Only create symlinks if they don't exist (-f returns true for files AND symlinks)
+if [ -f /usr/lib/gbm/dri_gbm.so ] && [ -f /usr/lib/gbm/nvidia-drm_gbm.so ]; then
+    echo "[startup.sh] GBM symlinks already exist (from init container), skipping creation" >&2
 elif [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
-    echo "[startup.sh] Creating dri_gbm.so -> nvidia backend symlink..." >&2
+    echo "[startup.sh] Creating GBM symlinks -> nvidia backend..." >&2
     ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /usr/lib/gbm/dri_gbm.so 2>&1 >&2
+    ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /usr/lib/gbm/nvidia-drm_gbm.so 2>&1 >&2
 else
     echo "[startup.sh] WARNING: /nvidia-libs/libnvidia-egl-gbm.so.1 NOT FOUND!" >&2
     echo "[startup.sh] Contents of /nvidia-libs/:" >&2

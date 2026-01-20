@@ -873,13 +873,15 @@ echo "=== Done ==="
 				"sh", "-c", `
 echo "=== Creating GBM backend for NVIDIA ==="
 if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
-    echo "Found libnvidia-egl-gbm.so.1, creating symlink..."
-    # IMPORTANT: Mesa libgbm IGNORES GBM_BACKEND env var and always tries to load dri_gbm.so first!
-    # By naming our symlink dri_gbm.so, we trick libgbm into loading NVIDIA's GBM backend
-    # instead of the Mesa fallback. This is the standard workaround for NVIDIA GBM on Mesa.
+    echo "Found libnvidia-egl-gbm.so.1, creating symlinks..."
+    # Mesa libgbm probes backends via TWO mechanisms:
+    # 1. Default fallback: always tries dri_gbm.so first (ignores GBM_BACKEND env var)
+    # 2. Vendor-specific: queries DRM driver name (nvidia-drm) and tries nvidia-drm_gbm.so
+    # Create BOTH symlinks to cover all libgbm probing paths for NVIDIA GPU
     ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /gbm-backend/dri_gbm.so
+    ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /gbm-backend/nvidia-drm_gbm.so
     ls -la /gbm-backend/
-    echo "SUCCESS: GBM symlink created (dri_gbm.so -> nvidia backend)"
+    echo "SUCCESS: GBM symlinks created (dri_gbm.so + nvidia-drm_gbm.so -> nvidia backend)"
     
     # Create EGL external platform config for NVIDIA GBM backend
     # IMPORTANT: Use EXTERNAL_PLATFORM format, NOT ICD format!
