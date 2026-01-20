@@ -89,7 +89,7 @@ spec:
       containers:
         - name: operator
           # Operator with EGL/Mesa debug logging for GBM init diagnosis
-          image: ghcr.io/jefflouisma/fenrir-operator:21159665270
+          image: ghcr.io/jefflouisma/fenrir-operator:cf6d1b2
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
