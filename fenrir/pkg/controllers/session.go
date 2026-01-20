@@ -882,7 +882,8 @@ if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
     echo "SUCCESS: GBM symlink created"
     
     # Create EGL external platform config for NVIDIA GBM backend
-    # This tells libgbm how to initialize the NVIDIA driver
+    # IMPORTANT: Use EXTERNAL_PLATFORM format, NOT ICD format!
+    # This registers libnvidia-egl-gbm.so.1 as an EGL external platform for GBM
     echo "Creating EGL external platform config..."
     cat > /egl-platform/15_nvidia_gbm.json << 'EOFJ'
 {
@@ -1134,9 +1135,10 @@ echo "=== Done ==="
 				// Default libgbm search path is /usr/lib/gbm/ (NOT /usr/lib/x86_64-linux-gnu/gbm/)
 				"GBM_BACKENDS_PATH": "/usr/lib/gbm",
 				// Debug: verbose EGL/Mesa logging to diagnose GBM init failure
-				"EGL_LOG_LEVEL":  "debug",
-				"MESA_DEBUG":     "1",
-				"LIBGL_DEBUG":    "verbose",
+				"EGL_LOG_LEVEL":      "debug",
+				"MESA_DEBUG":         "1",
+				"MESA_LOADER_DEBUG":  "1", // dlopen/dlsym trace for GBM backend
+				"LIBGL_DEBUG":        "verbose",
 				"LD_LIBRARY_PATH":   "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
 				// DRI device group access - Harvester host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
