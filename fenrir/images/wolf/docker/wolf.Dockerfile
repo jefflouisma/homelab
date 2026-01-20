@@ -143,10 +143,13 @@ RUN apt-get update -y && \
     && rm -rf /var/lib/apt/lists/*
 
 # gst-plugin-wayland runtime dependencies
+# NVIDIA GBM requires: Mesa libgbm >= 21.2, DRM KMS enabled, AND egl-wayland >= 1.1.8
+# See: https://download.nvidia.com/XFree86/Linux-x86_64/510.68.02/README/gbm.html
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
     libwayland-server0 libinput10 libxkbcommon0 libgbm1 \
     libglvnd0 libgl1 libglx0 libegl1 libgles2 xwayland hwdata \
+    libegl-wayland \
     && rm -rf /var/lib/apt/lists/* \
     # Create GBM directory for nvidia backend symlink (created at runtime by startup.sh)
     # libgbm searches in /usr/lib/gbm/ by default, NOT /usr/lib/x86_64-linux-gnu/gbm/
