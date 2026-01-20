@@ -149,7 +149,7 @@ RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
     libwayland-server0 libinput10 libxkbcommon0 libgbm1 \
     libglvnd0 libgl1 libglx0 libegl1 libgles2 xwayland hwdata \
-    libegl-wayland \
+    libnvidia-egl-wayland1 \
     && rm -rf /var/lib/apt/lists/* \
     # Create GBM directory for nvidia backend symlink (created at runtime by startup.sh)
     # libgbm searches in /usr/lib/gbm/ by default, NOT /usr/lib/x86_64-linux-gnu/gbm/
