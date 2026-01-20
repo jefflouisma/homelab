@@ -88,8 +88,8 @@ spec:
       serviceAccountName: fenrir-operator
       containers:
         - name: operator
-          # Operator with symlink for GBM backend to preserve RPATH resolution
-          image: ghcr.io/jefflouisma/fenrir-operator:9035210
+          # Operator with EGL/Mesa debug logging for GBM init diagnosis
+          image: ghcr.io/jefflouisma/fenrir-operator:21159665270
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
