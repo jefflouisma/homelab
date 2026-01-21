@@ -65,15 +65,18 @@ state::Host get_host_config(std::string_view pkey_filename, std::string_view cer
   std::string host_base_state_folder = local_base_state_folder;
   std::string host_xdg_runtime_dir = utils::get_env("XDG_RUNTIME_DIR", "/tmp/sockets");
 
-  docker::DockerAPI docker_api(utils::get_env("WOLF_DOCKER_SOCKET", "/var/run/docker.sock"));
-  if (auto container = introspect::get_current_container(docker_api)) {
-    host_base_state_folder =
-        introspect::get_host_path_for(*container, local_base_state_folder).value_or(local_base_state_folder);
-    host_xdg_runtime_dir =
-        introspect::get_host_path_for(*container, host_xdg_runtime_dir).value_or(host_xdg_runtime_dir);
-  } else {
-    logs::log(logs::warning,
-              "Unable to get the container that is running Wolf, automatic mounts matching is disabled.");
+  auto docker_socket = utils::get_env("WOLF_DOCKER_SOCKET", "/var/run/docker.sock");
+  if (docker_socket && fs::exists(docker_socket)) {
+    docker::DockerAPI docker_api(docker_socket);
+    if (auto container = introspect::get_current_container(docker_api)) {
+      host_base_state_folder =
+          introspect::get_host_path_for(*container, local_base_state_folder).value_or(local_base_state_folder);
+      host_xdg_runtime_dir =
+          introspect::get_host_path_for(*container, host_xdg_runtime_dir).value_or(host_xdg_runtime_dir);
+    } else {
+      logs::log(logs::warning,
+                "Unable to get the container that is running Wolf, automatic mounts matching is disabled.");
+    }
   }
 
   return {state::DISPLAY_CONFIGURATIONS,
@@ -115,11 +118,20 @@ auto initialize(std::string_view config_file, std::string_view pkey_filename, st
 std::optional<sessions::AudioServer> setup_audio_server(const std::string &host_runtime_dir,
                                                         const std::string &runtime_dir) {
   auto audio_server = audio::connect();
+  for (int i = 0; i < 10 && !audio::connected(audio_server); ++i) {
+    std::this_thread::sleep_for(200ms);
+    audio_server = audio::connect();
+  }
   if (audio::connected(audio_server)) {
     return {{.server = audio_server}};
   } else {
+    auto docker_socket = utils::get_env("WOLF_DOCKER_SOCKET", "/var/run/docker.sock");
+    if (!docker_socket || !fs::exists(docker_socket)) {
+      logs::log(logs::info, "PulseAudio socket unavailable and no Docker socket; skipping container fallback.");
+      return {};
+    }
     logs::log(logs::info, "Starting PulseAudio docker container");
-    docker::DockerAPI docker_api(utils::get_env("WOLF_DOCKER_SOCKET", "/var/run/docker.sock"));
+    docker::DockerAPI docker_api(docker_socket);
     auto pulse_socket = fmt::format("{}/pulse-socket", runtime_dir);
 
     /* Cleanup old leftovers, Pulse will fail to start otherwise */

@@ -8,6 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
+    unzip \
     kmod \
     binutils \
     pciutils \
@@ -33,9 +34,16 @@ RUN curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearm
 ARG DRIVER_VERSION=590.48.01
 ENV DRIVER_VERSION=${DRIVER_VERSION}
 
+# NVRTC version for CUDA runtime compilation
+ARG NVRTC_VERSION=11.3.58
+ENV NVRTC_VERSION=${NVRTC_VERSION}
+
 # Pre-download the driver for layer caching (saves ~500MB download on each run)
 RUN wget -q "https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run" \
     -O /nvidia-driver.run && chmod +x /nvidia-driver.run
+
+# Pre-download NVRTC wheel for offline installation
+RUN curl -fsSL -o /nvrtc.whl "https://developer.download.nvidia.com/compute/redist/nvidia-cuda-nvrtc/nvidia_cuda_nvrtc-${NVRTC_VERSION}-py3-none-manylinux1_x86_64.whl"
 
 # Extract GSP firmware from the driver package
 # GSP firmware is REQUIRED for CUDA on Turing+ GPUs (including Blackwell RTX 5080)
@@ -55,4 +63,3 @@ WORKDIR /
 # Entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["init"]
-

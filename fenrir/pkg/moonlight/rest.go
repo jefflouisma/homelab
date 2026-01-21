@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -110,6 +111,22 @@ func NewRESTServer(
 	return ps
 }
 
+func requestClientIP(r *http.Request) string {
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
+		return realIP
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return strings.TrimSpace(strings.Split(r.RemoteAddr, ":")[0])
+}
+
 func (s *RESTServer) Run(ctx context.Context) error {
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.Port),
@@ -187,7 +204,7 @@ func (s *RESTServer) pendingPairingsHandler(w http.ResponseWriter, r *http.Reque
 
 func (s *RESTServer) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	secrets := s.manager.GetPendingSecrets()
-	
+
 	var requestsHTML string
 	if len(secrets) == 0 {
 		requestsHTML = `<div class="no-requests">
@@ -206,9 +223,9 @@ func (s *RESTServer) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 			</div>`, secret)
 		}
 	}
-	
+
 	output := strings.Replace(dashboardHTML, "{{PENDING_REQUESTS}}", requestsHTML, 1)
-	
+
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(output))
@@ -487,6 +504,7 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 
 	user := r.Context().Value(userContextKey{}).(*v1alpha1types.User)
 	pairing := r.Context().Value(pairingContextKey{}).(*v1alpha1types.Pairing)
+	clientIP := requestClientIP(r)
 
 	//!TOOD: May want to wait here, since we need the Service to stop pointing
 	// at the old pod. It is very likely to happen before operator syncs and
@@ -498,6 +516,13 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	klog.Infof("Launching app %s for user %s", app.ObjectMeta.Name, user.ObjectMeta.Name)
+	annotations := map[string]string{
+		"direwolf/pairing": pairing.ObjectMeta.Name,
+	}
+	if clientIP != "" {
+		annotations["direwolf/client-ip"] = clientIP
+	}
+
 	session, err := s.SessionClient.Create(
 		r.Context(),
 		&v1alpha1types.Session{
@@ -509,9 +534,7 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 					"direwolf/app":  app.ObjectMeta.Name,
 					"direwolf/user": user.ObjectMeta.Name,
 				},
-				Annotations: map[string]string{
-					"direwolf/pairing": pairing.ObjectMeta.Name,
-				},
+				Annotations: annotations,
 			},
 			Spec: v1alpha1types.SessionSpec{
 				GameReference: v1alpha1types.GameReference{

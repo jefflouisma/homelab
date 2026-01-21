@@ -212,7 +212,16 @@ pub struct StepResult {
 pub async fn run_test_file(path: &Path) -> Result<()> {
     let content = tokio::fs::read_to_string(path).await?;
     let test: TestDefinition = serde_json::from_str(&content)?;
-    let result = run_test(&test).await?;
+    tokio::fs::create_dir_all(&test.screenshot_dir).await?;
+    let result = match tokio::time::timeout(
+        std::time::Duration::from_millis(test.timeout_ms),
+        run_test(&test),
+    )
+    .await
+    {
+        Ok(result) => result?,
+        Err(_) => anyhow::bail!("Test timed out after {}ms", test.timeout_ms),
+    };
 
     println!("{}", serde_json::to_string_pretty(&result)?);
 

@@ -114,8 +114,8 @@ RUN --mount=type=cache,target=/cache/ccache \
     -DBUILD_FAKE_UDEV_CLI=ON \
     -DBUILD_TESTING=OFF \
     -G Ninja && \
-    ninja -C $CMAKE_BUILD_DIR wolf && \
-    ninja -C $CMAKE_BUILD_DIR fake-udev && \
+    ninja -C $CMAKE_BUILD_DIR -j1 wolf && \
+    ninja -C $CMAKE_BUILD_DIR -j1 fake-udev && \
     # Copy out built executables from buildkit cache
     cp $CMAKE_BUILD_DIR/src/moonlight-server/wolf /wolf/wolf && \
     cp $CMAKE_BUILD_DIR/src/fake-udev/fake-udev /wolf/fake-udev
@@ -166,7 +166,7 @@ ENV GST_PLUGIN_PATH=/usr/local/lib/x86_64-linux-gnu/gstreamer-1.0/
 COPY --from=gst-builder /usr/local/lib/x86_64-linux-gnu/gstreamer-1.0/* $GST_PLUGIN_PATH
 COPY --from=gst-builder /usr/local/lib/liblibgstwaylanddisplay* /usr/local/lib/
 
-# Copy Wolf executables from wolf-builder stage  
+# Copy Wolf executables from wolf-builder stage
 COPY --from=wolf-builder /wolf/wolf /wolf/wolf
 COPY --from=wolf-builder /wolf/fake-udev /wolf/fake-udev
 

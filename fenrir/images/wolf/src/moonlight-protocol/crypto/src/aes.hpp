@@ -33,8 +33,11 @@ CIPHER_CTX_ptr init(const evp_cipher_st *chiper,
       handle_openssl_error("EVP_DecryptInit_ex failed");
   }
 
-  if (EVP_CIPHER_CTX_set_padding(ctx.get(), padding) != 1)
-    handle_openssl_error("EVP_CIPHER_CTX_set_padding failed");
+  // AEAD modes (like GCM) don't support padding, so skip for those.
+  if (EVP_CIPHER_mode(chiper) != EVP_CIPH_GCM_MODE) {
+    if (EVP_CIPHER_CTX_set_padding(ctx.get(), padding) != 1)
+      handle_openssl_error("EVP_CIPHER_CTX_set_padding failed");
+  }
 
   return ctx;
 }

@@ -37,10 +37,10 @@ spec:
       priorityClassName: system-node-critical
       imagePullSecrets:
         - name: ghcr-secret
-      
+
       containers:
         - name: nvidia-driver
-          image: ghcr.io/jefflouisma/nvidia-driver-toolkit:sha-77c7f68
+          image: ghcr.io/jefflouisma/nvidia-driver-toolkit:nvrtc-11.3.58
           imagePullPolicy: Always
           args: ["init"]
           env:
@@ -95,7 +95,7 @@ spec:
             initialDelaySeconds: 120
             periodSeconds: 30
             failureThreshold: 10
-      
+
       volumes:
         - name: dev
           hostPath:
@@ -117,11 +117,11 @@ spec:
           hostPath:
             path: /var/lib/rancher/rke2/agent/containerd
             type: Directory
-      
+
       # Run on all nodes, tolerate any taints
       tolerations:
         - operator: Exists
-      
+
       # GPU node selector - only nodes that need nvidia driver
       nodeSelector:
         kubernetes.io/os: linux

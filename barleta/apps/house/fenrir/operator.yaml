@@ -91,6 +91,10 @@ spec:
           # Operator with EGL/Mesa debug logging for GBM init diagnosis
           image: 8f638ce
           imagePullPolicy: Always
+          volumeMounts:
+            - name: operator-bin
+              mountPath: /app/operator
+              subPath: operator
           env:
             - name: NAMESPACE
               valueFrom:
@@ -116,3 +120,7 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: operator-bin
+          persistentVolumeClaim:
+            claimName: fenrir-operator-bin

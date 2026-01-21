@@ -387,6 +387,12 @@ void UnixSocketServer::send_data(std::shared_ptr<UnixSocket> socket, std::string
                            boost::asio::buffer(data),
                            [this, socket](const boost::system::error_code &ec, std::size_t /*length*/) {
                              if (ec) {
+                               if (ec == boost::asio::error::broken_pipe ||
+                                   ec == boost::asio::error::connection_reset ||
+                                   ec == boost::asio::error::operation_aborted) {
+                                 close(*socket);
+                                 return;
+                               }
                                logs::log(logs::error, "[API] Error sending data: {}", ec.message());
                                close(*socket);
                              }
@@ -410,6 +416,10 @@ void UnixSocketServer::start_connection(std::shared_ptr<UnixSocket> socket) {
       "\r\n\r\n",
       [this, socket, request_buf](const boost::system::error_code &ec, std::size_t bytes_transferred) {
         if (ec) {
+          if (ec == boost::asio::error::eof || ec == boost::asio::error::operation_aborted) {
+            close(*socket);
+            return;
+          }
           logs::log(logs::error, "[API] Error reading request: {}", ec.message());
           close(*socket);
           return;
@@ -455,6 +465,11 @@ void UnixSocketServer::start_connection(std::shared_ptr<UnixSocket> socket) {
                                      req = std::make_unique<HTTPRequest>(req)](const boost::system::error_code &ec,
                                                                                std::size_t /*bytes_transferred*/) {
                                       if (ec) {
+                                        if (ec == boost::asio::error::eof ||
+                                            ec == boost::asio::error::operation_aborted) {
+                                          close(*socket);
+                                          return;
+                                        }
                                         logs::log(logs::error, "[API] Error reading request body: {}", ec.message());
                                         close(*socket);
                                         return;

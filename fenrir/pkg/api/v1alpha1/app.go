@@ -49,7 +49,7 @@ type AppSpec struct {
 
 type WolfConfig struct {
 	StartAudioServer       *bool `json:"startAudioServer,omitempty" toml:"start_audio_server,omitempty"`
-	StartVirtualCompositor *bool `json:"startVirtualCompositor,omitempty" toml:"start_video_compositor,omitempty"`
+	StartVirtualCompositor *bool `json:"startVirtualCompositor,omitempty" toml:"start_virtual_compositor,omitempty"`
 
 	Title string `json:"title,omitempty" toml:"title,omitempty"`
 	ID    string `json:"id,omitempty" toml:"id,omitempty"`

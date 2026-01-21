@@ -165,7 +165,9 @@ async fn handle_initialize() -> Result<serde_json::Value> {
             version: env!("CARGO_PKG_VERSION").into(),
         },
         capabilities: Capabilities {
-            tools: ToolsCapability { list_changed: false },
+            tools: ToolsCapability {
+                list_changed: false,
+            },
         },
     })?)
 }
@@ -205,7 +207,6 @@ async fn handle_tools_list() -> Result<serde_json::Value> {
                 "required": ["host", "pin"]
             }),
         },
-        
         // === Streaming ===
         Tool {
             name: "moonlight_test_stream".into(),
@@ -258,7 +259,6 @@ async fn handle_tools_list() -> Result<serde_json::Value> {
                 "required": ["host"]
             }),
         },
-        
         // === Input ===
         Tool {
             name: "moonlight_send_keyboard".into(),
@@ -407,7 +407,7 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
 
             let test = TestDefinition {
                 host: host.into(),
-                action: TestAction::TestStream { 
+                action: TestAction::TestStream {
                     verify_video: true,
                     capture_after_ms,
                 },
@@ -478,7 +478,7 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
                 },
             }
         }
-        
+
         "moonlight_verify_stream" => {
             let host = arguments["host"].as_str().unwrap_or("localhost");
 
@@ -506,7 +506,7 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
                 },
             }
         }
-        
+
         "moonlight_send_keyboard" => {
             let host = arguments["host"].as_str().unwrap_or("localhost");
             let key = arguments["key"].as_str().unwrap_or("enter");
@@ -529,7 +529,7 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
                 },
             }
         }
-        
+
         "moonlight_send_mouse" => {
             let host = arguments["host"].as_str().unwrap_or("localhost");
             let action = arguments["action"].as_str().unwrap_or("click");
@@ -555,7 +555,7 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
                 },
             }
         }
-        
+
         "moonlight_send_gamepad" => {
             let host = arguments["host"].as_str().unwrap_or("localhost");
             let button = arguments["button"].as_str();
@@ -568,11 +568,18 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
             let right_trigger = arguments["right_trigger"].as_u64().map(|v| v as u8);
 
             match crate::pairing::send_gamepad_input(
-                host, button, button_action,
-                left_stick_x, left_stick_y,
-                right_stick_x, right_stick_y,
-                left_trigger, right_trigger
-            ).await {
+                host,
+                button,
+                button_action,
+                left_stick_x,
+                left_stick_y,
+                right_stick_x,
+                right_stick_y,
+                left_trigger,
+                right_trigger,
+            )
+            .await
+            {
                 Ok(()) => {
                     let msg = if let Some(b) = button {
                         format!("Sent gamepad button: {}", b)

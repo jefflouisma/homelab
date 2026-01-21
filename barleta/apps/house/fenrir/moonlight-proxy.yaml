@@ -12,14 +12,14 @@ data:
     server:
       httpPort: 47989
       httpsPort: 47984
-    
+
     # Kubernetes integration
     kubernetes:
       namespace: house
       sessionCRD: sessions.wolf.games-on-whales.io
       appCRD: apps.wolf.games-on-whales.io
       pairingCRD: pairings.wolf.games-on-whales.io
-    
+
     # TLS configuration
     tls:
       certFile: /etc/moonlight/tls.crt
@@ -54,6 +54,9 @@ spec:
             - containerPort: 47989
               name: http
           volumeMounts:
+            - name: moonlight-proxy-bin
+              mountPath: /app/moonlight-proxy
+              subPath: moonlight-proxy
             - name: config
               mountPath: /etc/moonlight-config
             - name: tls
@@ -78,6 +81,9 @@ spec:
               cpu: 500m
               memory: 256Mi
       volumes:
+        - name: moonlight-proxy-bin
+          persistentVolumeClaim:
+            claimName: moonlight-proxy-bin
         - name: config
           configMap:
             name: moonlight-proxy-config

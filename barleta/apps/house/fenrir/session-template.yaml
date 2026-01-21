@@ -26,18 +26,18 @@ data:
           command: ${GAME_CMD}
           env:
             - name: XDG_RUNTIME_DIR
-              value: /tmp/runtime
+              value: /tmp/.X11-unix
             - name: WAYLAND_DISPLAY
-              value: wayland-0
+              value: wayland-1
             - name: PULSE_SERVER
               value: unix:/tmp/pulse/native
             - name: LD_LIBRARY_PATH
-              value: /nvidia-libs:/usr/local/cuda/lib64
+              value: /nvidia-libs:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu
           securityContext:
             privileged: true
           volumeMounts:
             - name: runtime
-              mountPath: /tmp/runtime
+              mountPath: /tmp/.X11-unix
             - name: pulse
               mountPath: /tmp/pulse
             - name: nvidia-libs
@@ -55,13 +55,13 @@ data:
             limits:
               cpu: "8"
               memory: 16Gi
-        
+
         # Wolf - Wayland compositor + GameStream encoder
         - name: wolf
           image: ghcr.io/games-on-whales/wolf:stable
           env:
             - name: XDG_RUNTIME_DIR
-              value: /tmp/runtime
+              value: /tmp/.X11-unix
             - name: NVIDIA_VISIBLE_DEVICES
               value: all
             - name: NVIDIA_DRIVER_CAPABILITIES
@@ -86,7 +86,7 @@ data:
               protocol: UDP
           volumeMounts:
             - name: runtime
-              mountPath: /tmp/runtime
+              mountPath: /tmp/.X11-unix
             - name: wolf-config
               mountPath: /etc/wolf
             - name: dev
@@ -100,18 +100,18 @@ data:
             limits:
               cpu: "4"
               memory: 4Gi
-        
+
         # Wolf Agent - Syncs K8s state with Wolf
         - name: wolf-agent
           image: ghcr.io/games-on-whales/wolf-agent:latest
           env:
             - name: WOLF_API_SOCKET
-              value: /tmp/runtime/wolf.sock
+              value: /tmp/.X11-unix/wolf.sock
             - name: SESSION_ID
               value: ${SESSION_ID}
           volumeMounts:
             - name: runtime
-              mountPath: /tmp/runtime
+              mountPath: /tmp/.X11-unix
           resources:
             requests:
               cpu: 50m
@@ -119,7 +119,7 @@ data:
             limits:
               cpu: 200m
               memory: 128Mi
-        
+
         # PulseAudio - Audio routing
         - name: pulseaudio
           image: ghcr.io/games-on-whales/pulseaudio:latest
@@ -133,7 +133,7 @@ data:
             limits:
               cpu: 200m
               memory: 128Mi
-      
+
       # Init container to verify NVIDIA libraries from host toolkit
       initContainers:
         - name: nvidia-libs-init
@@ -155,7 +155,7 @@ data:
             - name: nvidia-libs
               mountPath: /nvidia-libs
               readOnly: true
-      
+
       volumes:
         - name: runtime
           emptyDir:
@@ -179,10 +179,10 @@ data:
         - name: saves
           persistentVolumeClaim:
             claimName: fenrir-saves
-      
+
       # Node selection for GPU
       nodeSelector:
         kubernetes.io/os: linux
-      
+
       tolerations:
         - operator: Exists

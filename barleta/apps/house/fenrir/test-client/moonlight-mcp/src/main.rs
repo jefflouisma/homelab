@@ -70,9 +70,7 @@ async fn main() -> Result<()> {
         mcp::run_mcp_server().await
     } else {
         match cli.command {
-            Some(Commands::Test { file }) => {
-                tests::run_test_file(&file).await
-            }
+            Some(Commands::Test { file }) => tests::run_test_file(&file).await,
             Some(Commands::List { host }) => {
                 let apps = pairing::native_list_apps(&host).await?;
                 for app in apps {

@@ -61,7 +61,7 @@ RUN <<_ADD_NVRTC
     apt-get install -y unzip curl
 
     cd /tmp
-    curl -fsSL -o nvidia_cuda_nvrtc_linux_x86_64.whl "https://developer.download.nvidia.com/compute/redist/nvidia-cuda-nvrtc/nvidia_cuda_nvrtc-11.0.221-cp36-cp36m-linux_x86_64.whl"
+    curl -fsSL -o nvidia_cuda_nvrtc_linux_x86_64.whl "https://developer.download.nvidia.com/compute/redist/nvidia-cuda-nvrtc/nvidia_cuda_nvrtc-11.3.58-py3-none-manylinux1_x86_64.whl"
     unzip -joq -d ./nvrtc nvidia_cuda_nvrtc_linux_x86_64.whl
     cd nvrtc
     chmod 755 libnvrtc*

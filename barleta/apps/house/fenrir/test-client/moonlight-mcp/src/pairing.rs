@@ -16,8 +16,11 @@ use rsa::pkcs8::DecodePrivateKey;
 use rsa::signature::{SignatureEncoding, Signer};
 use rsa::RsaPrivateKey;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpStream, UdpSocket};
 
 /// Client identity for pairing - generated once and persisted
 pub struct ClientIdentity {
@@ -464,7 +467,7 @@ fn create_mtls_client() -> Result<reqwest::Client> {
         .identity(identity)
         .danger_accept_invalid_certs(true) // Server uses self-signed cert
         .connect_timeout(std::time::Duration::from_secs(10))
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60))
         // Force HTTP/1.1 only and disable pooling/proxy for debugging
         .pool_idle_timeout(std::time::Duration::from_secs(0))
         .pool_max_idle_per_host(0)
@@ -610,8 +613,19 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<String> {
         .output()
         .await?;
 
+    if !output.status.success() {
+        return Err(anyhow!(
+            "Launch failed: curl exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
     let body = String::from_utf8_lossy(&output.stdout).to_string();
     eprintln!("[DEBUG] native_launch: curl response: {}", body);
+    if body.trim().is_empty() {
+        return Err(anyhow!("Launch failed: empty response from /launch"));
+    }
 
     // Extract session URL from response
     let session_url = if let Some(start) = body.find("<sessionUrl0>") {
@@ -987,65 +1001,468 @@ pub async fn send_gamepad_input(
     Ok(())
 }
 
-/// Capture a frame from an RTSP video stream using ffmpeg
-/// This captures the actual Moonlight stream output, not a desktop screenshot
+struct RtspResponse {
+    status: u16,
+    headers: HashMap<String, String>,
+}
+
+struct RtspSessionInfo {
+    session_id: Option<String>,
+    video_port: u16,
+    audio_port: u16,
+    ping_payload: Vec<u8>,
+}
+
+struct FrameState {
+    frame_index: u32,
+    frame_type: u8,
+    last_payload_len: u16,
+    data: Vec<u8>,
+}
+
+fn parse_rtsp_host_port(rtsp_url: &str) -> Result<(String, u16)> {
+    let stripped = rtsp_url.strip_prefix("rtsp://").unwrap_or(rtsp_url);
+    let host_port = stripped.split('/').next().unwrap_or(stripped);
+    let mut parts = host_port.split(':');
+    let host = parts.next().unwrap_or("").trim();
+    if host.is_empty() {
+        return Err(anyhow!("RTSP URL missing host: {}", rtsp_url));
+    }
+    let port = match parts.next() {
+        Some(port_str) => port_str
+            .parse()
+            .map_err(|_| anyhow!("Invalid RTSP port in URL: {}", rtsp_url))?,
+        None => 48010,
+    };
+    Ok((host.to_string(), port))
+}
+
+fn parse_rtsp_response(raw: &str) -> Result<RtspResponse> {
+    let mut lines = raw.lines();
+    let status_line = lines.next().ok_or_else(|| anyhow!("Empty RTSP response"))?;
+    let mut parts = status_line.split_whitespace();
+    let _protocol = parts.next().unwrap_or("");
+    let status_code = parts
+        .next()
+        .ok_or_else(|| anyhow!("Malformed RTSP response: {}", status_line))?;
+    let status: u16 = status_code
+        .parse()
+        .map_err(|_| anyhow!("Invalid RTSP status code: {}", status_code))?;
+
+    let mut headers = HashMap::new();
+    for line in lines {
+        let line = line.trim();
+        if line.is_empty() {
+            break;
+        }
+        if let Some((key, value)) = line.split_once(':') {
+            headers.insert(key.trim().to_ascii_lowercase(), value.trim().to_string());
+        }
+    }
+
+    Ok(RtspResponse { status, headers })
+}
+
+fn header_value(headers: &HashMap<String, String>, key: &str) -> Option<String> {
+    headers.get(&key.to_ascii_lowercase()).cloned()
+}
+
+fn parse_transport_port(value: &str) -> Option<u16> {
+    value
+        .split("server_port=")
+        .nth(1)
+        .and_then(|rest| rest.split(|c| c == ';' || c == ' ').next())
+        .and_then(|port| port.parse().ok())
+}
+
+async fn send_rtsp_request(
+    host: &str,
+    port: u16,
+    request: &str,
+    timeout_secs: u32,
+) -> Result<RtspResponse> {
+    let addr = format!("{host}:{port}");
+    let timeout = std::time::Duration::from_secs(timeout_secs as u64);
+    let mut stream = tokio::time::timeout(timeout, TcpStream::connect(&addr))
+        .await
+        .map_err(|_| anyhow!("RTSP connect timed out"))??;
+
+    tokio::time::timeout(timeout, stream.write_all(request.as_bytes()))
+        .await
+        .map_err(|_| anyhow!("RTSP write timed out"))??;
+
+    let mut buf = Vec::new();
+    tokio::time::timeout(timeout, stream.read_to_end(&mut buf))
+        .await
+        .map_err(|_| anyhow!("RTSP read timed out"))??;
+
+    let raw = String::from_utf8_lossy(&buf).to_string();
+    parse_rtsp_response(&raw)
+}
+
+fn build_announce_payload(width: u32, height: u32, fps: u32) -> String {
+    format!(
+        "v=0\n\
+o=moonlight 0 14 IN IPv4 0.0.0.0\n\
+s=NVIDIA Streaming Client\n\
+a=x-nv-video[0].clientViewportWd:{width} \n\
+a=x-nv-video[0].clientViewportHt:{height} \n\
+a=x-nv-video[0].maxFPS:{fps} \n\
+a=x-nv-video[0].packetSize:1024 \n\
+a=x-nv-video[0].rateControlMode:4 \n\
+a=x-nv-video[0].timeoutLengthMs:7000 \n\
+a=x-nv-video[0].framesWithInvalidRefThreshold:0 \n\
+a=x-nv-video[0].initialBitrateKbps:15500 \n\
+a=x-nv-video[0].initialPeakBitrateKbps:15500 \n\
+a=x-nv-vqos[0].bw.minimumBitrateKbps:15500 \n\
+a=x-nv-vqos[0].bw.maximumBitrateKbps:15500 \n\
+a=x-nv-vqos[0].fec.enable:1 \n\
+a=x-nv-vqos[0].videoQualityScoreUpdateTime:5000 \n\
+a=x-nv-vqos[0].qosTrafficType:0 \n\
+a=x-nv-aqos.qosTrafficType:0 \n\
+a=x-nv-general.featureFlags:167 \n\
+a=x-nv-general.useReliableUdp:13 \n\
+a=x-nv-vqos[0].fec.minRequiredFecPackets:2 \n\
+a=x-nv-vqos[0].drc.enable:0 \n\
+a=x-nv-general.enableRecoveryMode:0 \n\
+a=x-nv-video[0].videoEncoderSlicesPerFrame:1 \n\
+a=x-nv-clientSupportHevc:0 \n\
+a=x-nv-vqos[0].bitStreamFormat:0 \n\
+a=x-nv-video[0].dynamicRangeMode:0 \n\
+a=x-nv-video[0].maxNumReferenceFrames:1 \n\
+a=x-nv-video[0].clientRefreshRateX100:0 \n\
+a=x-nv-audio.surround.numChannels:2 \n\
+a=x-nv-audio.surround.channelMask:3 \n\
+a=x-nv-audio.surround.enable:0 \n\
+a=x-nv-audio.surround.AudioQuality:0 \n\
+a=x-nv-aqos.packetDuration:5 \n\
+a=x-nv-video[0].encoderCscMode:0 \n\
+t=0 0\n\
+m=video 47998 \n"
+    )
+}
+
+async fn rtsp_handshake(
+    host: &str,
+    port: u16,
+    width: u32,
+    height: u32,
+    fps: u32,
+    timeout_secs: u32,
+) -> Result<RtspSessionInfo> {
+    let mut cseq = 1;
+    let mut session_id: Option<String> = None;
+
+    let options = format!(
+        "OPTIONS rtsp://{host}:{port} RTSP/1.0\r\n\
+CSeq: {cseq}\r\n\
+X-GS-ClientVersion: 14\r\n\
+Host: {host}\r\n\r\n"
+    );
+    let resp = send_rtsp_request(host, port, &options, timeout_secs).await?;
+    if resp.status != 200 {
+        return Err(anyhow!("RTSP OPTIONS failed with {}", resp.status));
+    }
+    cseq += 1;
+
+    let describe = format!(
+        "DESCRIBE rtsp://{host}:{port} RTSP/1.0\r\n\
+CSeq: {cseq}\r\n\
+X-GS-ClientVersion: 14\r\n\
+Host: {host}\r\n\
+Accept: application/sdp\r\n\r\n"
+    );
+    let resp = send_rtsp_request(host, port, &describe, timeout_secs).await?;
+    if resp.status != 200 {
+        return Err(anyhow!("RTSP DESCRIBE failed with {}", resp.status));
+    }
+    cseq += 1;
+
+    let setup_audio = format!(
+        "SETUP streamid=audio/0/0 RTSP/1.0\r\n\
+CSeq: {cseq}\r\n\
+X-GS-ClientVersion: 14\r\n\
+Host: {host}\r\n\
+Transport: unicast;X-GS-ClientPort=50000-50001\r\n\
+If-Modified-Since: Thu, 01 Jan 1970 00:00:00 GMT\r\n\r\n"
+    );
+    let resp = send_rtsp_request(host, port, &setup_audio, timeout_secs).await?;
+    if resp.status != 200 {
+        return Err(anyhow!("RTSP SETUP audio failed with {}", resp.status));
+    }
+    session_id = header_value(&resp.headers, "session")
+        .map(|val| val.split(';').next().unwrap_or(&val).trim().to_string());
+    let mut ping_payload = header_value(&resp.headers, "x-ss-ping-payload")
+        .map(|value| value.into_bytes())
+        .unwrap_or_default();
+    let audio_port = header_value(&resp.headers, "transport")
+        .and_then(|value| parse_transport_port(&value))
+        .ok_or_else(|| anyhow!("RTSP SETUP audio missing server_port"))?;
+    cseq += 1;
+
+    let session_header = session_id.as_deref().unwrap_or("DEADBEEFCAFE").to_string();
+
+    let setup_video = format!(
+        "SETUP streamid=video/0/0 RTSP/1.0\r\n\
+CSeq: {cseq}\r\n\
+X-GS-ClientVersion: 14\r\n\
+Host: {host}\r\n\
+Session: {session_header}\r\n\
+Transport: unicast;X-GS-ClientPort=50002-50003\r\n\
+If-Modified-Since: Thu, 01 Jan 1970 00:00:00 GMT\r\n\r\n"
+    );
+    let resp = send_rtsp_request(host, port, &setup_video, timeout_secs).await?;
+    if resp.status != 200 {
+        return Err(anyhow!("RTSP SETUP video failed with {}", resp.status));
+    }
+    if ping_payload.is_empty() {
+        ping_payload = header_value(&resp.headers, "x-ss-ping-payload")
+            .map(|value| value.into_bytes())
+            .unwrap_or_default();
+    }
+    let video_port = header_value(&resp.headers, "transport")
+        .and_then(|value| parse_transport_port(&value))
+        .ok_or_else(|| anyhow!("RTSP SETUP video missing server_port"))?;
+    cseq += 1;
+
+    let setup_control = format!(
+        "SETUP streamid=control/0/0 RTSP/1.0\r\n\
+CSeq: {cseq}\r\n\
+X-GS-ClientVersion: 14\r\n\
+Host: {host}\r\n\
+Session: {session_header}\r\n\
+Transport: unicast;X-GS-ClientPort=50004-50005\r\n\
+If-Modified-Since: Thu, 01 Jan 1970 00:00:00 GMT\r\n\r\n"
+    );
+    let resp = send_rtsp_request(host, port, &setup_control, timeout_secs).await?;
+    if resp.status != 200 {
+        return Err(anyhow!("RTSP SETUP control failed with {}", resp.status));
+    }
+    cseq += 1;
+
+    let payload = build_announce_payload(width, height, fps);
+    let content_length = payload.as_bytes().len();
+    let announce = format!(
+        "ANNOUNCE streamid=control/13/0 RTSP/1.0\r\n\
+CSeq: {cseq}\r\n\
+X-GS-ClientVersion: 14\r\n\
+Host: {host}\r\n\
+Session: {session_header}\r\n\
+Content-type: application/sdp\r\n\
+Content-length: {content_length}\r\n\r\n\
+{payload}"
+    );
+    let resp = send_rtsp_request(host, port, &announce, timeout_secs).await?;
+    if resp.status != 200 {
+        return Err(anyhow!("RTSP ANNOUNCE failed with {}", resp.status));
+    }
+    cseq += 1;
+
+    let play = format!(
+        "PLAY streamid=control/13/0 RTSP/1.0\r\n\
+CSeq: {cseq}\r\n\
+X-GS-ClientVersion: 14\r\n\
+Host: {host}\r\n\
+Session: {session_header}\r\n\r\n"
+    );
+    let resp = send_rtsp_request(host, port, &play, timeout_secs).await?;
+    if resp.status != 200 {
+        return Err(anyhow!("RTSP PLAY failed with {}", resp.status));
+    }
+
+    if ping_payload.len() != 16 {
+        return Err(anyhow!("RTSP SETUP missing valid X-SS-Ping-Payload"));
+    }
+    eprintln!(
+        "[DEBUG] RTSP handshake complete (video_port={}, audio_port={}, ping_payload_len={})",
+        video_port,
+        audio_port,
+        ping_payload.len()
+    );
+
+    Ok(RtspSessionInfo {
+        session_id,
+        video_port,
+        audio_port,
+        ping_payload,
+    })
+}
+
+async fn decode_h264_frame(frame_data: &[u8], output_path: &str) -> Result<()> {
+    let h264_path = format!("{output_path}.h264");
+    fs::write(&h264_path, frame_data)?;
+    let output = tokio::process::Command::new("ffmpeg")
+        .args(&[
+            "-f",
+            "h264",
+            "-i",
+            &h264_path,
+            "-frames:v",
+            "1",
+            "-q:v",
+            "2",
+            "-y",
+            output_path,
+        ])
+        .output()
+        .await?;
+    let _ = fs::remove_file(&h264_path);
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "Failed to decode Moonlight frame: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
+async fn capture_moonlight_frame(
+    host: &str,
+    video_port: u16,
+    audio_port: u16,
+    ping_payload: &[u8],
+    output_path: &str,
+    timeout_secs: u32,
+) -> Result<()> {
+    const RTP_HEADER_LEN: usize = 32;
+    const VIDEO_HEADER_LEN: usize = 8;
+    const FLAG_CONTAINS_PIC_DATA: u8 = 0x1;
+    const FLAG_EOF: u8 = 0x2;
+    const FLAG_SOF: u8 = 0x4;
+    const FRAME_TYPE_IDR: u8 = 0x02;
+
+    let video_socket = UdpSocket::bind("0.0.0.0:0").await?;
+    let audio_socket = UdpSocket::bind("0.0.0.0:0").await?;
+    eprintln!(
+        "[DEBUG] RTP sockets bound (video={}, audio={})",
+        video_socket.local_addr()?,
+        audio_socket.local_addr()?
+    );
+    let mut ping = Vec::with_capacity(20);
+    ping.extend_from_slice(ping_payload);
+    ping.extend_from_slice(&0u32.to_le_bytes());
+    for _ in 0..3 {
+        video_socket
+            .send_to(&ping, format!("{host}:{video_port}"))
+            .await?;
+        audio_socket
+            .send_to(&ping, format!("{host}:{audio_port}"))
+            .await?;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs as u64);
+    let mut buf = vec![0u8; 4096];
+    let mut current: Option<FrameState> = None;
+    let mut saw_packet = false;
+
+    while std::time::Instant::now() < deadline {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        let recv = tokio::time::timeout(remaining, video_socket.recv_from(&mut buf)).await;
+        let (len, _) = match recv {
+            Ok(Ok(result)) => result,
+            Ok(Err(err)) => return Err(anyhow!("Failed to receive RTP: {}", err)),
+            Err(_) => break,
+        };
+        if !saw_packet {
+            eprintln!("[DEBUG] Received RTP packet ({} bytes)", len);
+            saw_packet = true;
+        }
+        if len <= RTP_HEADER_LEN {
+            continue;
+        }
+
+        let packet = &buf[..len];
+        let flags = packet[24];
+        if flags & FLAG_CONTAINS_PIC_DATA == 0 {
+            continue;
+        }
+        let frame_index = u32::from_le_bytes([packet[20], packet[21], packet[22], packet[23]]);
+        let payload_start = RTP_HEADER_LEN;
+        let mut payload_end = len;
+
+        if flags & FLAG_SOF != 0 {
+            if len < RTP_HEADER_LEN + VIDEO_HEADER_LEN {
+                continue;
+            }
+            let video_header = &packet[payload_start..payload_start + VIDEO_HEADER_LEN];
+            let frame_type = video_header[3];
+            let last_payload_len = u16::from_le_bytes([video_header[4], video_header[5]]);
+            current = Some(FrameState {
+                frame_index,
+                frame_type,
+                last_payload_len,
+                data: Vec::new(),
+            });
+            let data_start = payload_start + VIDEO_HEADER_LEN;
+            if flags & FLAG_EOF != 0 {
+                let trimmed = payload_start + last_payload_len as usize;
+                if trimmed <= len {
+                    payload_end = trimmed;
+                }
+            }
+            if payload_end > data_start {
+                if let Some(state) = current.as_mut() {
+                    state
+                        .data
+                        .extend_from_slice(&packet[data_start..payload_end]);
+                }
+            }
+        } else if let Some(state) = current.as_mut() {
+            if frame_index != state.frame_index {
+                continue;
+            }
+            if flags & FLAG_EOF != 0 {
+                let trimmed = payload_start + state.last_payload_len as usize;
+                if trimmed <= len {
+                    payload_end = trimmed;
+                }
+            }
+            if payload_end > payload_start {
+                state
+                    .data
+                    .extend_from_slice(&packet[payload_start..payload_end]);
+            }
+        }
+
+        if flags & FLAG_EOF != 0 {
+            if let Some(state) = current.take() {
+                if state.frame_type == FRAME_TYPE_IDR && !state.data.is_empty() {
+                    eprintln!("[DEBUG] Decoding IDR frame {}", state.frame_index);
+                    decode_h264_frame(&state.data, output_path).await?;
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    Err(anyhow!(
+        "Timed out waiting for a decodable Moonlight video frame"
+    ))
+}
+
+/// Capture a frame from a Moonlight RTSP session.
 pub async fn capture_rtsp_frame(
     rtsp_url: &str,
     output_path: &str,
     timeout_secs: u32,
 ) -> Result<()> {
     eprintln!("[DEBUG] Capturing frame from RTSP stream: {}", rtsp_url);
-
-    // Use ffmpeg to grab a single frame from the RTSP stream
-    // -rtsp_transport tcp: Use TCP for RTSP (more reliable)
-    // -i: Input URL
-    // -frames:v 1: Capture only 1 video frame
-    // -y: Overwrite output file
-    let output = tokio::process::Command::new("ffmpeg")
-        .args(&[
-            "-rtsp_transport",
-            "tcp",
-            "-t",
-            &timeout_secs.to_string(), // Max time to wait for stream
-            "-i",
-            rtsp_url,
-            "-frames:v",
-            "1",
-            "-q:v",
-            "2",  // High quality JPEG
-            "-y", // Overwrite
-            output_path,
-        ])
-        .output()
-        .await?;
-
-    if output.status.success() {
-        eprintln!("[DEBUG] RTSP frame captured to: {}", output_path);
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // Check for common RTSP errors
-        if stderr.contains("Connection refused") {
-            Err(anyhow!("RTSP connection refused - stream not available"))
-        } else if stderr.contains("Connection timed out") || stderr.contains("timeout") {
-            Err(anyhow!(
-                "RTSP connection timeout - stream may not be sending video"
-            ))
-        } else if stderr.contains("Invalid data found") {
-            Err(anyhow!(
-                "RTSP stream has invalid video data - encoder may have failed"
-            ))
-        } else if stderr.contains("does not contain any stream") {
-            Err(anyhow!(
-                "RTSP stream has no video - streaming pipeline may have crashed"
-            ))
-        } else {
-            Err(anyhow!(
-                "Failed to capture RTSP frame: {}",
-                stderr.chars().take(500).collect::<String>()
-            ))
-        }
-    }
+    let (host, port) = parse_rtsp_host_port(rtsp_url)?;
+    let session = rtsp_handshake(&host, port, 1920, 1080, 60, timeout_secs).await?;
+    capture_moonlight_frame(
+        &host,
+        session.video_port,
+        session.audio_port,
+        &session.ping_payload,
+        output_path,
+        timeout_secs,
+    )
+    .await?;
+    eprintln!("[DEBUG] RTSP frame captured to: {}", output_path);
+    Ok(())
 }
 
 /// Capture a screenshot using macOS screencapture (fallback for non-streaming tests)

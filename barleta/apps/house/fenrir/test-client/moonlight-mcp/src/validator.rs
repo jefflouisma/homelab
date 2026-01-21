@@ -164,7 +164,8 @@ Respond ONLY with this exact JSON format, no other text:
     } else {
         // Fallback: check for keywords
         let lower = content.to_lowercase();
-        result.passed = lower.contains("visible") && lower.contains(expected_app.to_lowercase().as_str());
+        result.passed =
+            lower.contains("visible") && lower.contains(expected_app.to_lowercase().as_str());
         result.description = content;
     }
 

@@ -2,6 +2,7 @@
 #include <curl/curl.h>
 #include <docker/formatters.hpp>
 #include <docker/json_formatters.hpp>
+#include <filesystem>
 #include <helpers/logger.hpp>
 #include <helpers/utils.hpp>
 #include <range/v3/view.hpp>
@@ -11,6 +12,7 @@ namespace wolf::core::docker {
 using namespace ranges;
 using namespace utils;
 namespace json = boost::json;
+namespace fs = std::filesystem;
 
 enum METHOD : int {
   GET,
@@ -28,6 +30,10 @@ using curl_ptr = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>;
  * Initialise the curl handle and connects it to the docker socket
  */
 std::optional<curl_ptr> docker_connect(const std::string &socket_path, bool debug = false) {
+  std::error_code ec;
+  if (socket_path.empty() || !fs::exists(socket_path, ec)) {
+    return {};
+  }
   if (auto curl = curl_easy_init()) {
     curl_easy_setopt(curl, CURLOPT_UNIX_SOCKET_PATH, socket_path.c_str()); // TODO: support also tcp://
     if (debug)
@@ -472,6 +478,10 @@ bool DockerAPI::exec(std::string_view id, const std::vector<std::string_view> &c
 }
 
 std::string DockerAPI::get_api_version() {
+  std::error_code ec;
+  if (socket_path.empty() || !fs::exists(socket_path, ec)) {
+    return "v1.40";
+  }
   if (auto conn = docker_connect(socket_path)) {
     auto raw_msg = req(conn.value().get(), GET, "http://localhost/version");
     if (raw_msg && raw_msg->first == 200) {

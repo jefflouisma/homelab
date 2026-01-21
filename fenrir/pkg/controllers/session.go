@@ -363,13 +363,24 @@ func (c *SessionController) Reconcile(namespace, name string, newObj *v1alpha1ty
 	// }
 
 	if streamError := c.reconcileActiveStreams(context.TODO(), newObj); streamError != nil {
-		klog.Errorf("Failed to reconcile active streams: %s", streamError)
-		meta.SetStatusCondition(&newObj.Status.Conditions, metav1.Condition{
-			Type:    "StreamStarted",
-			Status:  metav1.ConditionFalse,
-			Reason:  "StreamStartFailed",
-			Message: streamError.Error(),
-		})
+		if isTransientStreamError(streamError) {
+			klog.Infof("Active streams not ready yet")
+			klog.V(2).Infof("Active streams not ready: %s", streamError)
+			meta.SetStatusCondition(&newObj.Status.Conditions, metav1.Condition{
+				Type:    "StreamStarted",
+				Status:  metav1.ConditionFalse,
+				Reason:  "WaitingForReady",
+				Message: streamError.Error(),
+			})
+		} else {
+			klog.Errorf("Active stream reconcile error: %s", streamError)
+			meta.SetStatusCondition(&newObj.Status.Conditions, metav1.Condition{
+				Type:    "StreamStarted",
+				Status:  metav1.ConditionFalse,
+				Reason:  "StreamStartFailed",
+				Message: streamError.Error(),
+			})
+		}
 	} else {
 		meta.SetStatusCondition(&newObj.Status.Conditions, metav1.Condition{
 			Type:   "StreamStarted",
@@ -392,6 +403,10 @@ func (c *SessionController) Reconcile(namespace, name string, newObj *v1alpha1ty
 		// exponential backoff. Could be API server issue. Depends on response
 		// code?
 		if err != nil && !errors.IsNotFound(err) {
+			if errors.IsConflict(err) {
+				klog.V(2).Infof("Status update conflict for session %s/%s; will retry on next reconcile", newObj.Namespace, newObj.Name)
+				return nil
+			}
 			return err
 		}
 	}
@@ -625,7 +640,7 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 		for name := range sessions {
 			sess, err := c.SessionInformer.Namespaced(session.Namespace).Get(name)
 			if err != nil {
-				klog.Errorf("Failed to get session %s/%s: %s", session.Namespace, name, err)
+				klog.V(2).Infof("Session %s/%s not found in cache; skipping owner reference: %v", session.Namespace, name, err)
 				continue
 			}
 			owner := metav1.OwnerReference{
@@ -739,9 +754,43 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				MountPath: "/tmp/.X11-unix",
 			},
 			corev1.VolumeMount{
+				Name:      "wolf-cfg",
+				MountPath: "/etc/wolf",
+			},
+			corev1.VolumeMount{
 				Name:      "wolf-data",
 				MountPath: "/home/retro",
 				SubPath:   fmt.Sprintf("state/%s", app.Name),
+			},
+			// GPU device + userspace libraries for game containers
+			corev1.VolumeMount{
+				Name:      "dev",
+				MountPath: "/dev",
+			},
+			corev1.VolumeMount{
+				Name:      "nvidia-libs",
+				MountPath: "/nvidia-libs",
+			},
+			corev1.VolumeMount{
+				Name:      "nvidia-userspace",
+				MountPath: "/nvidia-userspace",
+			},
+			corev1.VolumeMount{
+				Name:      "nvrtc-libs",
+				MountPath: "/nvrtc-libs",
+			},
+			// GBM + EGL configs for NVIDIA Wayland/EGL
+			corev1.VolumeMount{
+				Name:      "gbm-backend",
+				MountPath: "/usr/lib/gbm",
+			},
+			corev1.VolumeMount{
+				Name:      "egl-vendor",
+				MountPath: "/usr/share/glvnd/egl_vendor.d",
+			},
+			corev1.VolumeMount{
+				Name:      "egl-platform",
+				MountPath: "/usr/share/egl/egl_external_platform.d",
 			},
 		)
 
@@ -757,16 +806,24 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 			"UID":             "1000",
 			"GID":             "1000",
 			"PULSE_SERVER":    "unix:/tmp/.X11-unix/pulse-socket",
+			"DBUS_SESSION_BUS_ADDRESS": "unix:path=/dev/null",
 			// PULSE_SINK & PULSE_SOURCE set at runtime calculated based off session ID.
 			// But would be nice if unnecessary
 
 			// Assorted NVIDIA. Unsure if required. Probabky not.
 			"LIBVA_DRIVER_NAME":          "nvidia",
-			"LD_LIBRARY_PATH":            "/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
+			"LD_LIBRARY_PATH":            "/nvrtc-libs:/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu",
 			"NVIDIA_DRIVER_CAPABILITIES": "all",
 			"NVIDIA_VISIBLE_DEVICES":     "all",
-			"GST_VAAPI_ALL_DRIVERS":      "1",
-			"GST_DEBUG":                  "2",
+			"GST_PLUGIN_FEATURE_RANK":    "vaapi*:NONE",
+			"GST_DEBUG":                  "1",
+			// Wayland/EGL + NVIDIA GBM settings for headless rendering
+			"__GLX_VENDOR_LIBRARY_NAME":           "nvidia",
+			"VK_ICD_FILENAMES":                    "/etc/wolf/cfg/nvidia_icd.json",
+			"__EGL_VENDOR_LIBRARY_DIRS":           "/usr/share/glvnd/egl_vendor.d",
+			"__EGL_VENDOR_LIBRARY_FILENAMES":      "/usr/share/glvnd/egl_vendor.d/10_nvidia.json",
+			"__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS": "/usr/share/egl/egl_external_platform.d",
+			"EGL_PLATFORM":                        "wayland",
 
 			// Gamescape envar injection. Ham-handed. Why not.
 			"GAMESCOPE_WIDTH":   fmt.Sprint(session.Spec.Config.VideoWidth),
@@ -799,6 +856,10 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				chmod 777 /mnt/data/wolf
 				chown -R ubuntu:ubuntu /tmp/.X11-unix
 				chmod 1777 -R /tmp/.X11-unix
+				mkdir -p /tmp/.X11-unix/.config/pulse
+				touch /tmp/.X11-unix/.config/pulse/cookie /tmp/.X11-unix/.pulse-cookie
+				chmod 600 /tmp/.X11-unix/.config/pulse/cookie /tmp/.X11-unix/.pulse-cookie
+				chown -R ubuntu:ubuntu /tmp/.X11-unix/.config/pulse /tmp/.X11-unix/.pulse-cookie
 				mkdir -p /etc/wolf/cfg
 				cp -LR /cfg/* /etc/wolf/cfg
 				# Create EGL vendor directory with nvidia ICD JSON
@@ -806,6 +867,11 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				mkdir -p /etc/wolf/cfg/egl_vendor.d
 				cp /cfg/10_nvidia.json /etc/wolf/cfg/egl_vendor.d/ 2>/dev/null || true
 				cp /cfg/nvidia_icd.json /etc/wolf/cfg/egl_vendor.d/ 2>/dev/null || true
+				# Provide a clean glvnd vendor directory for game containers
+				mkdir -p /egl-vendor
+				cp /cfg/10_nvidia.json /egl-vendor/ 2>/dev/null || true
+				cp /cfg/nvidia_icd.json /egl-vendor/ 2>/dev/null || true
+				chmod 755 /egl-vendor 2>/dev/null || true
 				chown -R ubuntu:ubuntu /etc/wolf
 				chmod 777 -R /etc/wolf
 			`,
@@ -820,12 +886,22 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 					MountPath: "/mnt/data/wolf",
 				},
 				{
+					Name:      "config",
+					MountPath: "/opt/gow/startup-app.sh",
+					SubPath:   "startup-app.sh",
+					ReadOnly:  true,
+				},
+				{
 					Name:      "wolf-runtime",
 					MountPath: "/tmp/.X11-unix",
 				},
 				{
 					Name:      "config",
 					MountPath: "/cfg",
+				},
+				{
+					Name:      "egl-vendor",
+					MountPath: "/egl-vendor",
 				},
 			},
 		},
@@ -848,6 +924,12 @@ else
     echo "Contents of /nvidia-libs:"
     ls -la /nvidia-libs/ 2>/dev/null || echo "Directory empty or not found"
 fi
+if ls /nvidia-libs/libnvrtc.so* >/dev/null 2>&1; then
+    echo "SUCCESS: Found libnvrtc in /nvidia-libs"
+    ls -la /nvidia-libs/libnvrtc.so* /nvidia-libs/libnvrtc-builtins.so* 2>/dev/null || true
+else
+    echo "WARNING: libnvrtc not found in /nvidia-libs"
+fi
 echo "=== Done ==="
 `,
 			},
@@ -856,6 +938,37 @@ echo "=== Done ==="
 					Name:      "nvidia-libs",
 					MountPath: "/nvidia-libs",
 					ReadOnly:  true,
+				},
+			},
+		},
+	)
+
+	// Init container to install NVRTC into a shared volume for GStreamer CUDA plugins
+	podToCreate.Spec.InitContainers = append(podToCreate.Spec.InitContainers,
+		corev1.Container{
+			Name:  "nvrtc-libs-init",
+			Image: "alpine:3.19",
+			Command: []string{
+				"sh", "-c", `
+set -e
+apk add --no-cache curl unzip
+NVRTC_VERSION="11.3.58"
+NVRTC_WHEEL="nvidia_cuda_nvrtc-${NVRTC_VERSION}-py3-none-manylinux1_x86_64.whl"
+curl -fsSL -o /tmp/${NVRTC_WHEEL} "https://developer.download.nvidia.com/compute/redist/nvidia-cuda-nvrtc/${NVRTC_WHEEL}"
+unzip -joq -d /nvrtc-libs /tmp/${NVRTC_WHEEL}
+chmod 755 /nvrtc-libs/libnvrtc* 2>/dev/null || true
+if [ -f /nvrtc-libs/libnvrtc.so.${NVRTC_VERSION} ]; then
+    ln -sf libnvrtc.so.${NVRTC_VERSION} /nvrtc-libs/libnvrtc.so
+fi
+if [ -f /nvrtc-libs/libnvrtc-builtins.so.${NVRTC_VERSION} ]; then
+    ln -sf libnvrtc-builtins.so.${NVRTC_VERSION} /nvrtc-libs/libnvrtc-builtins.so
+fi
+`,
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "nvrtc-libs",
+					MountPath: "/nvrtc-libs",
 				},
 			},
 		},
@@ -882,7 +995,7 @@ if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
     ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /gbm-backend/nvidia-drm_gbm.so
     ls -la /gbm-backend/
     echo "SUCCESS: GBM symlinks created (dri_gbm.so + nvidia-drm_gbm.so -> nvidia backend)"
-    
+
     # Create EGL external platform config for NVIDIA GBM backend
     # IMPORTANT: Use EXTERNAL_PLATFORM format, NOT ICD format!
     # This registers libnvidia-egl-gbm.so.1 as an EGL external platform for GBM
@@ -890,7 +1003,7 @@ if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
     cat > /egl-platform/15_nvidia_gbm.json << 'EOFJ'
 {
     "file_format_version" : "1.0.0",
-    "ICD" : {
+    "external_platform" : {
         "library_path" : "/nvidia-libs/libnvidia-egl-gbm.so.1"
     }
 }
@@ -898,7 +1011,7 @@ EOFJ
     cat > /egl-platform/10_nvidia_wayland.json << 'EOFJ'
 {
     "file_format_version" : "1.0.0",
-    "ICD" : {
+    "external_platform" : {
         "library_path" : "/nvidia-libs/libnvidia-egl-wayland.so.1"
     }
 }
@@ -939,6 +1052,22 @@ fi
 			Command: []string{
 				"sh", "-c", `
 echo "=== Setting GPU device permissions ==="
+echo "=== Waiting for DRI render nodes ==="
+i=0
+while [ $i -lt 30 ]; do
+    if ls /dev/dri/renderD* >/dev/null 2>&1; then
+        echo "DRI render nodes detected"
+        break
+    fi
+    echo "Waiting for /dev/dri/renderD*... ($i/30)"
+    i=$((i + 1))
+    sleep 1
+done
+if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
+    echo "ERROR: /dev/dri/renderD* not found after 30s"
+    ls -la /dev/dri/ 2>/dev/null || true
+    exit 1
+fi
 chmod 666 /dev/dri/renderD* 2>/dev/null || true
 chmod 666 /dev/dri/card* 2>/dev/null || true
 chmod 666 /dev/nvidia* 2>/dev/null || true
@@ -1013,7 +1142,7 @@ echo "=== Done ==="
 				},
 				{
 					Name:  "LD_LIBRARY_PATH",
-					Value: "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/x86_64-linux-gnu",
+					Value: "/nvrtc-libs:/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/x86_64-linux-gnu",
 				},
 				{
 					Name: "POD_NAME",
@@ -1071,12 +1200,23 @@ echo "=== Done ==="
 			Name:  "pulseaudio",
 			Image: "ghcr.io/games-on-whales/pulseaudio:edge",
 			Env: mapToEnvApplyList(map[string]string{
+				"HOME":            "/tmp/pulse",
 				"TZ":              "America/Los_Angeles",
 				"UNAME":           "retro",
 				"XDG_RUNTIME_DIR": "/tmp/pulse",
 				"UID":             "1000",
 				"GID":             "1000",
+				"PULSE_NO_DBUS":   "1",
+				"DBUS_SYSTEM_BUS_ADDRESS":  "unix:path=/dev/null",
+				"DBUS_SESSION_BUS_ADDRESS": "unix:path=/dev/null",
 			}),
+			Lifecycle: &corev1.Lifecycle{
+				PreStop: &corev1.LifecycleHandler{
+					Exec: &corev1.ExecAction{
+						Command: []string{"sh", "-c", "sleep 5"},
+					},
+				},
+			},
 			Resources: corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("100m"),
@@ -1097,19 +1237,20 @@ echo "=== Done ==="
 				"PUID":                   "1000",
 				"PGID":                   "1000",
 				"TZ":                     "America/Los_Angeles",
-				"UNAME":                  "root",  // Must be root to preserve supplementalGroups for DRM access (gosu clears groups when dropping privs)
+				"UNAME":                  "root", // Must be root to preserve supplementalGroups for DRM access (gosu clears groups when dropping privs)
 				"XDG_RUNTIME_DIR":        "/tmp/.X11-unix",
 				"PULSE_SERVER":           "unix:/tmp/.X11-unix/pulse-socket",
 				"HOST_APPS_STATE_FOLDER": "/etc/wolf",
-				"WOLF_LOG_LEVEL":         "DEBUG",
+				"WOLF_LOG_LEVEL":         "INFO",
 				"WOLF_STREAM_CLIENT_IP":  "10.128.1.0",
 				"WOLF_SOCKET_PATH":       "/etc/wolf/wolf.sock",
 				"WOLF_CFG_FILE":          "/etc/wolf/cfg/config.toml",
 				"WOLF_PULSE_IMAGE":       "ghcr.io/games-on-whales/pulseaudio:master",
 				"WOLF_CFG_FOLDER":        "/etc/wolf/cfg",
 				"WOLF_RENDER_NODE":       "/dev/dri/renderD129", // renderD129=NVIDIA
-				"GST_VAAPI_ALL_DRIVERS":  "1",
-				"GST_DEBUG":              "2",
+				"WOLF_USE_ZERO_COPY":     "FALSE",
+				"GST_PLUGIN_FEATURE_RANK": "vaapi*:NONE",
+				"GST_DEBUG":               "1",
 				"__GL_SYNC_TO_VBLANK":    "0",
 				// Enable CUDA for NVENC encoding (nvidia-uvm now loaded via toolkit)
 				// CRITICAL: Must use "0" (or specific GPU index), not "all"
@@ -1125,24 +1266,18 @@ echo "=== Done ==="
 				"NVD_BACKEND": "direct",
 				// Point EGL to NVIDIA vendor library - critical for DRI2 screen creation
 				// Use /etc/wolf/cfg/egl_vendor.d which has the nvidia vendor ICD JSON
-				"__EGL_VENDOR_LIBRARY_DIRS": "/etc/wolf/cfg/egl_vendor.d:/nvidia-libs:/usr/share/glvnd/egl_vendor.d",
+				"__EGL_VENDOR_LIBRARY_DIRS": "/etc/wolf/cfg/egl_vendor.d:/usr/share/glvnd/egl_vendor.d",
+				"__EGL_VENDOR_LIBRARY_FILENAMES": "/etc/wolf/cfg/egl_vendor.d/10_nvidia.json",
 				// Point to EGL external platform configs for NVIDIA GBM/Wayland backends
 				// These JSON files tell libgbm how to load libnvidia-egl-gbm.so.1
-				"__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS": "/usr/share/egl/egl_external_platform.d:/nvidia-libs",
-				// Force EGL to use device mode without relying on EGL_EXT_device_enumeration
-				// This is required for headless container environments where the extension fails
-				"EGL_PLATFORM":      "device",
-				"GBM_BACKEND":       "nvidia-drm",
+				"__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS": "/etc/wolf/cfg/egl_external_platform.d",
+				// Use Wayland EGL platform for the virtual compositor
+				"EGL_PLATFORM": "wayland",
+				"GBM_BACKEND":  "nvidia-drm",
 				// Tell libgbm where to find nvidia-drm_gbm.so (created by startup.sh)
 				// Default libgbm search path is /usr/lib/gbm/ (NOT /usr/lib/x86_64-linux-gnu/gbm/)
 				"GBM_BACKENDS_PATH": "/usr/lib/gbm",
-				// Debug: verbose EGL/Mesa logging to diagnose GBM init failure
-				"EGL_LOG_LEVEL":         "debug",
-				"MESA_DEBUG":            "1",
-				"MESA_LOADER_DEBUG":     "1", // dlopen/dlsym trace for GBM backend
-				"__NV_GBM_TRACE_ENABLED": "1", // NVIDIA GBM backend trace for probe debug
-				"LIBGL_DEBUG":           "verbose",
-				"LD_LIBRARY_PATH":   "/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib",
+				"LD_LIBRARY_PATH":        "/nvrtc-libs:/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu",
 				// DRI device group access - Harvester host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
 				"GOW_VIDEO_GID":  "486", // video group GID
@@ -1226,6 +1361,10 @@ echo "=== Done ==="
 					Name:      "nvidia-userspace",
 					MountPath: "/nvidia-userspace",
 				},
+				{
+					Name:      "nvrtc-libs",
+					MountPath: "/nvrtc-libs",
+				},
 				// GBM backend symlink created by gbm-backend-init container
 				// libgbm searches /usr/lib/gbm/ for nvidia-drm_gbm.so
 				{
@@ -1233,10 +1372,14 @@ echo "=== Done ==="
 					MountPath: "/usr/lib/gbm",
 				},
 				// EGL external platform configs created by gbm-backend-init container
-				// Required for libgbm to initialize NVIDIA GBM backend
+				// Keep this out of /usr/share to avoid startup.sh overwriting with ICD format.
 				{
 					Name:      "egl-platform",
-					MountPath: "/usr/share/egl/egl_external_platform.d",
+					MountPath: "/etc/wolf/cfg/egl_external_platform.d",
+				},
+				{
+					Name:      "egl-vendor",
+					MountPath: "/usr/share/glvnd/egl_vendor.d",
 				},
 				// Explicit nvidia device bind mounts - override devtmpfs devices
 				{
@@ -1271,6 +1414,7 @@ echo "=== Done ==="
 					LocalObjectReference: corev1.LocalObjectReference{
 						Name: c.deploymentName(session),
 					},
+					DefaultMode: ptr.To(int32(0755)),
 				},
 			},
 		},
@@ -1294,6 +1438,18 @@ echo "=== Done ==="
 		},
 		corev1.Volume{
 			Name: "egl-platform",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+		corev1.Volume{
+			Name: "egl-vendor",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+		corev1.Volume{
+			Name: "nvrtc-libs",
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
@@ -1541,6 +1697,70 @@ func (c *SessionController) reconcileConfigMap(
         "api_version": "1.3"
     }
 }`,
+					"startup-app.sh": `#!/bin/bash
+set -e
+
+# Make sure config folder exists for Wolf.
+export WOLF_CFG_FOLDER=$HOST_APPS_STATE_FOLDER/cfg
+mkdir -p $WOLF_CFG_FOLDER
+export WOLF_CFG_FILE=$WOLF_CFG_FOLDER/config.toml
+export WOLF_PRIVATE_KEY_FILE=$WOLF_CFG_FOLDER/key.pem
+export WOLF_PRIVATE_CERT_FILE=$WOLF_CFG_FOLDER/cert.pem
+
+# Set default values for environment variables.
+export WOLF_RENDER_NODE=${WOLF_RENDER_NODE:-/dev/dri/renderD128}
+export WOLF_ENCODER_NODE=${WOLF_ENCODER_NODE:-$WOLF_RENDER_NODE}
+export GST_GL_DRM_DEVICE=${GST_GL_DRM_DEVICE:-$WOLF_ENCODER_NODE}
+
+# Update fake-udev if missing from the path.
+export WOLF_DOCKER_FAKE_UDEV_PATH=${WOLF_DOCKER_FAKE_UDEV_PATH:-$HOST_APPS_STATE_FOLDER/fake-udev}
+cp /wolf/fake-udev $WOLF_DOCKER_FAKE_UDEV_PATH
+
+# Create nvidia GBM backend symlinks where libgbm searches by default.
+echo "[startup.sh] === GBM Backend Check ===" >&2
+echo "[startup.sh] Checking /usr/lib/gbm/ directory..." >&2
+ls -la /usr/lib/gbm/ 2>&1 | head -5 >&2 || echo "[startup.sh] /usr/lib/gbm/ does not exist!" >&2
+
+if [ -f /usr/lib/gbm/dri_gbm.so ] && [ -f /usr/lib/gbm/nvidia-drm_gbm.so ]; then
+    echo "[startup.sh] GBM symlinks already exist (from init container), skipping creation" >&2
+elif [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
+    echo "[startup.sh] Creating GBM symlinks -> nvidia backend..." >&2
+    ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /usr/lib/gbm/dri_gbm.so 2>&1 >&2
+    ln -sfv /nvidia-libs/libnvidia-egl-gbm.so.1 /usr/lib/gbm/nvidia-drm_gbm.so 2>&1 >&2
+else
+    echo "[startup.sh] WARNING: /nvidia-libs/libnvidia-egl-gbm.so.1 NOT FOUND!" >&2
+    echo "[startup.sh] Contents of /nvidia-libs/:" >&2
+    ls -la /nvidia-libs/ 2>&1 | head -20 >&2
+fi
+
+# Create EGL external platform configuration for NVIDIA GBM/Wayland.
+mkdir -p /usr/share/egl/egl_external_platform.d
+chmod 777 /usr/share/egl/egl_external_platform.d 2>/dev/null || true
+
+if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
+    cat > /usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json << 'EOF'
+{
+    "file_format_version" : "1.0.0",
+    "external_platform" : {
+        "library_path" : "/nvidia-libs/libnvidia-egl-gbm.so.1"
+    }
+}
+EOF
+fi
+
+if [ -f /nvidia-libs/libnvidia-egl-wayland.so.1 ]; then
+    cat > /usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json << 'EOF'
+{
+    "file_format_version" : "1.0.0",
+    "external_platform" : {
+        "library_path" : "/nvidia-libs/libnvidia-egl-wayland.so.1"
+    }
+}
+EOF
+fi
+
+exec /wolf/wolf
+`,
 				}),
 			metav1.ApplyOptions{
 				FieldManager: "direwolf-session-controller",
@@ -1620,6 +1840,20 @@ func (c *SessionController) allocatePorts(
 	return nil
 }
 
+func isTransientStreamError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := err.Error()
+	return strings.Contains(msg, "not ready") ||
+		strings.Contains(msg, "waiting for LoadBalancer ingress") ||
+		strings.Contains(msg, "waiting for PortsAllocated") ||
+		strings.Contains(msg, "missing direwolf/client-ip annotation") ||
+		strings.Contains(msg, "failed to list sessions") ||
+		strings.Contains(msg, "connection refused")
+}
+
 // reconcileActiveStreams calls out to wolf-agent on the running pod to ensure
 // that wolf is configured in the correct state and listening for streams on the
 // correct ports for each session trying to connect to the Pod.
@@ -1644,6 +1878,26 @@ func (c *SessionController) reconcileActiveStreams(
 	service, err := c.K8sClient.CoreV1().Services(session.Namespace).Get(ctx, session.Status.ServiceName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to get service: %s", err)
+	}
+
+	streamHost := ""
+	if len(service.Status.LoadBalancer.Ingress) > 0 {
+		if ip := service.Status.LoadBalancer.Ingress[0].IP; ip != "" {
+			streamHost = ip
+		} else if hostname := service.Status.LoadBalancer.Ingress[0].Hostname; hostname != "" {
+			streamHost = hostname
+		}
+	}
+	if streamHost == "" {
+		return fmt.Errorf("waiting for LoadBalancer ingress on service %s/%s", service.Namespace, service.Name)
+	}
+
+	clientIP := ""
+	if session.Annotations != nil {
+		clientIP = session.Annotations["direwolf/client-ip"]
+	}
+	if clientIP == "" {
+		return fmt.Errorf("missing direwolf/client-ip annotation on session %s/%s", session.Namespace, session.Name)
 	}
 
 	// List all the "sessions".
@@ -1742,8 +1996,8 @@ func (c *SessionController) reconcileActiveStreams(
 			VideoRefreshRate:  session.Spec.Config.VideoRefreshRate,
 			AppID:             appID, // Dynamic app_id from ListApps
 			AudioChannelCount: 2,     // !TODO: parse from audio info
-			ClientIP:          "10.128.1.0",
-			RTSPFakeIP:        "10.128.1.0", // Required by Wolf API for RTSP streaming
+			ClientIP:          clientIP,
+			RTSPFakeIP:        streamHost,
 			ClientSettings: wolfapi.ClientSettings{
 				RunGID:              1000,
 				RunUID:              1000,
@@ -1768,17 +2022,6 @@ func (c *SessionController) reconcileActiveStreams(
 		// assert wolf session ID non-empty and matches what we expect
 	}
 
-	streamHost := ""
-	if len(service.Status.LoadBalancer.Ingress) > 0 {
-		if ip := service.Status.LoadBalancer.Ingress[0].IP; ip != "" {
-			streamHost = ip
-		} else if hostname := service.Status.LoadBalancer.Ingress[0].Hostname; hostname != "" {
-			streamHost = hostname
-		}
-	}
-	if streamHost == "" {
-		return fmt.Errorf("waiting for LoadBalancer ingress on service %s/%s", service.Namespace, service.Name)
-	}
 	session.Status.StreamURL = fmt.Sprintf("rtsp://%s:%d", streamHost, session.Status.Ports.RTSP)
 	return nil
 }
@@ -1813,22 +2056,25 @@ func GenerateWolfConfig(
 			"default_audio_params": "queue max-size-buffers=3 leaky=downstream ! audiorate ! audioconvert",
 			"default_opus_encoder": "opusenc bitrate={bitrate} bitrate-type=cbr frame-size={packet_duration} bandwidth=fullband audio-type=restricted-lowdelay max-payload-size=1400",
 			"default_sink": `rtpmoonlightpay_audio name=moonlight_pay packet_duration={packet_duration} encrypt=true aes_key="{aes_key}" aes_iv="{aes_iv}" !
-	udpsink bind-port={host_port} host={client_ip} port={client_port} sync=true`,
+	appsink sync=false name=wolf_udp_sink`,
 			"default_source": "interpipesrc listen-to={session_id}_audio is-live=true stream-sync=restart-ts max-bytes=0 max-buffers=3 block=false",
 		},
 		"video": map[string]interface{}{
 			"default_sink": `rtpmoonlightpay_video name=moonlight_pay payload_size={payload_size} fec_percentage={fec_percentage} min_required_fec_packets={min_required_fec_packets} !
-	udpsink bind-port={host_port} host={client_ip} port={client_port} sync=true`,
+	appsink sync=false name=wolf_udp_sink`,
 			"default_source": "interpipesrc listen-to={session_id}_video is-live=true stream-sync=restart-ts max-buffers=1 block=false",
 			"defaults": map[string]interface{}{
 				"nvcodec": map[string]interface{}{
-					"video_params": "queue leaky=downstream max-size-buffers=1 ! cudaupload ! cudaconvertscale ! video/x-raw(memory:CUDAMemory), width={width}, height={height}, chroma-site={color_range}, format=NV12, colorimetry={color_space}, pixel-aspect-ratio=1/1",
+					"video_params":           "queue leaky=downstream max-size-buffers=1 ! cudaupload ! cudaconvertscale ! video/x-raw(memory:CUDAMemory), width={width}, height={height}, chroma-site={color_range}, format=NV12, colorimetry={color_space}, pixel-aspect-ratio=1/1",
+					"video_params_zero_copy": "cudaupload ! cudaconvertscale add-borders=true ! video/x-raw(memory:CUDAMemory),format=NV12, width={width}, height={height}, pixel-aspect-ratio=1/1",
 				},
 				"qsv": map[string]interface{}{
-					"video_params": "queue leaky=downstream max-size-buffers=1 ! videoconvertscale ! video/x-raw, chroma-site={color_range}, width={width}, height={height}, format=NV12, colorimetry={color_space}",
+					"video_params":           "queue leaky=downstream max-size-buffers=1 ! videoconvertscale ! video/x-raw, chroma-site={color_range}, width={width}, height={height}, format=NV12, colorimetry={color_space}",
+					"video_params_zero_copy": "vapostproc add-borders=true ! video/x-raw(memory:VAMemory), format=NV12, width={width}, height={height}, pixel-aspect-ratio=1/1",
 				},
 				"vaapi": map[string]interface{}{
-					"video_params": "queue leaky=downstream max-size-buffers=1 ! videoconvertscale ! video/x-raw, chroma-site={color_range}, width={width}, height={height}, format=NV12, colorimetry={color_space}",
+					"video_params":           "queue leaky=downstream max-size-buffers=1 ! videoconvertscale ! video/x-raw, chroma-site={color_range}, width={width}, height={height}, format=NV12, colorimetry={color_space}",
+					"video_params_zero_copy": "vapostproc add-borders=true ! video/x-raw(memory:VAMemory), format=NV12, width={width}, height={height}, pixel-aspect-ratio=1/1",
 				},
 			},
 			"av1_encoders": []map[string]interface{}{
@@ -1860,11 +2106,18 @@ func GenerateWolfConfig(
 		},
 	}
 
+	profiles := []any{
+		map[string]interface{}{
+			"id":   "moonlight-profile-id",
+			"apps": []any{config},
+		},
+	}
+
 	configMap := map[string]interface{}{
-		"config_version": 4,
+		"config_version": 6,
 		"hostname":       "Direwolf",
 		"uuid":           "dd7c60f6-4b88-4ef1-be07-eeec72f96080",
-		"apps":           []any{config},
+		"profiles":       profiles,
 
 		//!TODO: Send PR to wolf to populate the default gstreamer config
 		// if its not provided? Or start with empty wolf and use api to

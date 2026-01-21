@@ -11,6 +11,12 @@ spec:
   id: 1
   title: "RetroArch"
   isHDRSupported: false
+  wolfConfig:
+    startVirtualCompositor: true
+    startAudioServer: true
+    runner:
+      type: process
+      runCommand: "sleep infinity"
   # Minimal 1x1 transparent WebP placeholder (base64)
   appAssetWebP: "UklGRlAAAABXRUJQVlA4IEQAAADwAQCdASoBAAEAAkA4JZQCdAEO/hOMAAD+9f/e/fn3/vf+7/3v/e/94AAAAAAA"
   template:
@@ -18,7 +24,60 @@ spec:
       containers:
         # Only app container - operator adds wolf, pulseaudio, wolf-agent
         - name: retroarch
-          image: 8f638ce
+          image: ghcr.io/jefflouisma/fenrir-retroarch:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              WAYLAND_SOCKET="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY:-wayland-0}"
+              echo "Waiting for Wayland display at ${WAYLAND_SOCKET}..."
+              TIMEOUT=30
+              WAITED=0
+              while [ ! -S "${WAYLAND_SOCKET}" ] && [ $WAITED -lt $TIMEOUT ]; do
+                  sleep 1
+                  WAITED=$((WAITED + 1))
+                  echo "Waiting for wayland socket... ($WAITED/$TIMEOUT)"
+              done
+
+              if [ ! -S "${WAYLAND_SOCKET}" ]; then
+                  echo "ERROR: Wayland display not available after ${TIMEOUT}s"
+                  exit 1
+              fi
+
+              PULSE_SOCKET="${XDG_RUNTIME_DIR}/pulse-socket"
+              echo "Waiting for PulseAudio socket at ${PULSE_SOCKET}..."
+              TIMEOUT=30
+              WAITED=0
+              while [ ! -S "${PULSE_SOCKET}" ] && [ $WAITED -lt $TIMEOUT ]; do
+                  sleep 1
+                  WAITED=$((WAITED + 1))
+                  echo "Waiting for pulse socket... ($WAITED/$TIMEOUT)"
+              done
+
+              if [ ! -S "${PULSE_SOCKET}" ]; then
+                  echo "ERROR: PulseAudio socket not available after ${TIMEOUT}s"
+                  exit 1
+              fi
+
+              export PULSE_SERVER="${PULSE_SERVER:-unix:${PULSE_SOCKET}}"
+              PULSE_SINK_NAME="$(pactl list sinks short 2>/dev/null | awk '$2 ~ /^virtual_sink/ {print $2; exit}')"
+              if [ -n "${PULSE_SINK_NAME}" ]; then
+                  export PULSE_SINK="${PULSE_SINK_NAME}"
+                  export PULSE_SOURCE="${PULSE_SINK_NAME}.monitor"
+                  pactl set-default-sink "${PULSE_SINK_NAME}" || true
+                  pactl set-default-source "${PULSE_SINK_NAME}.monitor" || true
+                  echo "Using PulseAudio sink ${PULSE_SINK_NAME}"
+              else
+                  echo "WARN: No virtual_sink found; using default PulseAudio sink"
+              fi
+
+              echo "Wayland display ready, launching RetroArch..."
+              if [ ! -f /config/retroarch.cfg ]; then
+                  cp /config-template/retroarch.cfg /config/retroarch.cfg
+              fi
+              chmod u+rw /config/retroarch.cfg
+              exec retroarch --config /config/retroarch.cfg
           resources:
             requests:
               cpu: "1"
@@ -26,7 +85,24 @@ spec:
             limits:
               cpu: "4"
               memory: 8Gi
-      
+          volumeMounts:
+            - name: retroarch-config
+              mountPath: /config
+            - name: retroarch-config-template
+              mountPath: /config-template/retroarch.cfg
+              subPath: retroarch.cfg
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            privileged: true
+
+      volumes:
+        - name: retroarch-config
+          emptyDir: {}
+        - name: retroarch-config-template
+          configMap:
+            name: retroarch-config
+
       restartPolicy: Always
 ---
 # Wolf config for session pods
@@ -41,13 +117,67 @@ data:
     [server]
     port = 47989
     https_port = 47984
-    
+
     [encoder]
     # Use software encoder if no GPU
     encoder = nvenc
     fallback_encoder = vaapi
-    
+
     [display]
     width = 1920
     height = 1080
     fps = 60
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: retroarch-config
+  namespace: house
+data:
+  retroarch.cfg: |
+    # RetroArch Configuration for Fenrir/Wolf Streaming
+    # Optimized for game streaming via Moonlight
+
+    # Video settings - Wayland + OpenGL for NVIDIA stability
+    video_driver = "gl"
+    video_context_driver = "wayland"
+    video_fullscreen = "true"
+    video_vsync = "true"
+    video_frame_delay = "0"
+
+    # Use 1080p by default (streaming resolution)
+    video_fullscreen_x = "1920"
+    video_fullscreen_y = "1080"
+
+    # Audio settings for PulseAudio streaming
+    audio_driver = "pulse"
+    audio_latency = "64"
+    audio_sync = "true"
+
+    # Input settings
+    input_driver = "udev"
+    input_autodetect_enable = "true"
+    input_joypad_driver = "udev"
+    gamemode_enable = "false"
+
+    # Save directories
+    savefile_directory = "/saves"
+    savestate_directory = "/saves/states"
+    screenshot_directory = "/screenshots"
+
+    # System/BIOS directory
+    system_directory = "/roms/system"
+
+    # Content directories
+    rgui_browser_directory = "/roms"
+
+    # Menu settings
+    menu_driver = "ozone"
+    menu_show_online_updater = "false"
+    menu_show_core_updater = "false"
+
+    # Disable analytics
+    analytics_enabled = "false"
+
+    # Logging
+    log_verbosity = "false"
