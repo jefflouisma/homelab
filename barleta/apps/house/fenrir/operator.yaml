@@ -89,7 +89,7 @@ spec:
       containers:
         - name: operator
           # Operator with EGL/Mesa debug logging for GBM init diagnosis
-          image: ghcr.io/jefflouisma/fenrir-operator:f21684a
+          image: ghcr.io/jefflouisma/fenrir-operator:1cd6aea
           imagePullPolicy: Always
           volumeMounts:
             - name: operator-bin
@@ -110,7 +110,7 @@ spec:
                   fieldPath: metadata.name
             - name: WOLF_IMAGE
               # Wolf with primary node fix for NVIDIA GBM device creation (c3758a0)
-              value: ghcr.io/jefflouisma/fenrir-wolf:f21684a
+              value: ghcr.io/jefflouisma/fenrir-wolf:1cd6aea
             - name: IMAGE_PULL_SECRET
               value: ghcr-secret
           resources:
