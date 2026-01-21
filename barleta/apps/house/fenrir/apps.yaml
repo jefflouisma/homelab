@@ -35,10 +35,10 @@ spec:
               mkdir -p "$RUNTIME_DIR"
               chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
 
-              PULSE_COOKIE_PATH="${PULSE_COOKIE:-${RUNTIME_DIR}/.config/pulse/cookie}"
+              PULSE_COOKIE_PATH="${RUNTIME_DIR}/.config/pulse/cookie"
               export PULSE_COOKIE="$PULSE_COOKIE_PATH"
               HOME_DIR="${HOME:-/home/retro}"
-              if [ -f "$PULSE_COOKIE_PATH" ]; then
+              if [ -r "$PULSE_COOKIE_PATH" ]; then
                   mkdir -p "$HOME_DIR/.config/pulse"
                   cp -f "$PULSE_COOKIE_PATH" "$HOME_DIR/.config/pulse/cookie"
                   chmod 600 "$HOME_DIR/.config/pulse/cookie" 2>/dev/null || true
