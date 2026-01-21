@@ -38,9 +38,14 @@ spec:
               PULSE_COOKIE_PATH="${RUNTIME_DIR}/.config/pulse/cookie"
               export PULSE_COOKIE="$PULSE_COOKIE_PATH"
               HOME_DIR="${HOME:-/home/retro}"
+              if [ ! -w "$HOME_DIR" ]; then
+                  HOME_DIR="/tmp"
+              fi
+              mkdir -p "$HOME_DIR"
+              export HOME="$HOME_DIR"
               if [ -r "$PULSE_COOKIE_PATH" ]; then
                   mkdir -p "$HOME_DIR/.config/pulse"
-                  cp -f "$PULSE_COOKIE_PATH" "$HOME_DIR/.config/pulse/cookie"
+                  cp -f "$PULSE_COOKIE_PATH" "$HOME_DIR/.config/pulse/cookie" || true
                   chmod 600 "$HOME_DIR/.config/pulse/cookie" 2>/dev/null || true
               fi
 
