@@ -799,13 +799,14 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 			"DISPLAY": ":0",
 			// Container must have extra logic to wait for this to be set up
 			// unfortunately.
-			"WAYLAND_DISPLAY": "wayland-1",
-			"TZ":              "America/Los_Angeles",
-			"UNAME":           "retro",
-			"XDG_RUNTIME_DIR": "/tmp/.X11-unix",
-			"UID":             "1000",
-			"GID":             "1000",
-			"PULSE_SERVER":    "unix:/tmp/.X11-unix/pulse-socket",
+			"WAYLAND_DISPLAY":          "wayland-1",
+			"TZ":                       "America/Los_Angeles",
+			"UNAME":                    "retro",
+			"XDG_RUNTIME_DIR":          "/tmp/.X11-unix",
+			"UID":                      "1000",
+			"GID":                      "1000",
+			"PULSE_SERVER":             "unix:/tmp/.X11-unix/pulse-socket",
+			"PULSE_COOKIE":             "/tmp/.X11-unix/.config/pulse/cookie",
 			"DBUS_SESSION_BUS_ADDRESS": "unix:path=/dev/null",
 			// PULSE_SINK & PULSE_SOURCE set at runtime calculated based off session ID.
 			// But would be nice if unnecessary
@@ -851,9 +852,11 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 			Name:  "init",
 			Image: "ghcr.io/games-on-whales/base:edge",
 			Command: []string{
-				"sh", "-c", `
-				chown 1000:1000 /mnt/data/wolf
-				chmod 777 /mnt/data/wolf
+				"sh", "-c", fmt.Sprintf(`
+				STATE_DIR="/mnt/data/wolf/state/%s"
+				mkdir -p "${STATE_DIR}"
+				chown -R 1000:1000 "${STATE_DIR}"
+				chmod 777 "${STATE_DIR}"
 				# XDG_RUNTIME_DIR must be owned by the runtime user and not accessible by others.
 				# Wayland clients refuse to connect if permissions are too open.
 				chown -R 1000:1000 /tmp/.X11-unix
@@ -876,7 +879,7 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				chmod 755 /egl-vendor 2>/dev/null || true
 				chown -R ubuntu:ubuntu /etc/wolf
 				chmod 777 -R /etc/wolf
-			`,
+			`, app.Name),
 			},
 			VolumeMounts: []corev1.VolumeMount{
 				{
@@ -1203,13 +1206,13 @@ echo "=== Done ==="
 			Name:  "pulseaudio",
 			Image: "ghcr.io/games-on-whales/pulseaudio:edge",
 			Env: mapToEnvApplyList(map[string]string{
-				"HOME":            "/tmp/pulse",
-				"TZ":              "America/Los_Angeles",
-				"UNAME":           "retro",
-				"XDG_RUNTIME_DIR": "/tmp/pulse",
-				"UID":             "1000",
-				"GID":             "1000",
-				"PULSE_NO_DBUS":   "1",
+				"HOME":                     "/tmp/pulse",
+				"TZ":                       "America/Los_Angeles",
+				"UNAME":                    "retro",
+				"XDG_RUNTIME_DIR":          "/tmp/pulse",
+				"UID":                      "1000",
+				"GID":                      "1000",
+				"PULSE_NO_DBUS":            "1",
 				"DBUS_SYSTEM_BUS_ADDRESS":  "unix:path=/dev/null",
 				"DBUS_SESSION_BUS_ADDRESS": "unix:path=/dev/null",
 			}),
@@ -1237,24 +1240,24 @@ echo "=== Done ==="
 			Name:  "wolf",
 			Image: WOLF_IMAGE,
 			Env: mapToEnvApplyList(map[string]string{
-				"PUID":                   "1000",
-				"PGID":                   "1000",
-				"TZ":                     "America/Los_Angeles",
-				"UNAME":                  "root", // Must be root to preserve supplementalGroups for DRM access (gosu clears groups when dropping privs)
-				"XDG_RUNTIME_DIR":        "/tmp/.X11-unix",
-				"PULSE_SERVER":           "unix:/tmp/.X11-unix/pulse-socket",
-				"HOST_APPS_STATE_FOLDER": "/etc/wolf",
-				"WOLF_LOG_LEVEL":         "INFO",
-				"WOLF_STREAM_CLIENT_IP":  "10.128.1.0",
-				"WOLF_SOCKET_PATH":       "/etc/wolf/wolf.sock",
-				"WOLF_CFG_FILE":          "/etc/wolf/cfg/config.toml",
-				"WOLF_PULSE_IMAGE":       "ghcr.io/games-on-whales/pulseaudio:master",
-				"WOLF_CFG_FOLDER":        "/etc/wolf/cfg",
-				"WOLF_RENDER_NODE":       "/dev/dri/renderD129", // renderD129=NVIDIA
-				"WOLF_USE_ZERO_COPY":     "FALSE",
+				"PUID":                    "1000",
+				"PGID":                    "1000",
+				"TZ":                      "America/Los_Angeles",
+				"UNAME":                   "root", // Must be root to preserve supplementalGroups for DRM access (gosu clears groups when dropping privs)
+				"XDG_RUNTIME_DIR":         "/tmp/.X11-unix",
+				"PULSE_SERVER":            "unix:/tmp/.X11-unix/pulse-socket",
+				"HOST_APPS_STATE_FOLDER":  "/etc/wolf",
+				"WOLF_LOG_LEVEL":          "INFO",
+				"WOLF_STREAM_CLIENT_IP":   "10.128.1.0",
+				"WOLF_SOCKET_PATH":        "/etc/wolf/wolf.sock",
+				"WOLF_CFG_FILE":           "/etc/wolf/cfg/config.toml",
+				"WOLF_PULSE_IMAGE":        "ghcr.io/games-on-whales/pulseaudio:master",
+				"WOLF_CFG_FOLDER":         "/etc/wolf/cfg",
+				"WOLF_RENDER_NODE":        "/dev/dri/renderD129", // renderD129=NVIDIA
+				"WOLF_USE_ZERO_COPY":      "FALSE",
 				"GST_PLUGIN_FEATURE_RANK": "vaapi*:NONE",
 				"GST_DEBUG":               "1",
-				"__GL_SYNC_TO_VBLANK":    "0",
+				"__GL_SYNC_TO_VBLANK":     "0",
 				// Enable CUDA for NVENC encoding (nvidia-uvm now loaded via toolkit)
 				// CRITICAL: Must use "0" (or specific GPU index), not "all"
 				// "all" causes cuInit() to return CUDA_ERROR_NO_DEVICE (error 100)
@@ -1269,7 +1272,7 @@ echo "=== Done ==="
 				"NVD_BACKEND": "direct",
 				// Point EGL to NVIDIA vendor library - critical for DRI2 screen creation
 				// Use /etc/wolf/cfg/egl_vendor.d which has the nvidia vendor ICD JSON
-				"__EGL_VENDOR_LIBRARY_DIRS": "/etc/wolf/cfg/egl_vendor.d:/usr/share/glvnd/egl_vendor.d",
+				"__EGL_VENDOR_LIBRARY_DIRS":      "/etc/wolf/cfg/egl_vendor.d:/usr/share/glvnd/egl_vendor.d",
 				"__EGL_VENDOR_LIBRARY_FILENAMES": "/etc/wolf/cfg/egl_vendor.d/10_nvidia.json",
 				// Point to EGL external platform configs for NVIDIA GBM/Wayland backends
 				// These JSON files tell libgbm how to load libnvidia-egl-gbm.so.1
@@ -1280,7 +1283,7 @@ echo "=== Done ==="
 				// Tell libgbm where to find nvidia-drm_gbm.so (created by startup.sh)
 				// Default libgbm search path is /usr/lib/gbm/ (NOT /usr/lib/x86_64-linux-gnu/gbm/)
 				"GBM_BACKENDS_PATH": "/usr/lib/gbm",
-				"LD_LIBRARY_PATH":        "/nvrtc-libs:/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu",
+				"LD_LIBRARY_PATH":   "/nvrtc-libs:/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu",
 				// DRI device group access - Harvester host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
 				"GOW_VIDEO_GID":  "486", // video group GID

@@ -74,4 +74,8 @@ if [ -f /nvidia-libs/libnvidia-egl-wayland.so.1 ]; then
 EOF
 fi
 
+# Ensure Wayland socket is created with permissive mode so non-root clients can connect.
+# The runtime dir itself is owned by the session user with 0700 perms.
+umask 000
+
 exec /wolf/wolf
