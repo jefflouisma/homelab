@@ -85,10 +85,10 @@ jobs:
       - name: Update GitOps manifests
         run: |
           TAG="${{ steps.vars.outputs.tag }}"
-          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-operator:)[^\\s]+|$1'"${TAG}"'|g' barleta/apps/house/fenrir/operator.yaml
-          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-wolf:)[^\\s]+|$1'"${TAG}"'|g' barleta/apps/house/fenrir/operator.yaml
-          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-moonlight-proxy:)[^\\s]+|$1'"${TAG}"'|g' barleta/apps/house/fenrir/moonlight-proxy.yaml
-          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-retroarch:)[^\\s]+|$1'"${TAG}"'|g' barleta/apps/house/fenrir/apps.yaml
+          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-operator:)[^[:space:]]+|$1'"${TAG}"'|g' barleta/apps/house/fenrir/operator.yaml
+          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-wolf:)[^[:space:]]+|$1'"${TAG}"'|g' barleta/apps/house/fenrir/operator.yaml
+          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-moonlight-proxy:)[^[:space:]]+|$1'"${TAG}"'|g' barleta/apps/house/fenrir/moonlight-proxy.yaml
+          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-retroarch:)[^[:space:]]+|$1'"${TAG}"'|g' barleta/apps/house/fenrir/apps.yaml
 
       - name: Commit manifest updates
         run: |
