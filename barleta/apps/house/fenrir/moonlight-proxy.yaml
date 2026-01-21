@@ -46,7 +46,7 @@ spec:
       containers:
         - name: moonlight-proxy
           # Custom-built moonlight-proxy image
-          image: ghcr.io/jefflouisma/fenrir-moonlight-proxy:latest
+          image: c3d8
           imagePullPolicy: Always
           ports:
             - containerPort: 47984
