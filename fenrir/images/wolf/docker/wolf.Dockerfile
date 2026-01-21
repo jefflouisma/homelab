@@ -30,6 +30,7 @@ RUN apt-get update -y && \
 ENV HOME=/root
 ENV CARGO_HOME=/root/.cargo
 ENV RUSTUP_HOME=/root/.rustup
+ENV CARGO_BUILD_JOBS=1
 ARG RUST_VERSION=1.91.1
 ENV RUST_VERSION=$RUST_VERSION
 ENV PATH="${CARGO_HOME}/bin:${PATH}"
@@ -58,8 +59,8 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     mkdir -p .cargo && \
     echo '[patch."https://github.com/games-on-whales/smithay"]' > .cargo/config.toml && \
     echo 'smithay = { path = "/tmp/smithay-patched" }' >> .cargo/config.toml && \
-    cargo install cargo-c && \
-    cargo cinstall --features="cuda" --prefix=/usr/local/lib/x86_64-linux-gnu/ --libdir=/usr/local/lib/x86_64-linux-gnu/gstreamer-1.0
+    cargo install cargo-c -j 1 && \
+    cargo cinstall --jobs 1 --features="cuda" --prefix=/usr/local/lib/x86_64-linux-gnu/ --libdir=/usr/local/lib/x86_64-linux-gnu/gstreamer-1.0
 
 ########################################################
 # STAGE 2: Wolf C++ builder (~16 min)
