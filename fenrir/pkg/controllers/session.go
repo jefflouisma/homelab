@@ -854,12 +854,14 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				"sh", "-c", `
 				chown 1000:1000 /mnt/data/wolf
 				chmod 777 /mnt/data/wolf
-				chown -R ubuntu:ubuntu /tmp/.X11-unix
-				chmod 1777 -R /tmp/.X11-unix
+				# XDG_RUNTIME_DIR must be owned by the runtime user and not accessible by others.
+				# Wayland clients refuse to connect if permissions are too open.
+				chown -R 1000:1000 /tmp/.X11-unix
+				chmod 700 /tmp/.X11-unix
 				mkdir -p /tmp/.X11-unix/.config/pulse
 				touch /tmp/.X11-unix/.config/pulse/cookie /tmp/.X11-unix/.pulse-cookie
 				chmod 600 /tmp/.X11-unix/.config/pulse/cookie /tmp/.X11-unix/.pulse-cookie
-				chown -R ubuntu:ubuntu /tmp/.X11-unix/.config/pulse /tmp/.X11-unix/.pulse-cookie
+				chown -R 1000:1000 /tmp/.X11-unix/.config/pulse /tmp/.X11-unix/.pulse-cookie
 				mkdir -p /etc/wolf/cfg
 				cp -LR /cfg/* /etc/wolf/cfg
 				# Create EGL vendor directory with nvidia ICD JSON
@@ -1071,7 +1073,8 @@ fi
 chmod 666 /dev/dri/renderD* 2>/dev/null || true
 chmod 666 /dev/dri/card* 2>/dev/null || true
 chmod 666 /dev/nvidia* 2>/dev/null || true
-ls -la /dev/dri/ /dev/nvidia* 2>/dev/null || true
+chmod 666 /dev/uinput 2>/dev/null || true
+ls -la /dev/dri/ /dev/nvidia* /dev/uinput 2>/dev/null || true
 echo "=== Done ==="
 `,
 			},

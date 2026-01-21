@@ -92,8 +92,9 @@ spec:
               mountPath: /config-template/retroarch.cfg
               subPath: retroarch.cfg
           securityContext:
-            runAsUser: 0
-            runAsGroup: 0
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
             privileged: true
 
       volumes:
