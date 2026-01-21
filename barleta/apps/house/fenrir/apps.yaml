@@ -37,10 +37,7 @@ spec:
 
               PULSE_COOKIE_PATH="${RUNTIME_DIR}/.config/pulse/cookie"
               export PULSE_COOKIE="$PULSE_COOKIE_PATH"
-              HOME_DIR="${HOME:-/home/retro}"
-              if [ ! -w "$HOME_DIR" ]; then
-                  HOME_DIR="/tmp"
-              fi
+              HOME_DIR="/tmp"
               mkdir -p "$HOME_DIR"
               export HOME="$HOME_DIR"
               if [ -r "$PULSE_COOKIE_PATH" ]; then
@@ -49,6 +46,7 @@ spec:
                   chmod 600 "$HOME_DIR/.config/pulse/cookie" 2>/dev/null || true
               fi
 
+              export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
               WAYLAND_SOCKET="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY:-wayland-0}"
               echo "Waiting for Wayland display at ${WAYLAND_SOCKET}..."
               TIMEOUT=30
@@ -159,7 +157,7 @@ data:
     # Optimized for game streaming via Moonlight
 
     # Video settings - Wayland + OpenGL for NVIDIA stability
-    video_driver = "gl"
+    video_driver = "glcore"
     video_context_driver = "wayland"
     video_fullscreen = "true"
     video_vsync = "true"
