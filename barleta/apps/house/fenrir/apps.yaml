@@ -157,7 +157,7 @@ data:
     # Optimized for game streaming via Moonlight
 
     # Video settings - Wayland + OpenGL for NVIDIA stability
-    video_driver = "glcore"
+    video_driver = "vulkan"
     video_context_driver = "wayland"
     video_fullscreen = "true"
     video_vsync = "true"
