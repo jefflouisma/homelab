@@ -24,7 +24,7 @@ spec:
       containers:
         # Only app container - operator adds wolf, pulseaudio, wolf-agent
         - name: retroarch
-          image: ghcr.io/jefflouisma/fenrir-retroarch:1cd6aea
+          image: ghcr.io/jefflouisma/fenrir-retroarch:6d1aca7
           command:
             - /bin/bash
             - -c
