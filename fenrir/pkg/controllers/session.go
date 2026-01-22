@@ -1213,8 +1213,8 @@ echo "=== Done ==="
 				"UID":                      "1000",
 				"GID":                      "1000",
 				"PULSE_NO_DBUS":            "1",
-				"DBUS_SYSTEM_BUS_ADDRESS":  "unix:path=/dev/null",
-				"DBUS_SESSION_BUS_ADDRESS": "unix:path=/dev/null",
+				"DBUS_SYSTEM_BUS_ADDRESS":  "disabled:", // Disable D-Bus rather than point to invalid /dev/null
+				"DBUS_SESSION_BUS_ADDRESS": "disabled:", // Disable D-Bus rather than point to invalid /dev/null
 			}),
 			Lifecycle: &corev1.Lifecycle{
 				PreStop: &corev1.LifecycleHandler{

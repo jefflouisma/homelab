@@ -50,7 +50,9 @@ std::string encrypt_symmetric(EVP_CIPHER_CTX *ctx, std::string_view plaintext) {
   unsigned char ciphertext[c_len];
 
   /* allows reusing of 'ctx' for multiple encryption cycles */
-  if (EVP_EncryptInit_ex(ctx, nullptr, nullptr, nullptr, nullptr) != 1)
+  /* OpenSSL 3.x requires explicit reset before context reuse for AEAD modes */
+  EVP_CIPHER_CTX_reset(ctx);
+  if (EVP_EncryptInit_ex(ctx, EVP_aes_128_gcm(), nullptr, nullptr, nullptr) != 1)
     handle_openssl_error("EVP_EncryptInit_ex failed");
 
   if (EVP_EncryptUpdate(ctx, ciphertext, &c_len, (const std::uint8_t *)plaintext.data(), len) != 1)
@@ -70,7 +72,9 @@ std::string decrypt_symmetric(EVP_CIPHER_CTX *ctx, std::string_view ciphertext) 
   unsigned char plaintext[cipher_length];
 
   /* allows reusing of 'ctx' for multiple encryption cycles */
-  if (EVP_DecryptInit_ex(ctx, nullptr, nullptr, nullptr, nullptr) != 1)
+  /* OpenSSL 3.x requires explicit reset before context reuse for AEAD modes */
+  EVP_CIPHER_CTX_reset(ctx);
+  if (EVP_DecryptInit_ex(ctx, EVP_aes_128_gcm(), nullptr, nullptr, nullptr) != 1)
     handle_openssl_error("EVP_DecryptInit_ex failed");
 
   if (EVP_DecryptUpdate(ctx, plaintext, &len, (const std::uint8_t *)ciphertext.data(), cipher_length) != 1)
@@ -93,7 +97,9 @@ std::pair<std::string, std::string> encrypt_authenticated(EVP_CIPHER_CTX *ctx, s
   unsigned char c_tag[AES_GCM_TAG_SIZE];
 
   /* allows reusing of 'ctx' for multiple encryption cycles */
-  if (EVP_EncryptInit_ex(ctx, nullptr, nullptr, nullptr, nullptr) != 1)
+  /* OpenSSL 3.x requires explicit reset before context reuse for AEAD modes */
+  EVP_CIPHER_CTX_reset(ctx);
+  if (EVP_EncryptInit_ex(ctx, EVP_aes_128_gcm(), nullptr, nullptr, nullptr) != 1)
     handle_openssl_error("EVP_EncryptInit_ex failed");
 
   // Encrypt into the caller's buffer
@@ -120,7 +126,9 @@ std::string decrypt_authenticated(EVP_CIPHER_CTX *ctx, std::string_view cipherte
   unsigned char plaintext[cipher_length];
 
   /* allows reusing of 'ctx' for multiple encryption cycles */
-  if (EVP_DecryptInit_ex(ctx, nullptr, nullptr, nullptr, nullptr) != 1)
+  /* OpenSSL 3.x requires explicit reset before context reuse for AEAD modes */
+  EVP_CIPHER_CTX_reset(ctx);
+  if (EVP_DecryptInit_ex(ctx, EVP_aes_128_gcm(), nullptr, nullptr, nullptr) != 1)
     handle_openssl_error("EVP_DecryptInit_ex failed");
 
   if (EVP_DecryptUpdate(ctx, plaintext, &len, (const std::uint8_t *)ciphertext.data(), cipher_length) != 1)
