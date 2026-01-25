@@ -10,6 +10,9 @@ LABEL org.opencontainers.image.description="RetroArch for Fenrir game streaming"
 # Install RetroArch and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     retroarch \
+    # Menu assets (required for Ozone/XMB theme icons)
+    retroarch-assets-xmb \
+    retroarch-assets-ozone \
     # Vulkan/GPU support
     vulkan-tools \
     mesa-vulkan-drivers \
