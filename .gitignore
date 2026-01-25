@@ -30,3 +30,5 @@ id_rsa*
 *.local.yml
 
 .env 
+# Rust build artifacts
+moonlight-mcp/target/
