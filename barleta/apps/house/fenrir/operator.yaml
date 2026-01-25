@@ -110,7 +110,7 @@ spec:
                   fieldPath: metadata.name
             - name: WOLF_IMAGE
               # Wolf with primary node fix for NVIDIA GBM device creation (c3758a0)
-              value: ghcr.io/jefflouisma/fenrir-wolf:493982b
+              value: ghcr.io/jefflouisma/fenrir-wolf:493982b6e987b25d23eaae88c2faa49a8caa9584
             - name: IMAGE_PULL_SECRET
               value: ghcr-secret
           resources:
