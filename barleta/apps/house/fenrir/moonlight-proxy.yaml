@@ -96,6 +96,12 @@ kind: Service
 metadata:
   name: moonlight-proxy
   namespace: house
+  annotations:
+    # Allow sessions to share this LoadBalancer IP so clients can reach RTSP
+    # ports on the same IP they connect to for pairing/serverinfo
+    # Key must match operator's --lb-sharing-key (defaults to POD_NAMESPACE)
+    metallb.universe.tf/allow-shared-ip: house
+    lbipam.cilium.io/sharing-key: house
 spec:
   type: LoadBalancer
   selector:
