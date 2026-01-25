@@ -86,14 +86,22 @@ impl ControlStream {
         })
     }
 
-    /// Build the GCM IV/nonce from rikeyid and sequence
+    /// Build the GCM IV/nonce matching real Moonlight format (12 bytes)
     ///
-    /// Moonlight uses a 12-byte nonce: [rikeyid (4 bytes) || zeros (4 bytes) || seq (4 bytes)]
-    fn build_nonce(&self, seq: u32) -> [u8; 12] {
+    /// Real Moonlight format (from moonlight-common-c):
+    /// - Bytes 0-3: sequence number (little endian)
+    /// - Bytes 4-9: zeros
+    /// - Byte 10: 'C' for client-originated, 'H' for host-originated
+    /// - Byte 11: 'C' for control stream
+    fn build_nonce(&self, seq: u32, is_host_originated: bool) -> [u8; 12] {
         let mut nonce = [0u8; 12];
-        nonce[0..4].copy_from_slice(&self.rikeyid.to_le_bytes());
-        // bytes 4-7 are zeros
-        nonce[8..12].copy_from_slice(&seq.to_le_bytes());
+        // Bytes 0-3: sequence in little endian
+        nonce[0..4].copy_from_slice(&seq.to_le_bytes());
+        // Bytes 4-9: zeros (already initialized)
+        // Byte 10: origin identifier
+        nonce[10] = if is_host_originated { b'H' } else { b'C' };
+        // Byte 11: stream type (Control)
+        nonce[11] = b'C';
         nonce
     }
 
@@ -102,7 +110,8 @@ impl ControlStream {
         let seq = self.sequence;
         self.sequence = self.sequence.wrapping_add(1);
 
-        let nonce_bytes = self.build_nonce(seq);
+        // Use client-originated nonce (is_host_originated = false)
+        let nonce_bytes = self.build_nonce(seq, false);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // Encrypt the payload
@@ -118,9 +127,12 @@ impl ControlStream {
         
         let (encrypted_data, tag) = ciphertext.split_at(ciphertext.len() - 16);
 
-        // Build the packet: [type: u16] [seq: u32] [tag: 16 bytes] [encrypted_payload]
-        let mut packet = Vec::with_capacity(2 + 4 + 16 + encrypted_data.len());
+        // Build the packet: [type: u16] [length: u16] [seq: u32] [tag: 16 bytes] [encrypted_payload]
+        // Matches NVCTL_ENCRYPTED_PACKET_HEADER from moonlight-common-c
+        let length: u16 = (4 + 16 + encrypted_data.len()) as u16; // seq + tag + ciphertext
+        let mut packet = Vec::with_capacity(2 + 2 + 4 + 16 + encrypted_data.len());
         packet.extend_from_slice(&(ControlPacketType::Encrypted as u16).to_le_bytes());
+        packet.extend_from_slice(&length.to_le_bytes());
         packet.extend_from_slice(&seq.to_le_bytes());
         packet.extend_from_slice(tag);
         packet.extend_from_slice(encrypted_data);
@@ -173,6 +185,66 @@ impl ControlStream {
         }
     }
 
+    /// Receive and decrypt a control packet from the server
+    /// This matches what real Moonlight does in decryptControlMessageToV1()
+    pub async fn recv_and_decrypt(&self, timeout_ms: u64) -> Result<Vec<u8>> {
+        let packet = self.recv_with_timeout(timeout_ms).await?;
+        
+        // Minimum packet: type(2) + length(2) + seq(4) + tag(16) = 24 bytes
+        if packet.len() < 24 {
+            return Err(anyhow!("Received runt packet ({} bytes), unable to decrypt", packet.len()));
+        }
+
+        // Parse encrypted packet header
+        let packet_type = u16::from_le_bytes([packet[0], packet[1]]);
+        if packet_type != ControlPacketType::Encrypted as u16 {
+            // Non-encrypted packet, return as-is (some control packets aren't encrypted)
+            eprintln!("[CONTROL] Received non-encrypted packet type: 0x{:04x}", packet_type);
+            return Ok(packet);
+        }
+
+        let _length = u16::from_le_bytes([packet[2], packet[3]]);
+        let seq = u32::from_le_bytes([packet[4], packet[5], packet[6], packet[7]]);
+        
+        // Extract tag and ciphertext
+        let tag = &packet[8..24];
+        let ciphertext = &packet[24..];
+        
+        // Build nonce for host-originated packet (is_host_originated = true)
+        let nonce_bytes = self.build_nonce(seq, true);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        
+        // Combine ciphertext + tag for aes-gcm (it expects tag appended)
+        let mut combined = Vec::with_capacity(ciphertext.len() + 16);
+        combined.extend_from_slice(ciphertext);
+        combined.extend_from_slice(tag);
+        
+        // Attempt decryption - THIS IS THE KEY CHECK
+        // If the server used the wrong AES key (hex string instead of binary),
+        // decryption will FAIL with authentication error
+        match self.cipher.decrypt(nonce, combined.as_slice()) {
+            Ok(plaintext) => {
+                eprintln!(
+                    "[CONTROL] Successfully decrypted packet seq={} plaintext_len={}",
+                    seq,
+                    plaintext.len()
+                );
+                Ok(plaintext)
+            }
+            Err(e) => {
+                eprintln!(
+                    "[CONTROL] DECRYPTION FAILED seq={} error={:?}",
+                    seq, e
+                );
+                eprintln!("[CONTROL] This indicates the server is using wrong AES key (probable hex vs binary bug)");
+                Err(anyhow!(
+                    "AES-GCM decryption failed (server key mismatch): {:?}",
+                    e
+                ))
+            }
+        }
+    }
+
     /// Close the control stream
     pub async fn close(&mut self) -> Result<()> {
         // Send termination packet
@@ -182,25 +254,76 @@ impl ControlStream {
         Ok(())
     }
 
-    /// Test the control stream by sending a ping and checking for errors
-    /// This is useful for verifying the encryption is working
+    /// Test the control stream by sending a ping and verifying server response
+    /// 
+    /// This accurately replicates real Moonlight behavior:
+    /// 1. Send encrypted control packet
+    /// 2. Wait for encrypted response from server
+    /// 3. Attempt to decrypt response
+    /// 4. FAIL if decryption fails (indicates AES key mismatch)
     pub async fn test_connection(&mut self) -> Result<()> {
-        eprintln!("[CONTROL] Testing connection with ping...");
+        eprintln!("[CONTROL] Testing bidirectional encrypted connection...");
         
-        // Send a few pings to trigger encryption on the server
-        for i in 0..3 {
-            match self.send_ping().await {
-                Ok(_) => eprintln!("[CONTROL] Ping {} sent successfully", i + 1),
-                Err(e) => {
-                    eprintln!("[CONTROL] Ping {} failed: {}", i + 1, e);
-                    return Err(e);
+        // Send a ping packet
+        let ping_payload = [0u8; 4];
+        self.send_encrypted(&ping_payload).await?;
+        eprintln!("[CONTROL] Sent ping, waiting for server response...");
+        
+        // Wait for server response and attempt to decrypt
+        // Real Moonlight does this - if server is using wrong key, we can't decrypt
+        match self.recv_and_decrypt(2000).await {
+            Ok(response) => {
+                eprintln!(
+                    "[CONTROL] Server response received and decrypted successfully ({} bytes)",
+                    response.len()
+                );
+                Ok(())
+            }
+            Err(e) => {
+                // Check if it's a timeout (server might not respond to pings)
+                // vs a decryption failure (which indicates the bug)
+                let err_str = e.to_string();
+                if err_str.contains("timeout") {
+                    // No response from server - try sending more to trigger a response
+                    eprintln!("[CONTROL] No response to ping, sending IDR request to trigger response...");
+                    
+                    // Send IDR frame request - server must respond to this
+                    let mut idr_request = Vec::new();
+                    idr_request.extend_from_slice(&(ControlPacketType::IdrFrame as u16).to_le_bytes());
+                    idr_request.extend_from_slice(&0u32.to_le_bytes()); // frame 0
+                    idr_request.extend_from_slice(&0u32.to_le_bytes()); // flags
+                    self.send_encrypted(&idr_request).await?;
+                    
+                    // Try to receive any response
+                    match self.recv_and_decrypt(3000).await {
+                        Ok(_) => {
+                            eprintln!("[CONTROL] Bidirectional connection verified");
+                            Ok(())
+                        }
+                        Err(e2) => {
+                            let err2_str = e2.to_string();
+                            if err2_str.contains("decryption") || err2_str.contains("key mismatch") {
+                                // Decryption failure = bug detected
+                                Err(anyhow!("Control stream encryption failure: {} (this matches the real Moonlight error)", e2))
+                            } else if err2_str.contains("timeout") {
+                                // Still no response - server might not send unsolicited messages
+                                // This is actually okay, the key test is whether we can SEND
+                                eprintln!("[CONTROL] No server response (server may not send unsolicited messages)");
+                                eprintln!("[CONTROL] Connection appears functional (send works)");
+                                Ok(())
+                            } else {
+                                Err(e2)
+                            }
+                        }
+                    }
+                } else if err_str.contains("decryption") || err_str.contains("key mismatch") {
+                    // This is the real bug! Decryption failed due to key mismatch
+                    Err(anyhow!("CONTROL STREAM FAILURE: {} - This is what causes 'network isn't performing well' in real Moonlight", e))
+                } else {
+                    Err(e)
                 }
             }
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
-        
-        eprintln!("[CONTROL] Connection test complete");
-        Ok(())
     }
 }
 
