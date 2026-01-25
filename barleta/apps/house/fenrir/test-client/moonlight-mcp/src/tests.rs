@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
+use crate::control_stream::ControlStream;
 use crate::pairing;
 
 /// JSON test definition - the source of truth for test configuration
@@ -91,6 +92,10 @@ pub enum TestAction {
         /// Milliseconds to wait for app startup before verification
         #[serde(default = "default_delay")]
         capture_after_ms: u64,
+        /// Whether to use the encrypted control stream (like real Moonlight)
+        /// When true, connects ENet control channel with AES-128 GCM encryption
+        #[serde(default)]
+        use_control_stream: bool,
     },
 
     /// Pair with host using PIN
@@ -261,6 +266,7 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
         TestAction::TestStream {
             verify_video,
             capture_after_ms,
+            use_control_stream,
         } => {
             let app = test.app.clone().unwrap_or_else(|| "Desktop".into());
 
@@ -284,10 +290,11 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
 
                             // Step 2: Launch the app
                             match pairing::native_launch(&test.host, app_info.id).await {
-                                Ok(session_url) => {
+                                Ok(launch_info) => {
+                                    let session_url = &launch_info.session_url;
                                     let has_rtsp = !session_url.is_empty();
                                     if has_rtsp {
-                                        set_last_session_url(&session_url);
+                                        set_last_session_url(session_url);
                                     }
                                     steps.push(StepResult {
                                         name: "launch".into(),
@@ -302,6 +309,61 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
                                             }
                                         ),
                                     });
+
+                                    // Step 2.5: Connect control stream if enabled (like real Moonlight)
+                                    let mut control_stream_handle: Option<ControlStream> = None;
+                                    if *use_control_stream {
+                                        // Extract control port from RTSP URL (default: 47999)
+                                        let control_port = pairing::parse_rtsp_host_port(session_url)
+                                            .map(|(_, p)| p.saturating_sub(10) + 1) // Control port is typically rtsp_port - 10 + 1
+                                            .unwrap_or(47999);
+                                        
+                                        eprintln!(
+                                            "[DEBUG] Connecting control stream to {}:{} with rikey={}",
+                                            test.host, control_port, launch_info.rikey
+                                        );
+                                        
+                                        match ControlStream::connect(
+                                            &test.host,
+                                            control_port,
+                                            &launch_info.rikey,
+                                            launch_info.rikeyid,
+                                        ).await {
+                                            Ok(mut cs) => {
+                                                // Test the control stream with pings
+                                                match cs.test_connection().await {
+                                                    Ok(()) => {
+                                                        steps.push(StepResult {
+                                                            name: "control_stream".into(),
+                                                            passed: true,
+                                                            message: format!(
+                                                                "Control stream connected and pings sent (port: {})",
+                                                                control_port
+                                                            ),
+                                                        });
+                                                        control_stream_handle = Some(cs);
+                                                    }
+                                                    Err(e) => {
+                                                        steps.push(StepResult {
+                                                            name: "control_stream".into(),
+                                                            passed: false,
+                                                            message: format!(
+                                                                "Control stream ping failed: {} (this may indicate AES-GCM encryption issues)",
+                                                                e
+                                                            ),
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                steps.push(StepResult {
+                                                    name: "control_stream".into(),
+                                                    passed: false,
+                                                    message: format!("Failed to connect control stream: {}", e),
+                                                });
+                                            }
+                                        }
+                                    }
 
                                     // Wait for app to start
                                     tokio::time::sleep(std::time::Duration::from_millis(

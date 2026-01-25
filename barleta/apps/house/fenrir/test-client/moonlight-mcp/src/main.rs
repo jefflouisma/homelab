@@ -5,6 +5,7 @@
 //! - MCP stdio protocol for AI agent integration
 //! - Visual validation via OpenRouter/Gemini
 
+mod control_stream;
 mod mcp;
 mod pairing;
 mod tests;

@@ -68,3 +68,5 @@ pem = "3"
 # Date/time formatting for screenshot names
 chrono = "0.4"
 
+# AES-128 GCM encryption for control stream
+aes-gcm = "0.10"

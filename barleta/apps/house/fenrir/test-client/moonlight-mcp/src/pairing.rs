@@ -546,8 +546,20 @@ pub async fn native_list_apps(host: &str) -> Result<Vec<AppInfo>> {
     Ok(apps)
 }
 
+/// Launch information returned from native_launch
+/// Contains the session URL and encryption keys for control stream
+#[derive(Debug, Clone)]
+pub struct LaunchInfo {
+    /// RTSP session URL (e.g., "rtsp://192.168.1.223:48010")
+    pub session_url: String,
+    /// Hex-encoded AES key for control stream encryption (32 chars)
+    pub rikey: String,
+    /// Key ID for IV generation
+    pub rikeyid: u32,
+}
+
 /// Launch an app on the host using native HTTPS API
-pub async fn native_launch(host: &str, app_id: u32) -> Result<String> {
+pub async fn native_launch(host: &str, app_id: u32) -> Result<LaunchInfo> {
     eprintln!("[DEBUG] native_launch: creating mTLS client...");
     let client = create_mtls_client()?;
     eprintln!("[DEBUG] native_launch: mTLS client created successfully");
@@ -640,7 +652,11 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<String> {
 
     // Check for success
     if body.contains("<gamesession>1</gamesession>") || body.contains("status_code=\"200\"") {
-        return Ok(session_url.unwrap_or_default());
+        return Ok(LaunchInfo {
+            session_url: session_url.unwrap_or_default(),
+            rikey: rikey_hex,
+            rikeyid,
+        });
     }
 
     // Check for errors
@@ -649,7 +665,11 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<String> {
     }
 
     // Assume success if no obvious error
-    Ok(session_url.unwrap_or_default())
+    Ok(LaunchInfo {
+        session_url: session_url.unwrap_or_default(),
+        rikey: rikey_hex,
+        rikeyid,
+    })
 }
 
 /// Verify stream is actually running by checking Wolf's session status
@@ -1020,7 +1040,7 @@ struct FrameState {
     data: Vec<u8>,
 }
 
-fn parse_rtsp_host_port(rtsp_url: &str) -> Result<(String, u16)> {
+pub fn parse_rtsp_host_port(rtsp_url: &str) -> Result<(String, u16)> {
     let stripped = rtsp_url.strip_prefix("rtsp://").unwrap_or(rtsp_url);
     let host_port = stripped.split('/').next().unwrap_or(stripped);
     let mut parts = host_port.split(':');

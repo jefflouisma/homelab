@@ -13,8 +13,8 @@
       "action": "test_stream",
       "app": "RetroArch",
       "verify_video": true,
-      "capture_after_ms": 3000,
-      "screenshot_dir": "/Volumes/4TB_Drive/Documents/homelab/barleta/screenshots"
+      "capture_after_ms": 5000,
+      "use_control_stream": true
     },
     {
       "host": "192.168.1.223",

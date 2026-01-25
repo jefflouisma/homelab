@@ -410,6 +410,7 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
                 action: TestAction::TestStream {
                     verify_video: true,
                     capture_after_ms,
+                    use_control_stream: false, // MCP tools use HTTP API for input
                 },
                 app: Some(app.into()),
                 timeout_ms: 120000,
