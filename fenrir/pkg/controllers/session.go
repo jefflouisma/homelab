@@ -2029,6 +2029,8 @@ func (c *SessionController) reconcileActiveStreams(
 	}
 
 	session.Status.StreamURL = fmt.Sprintf("rtsp://%s:%d", streamHost, session.Status.Ports.RTSP)
+	klog.Infof("[RTSP DEBUG] Session %s/%s: StreamURL=%s, streamHost=%s, RTSP_Port=%d",
+		session.Namespace, session.Name, session.Status.StreamURL, streamHost, session.Status.Ports.RTSP)
 	return nil
 }
 

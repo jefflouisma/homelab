@@ -590,6 +590,7 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	klog.Infof("[RTSP DEBUG] Returning streamURL to client: %s", streamURL)
 	sendXML(w, LaunchResponse{
 		Response: Response{
 			StatusCode: 200,
