@@ -1,5 +1,6 @@
 #pragma once
 
+#include <crypto/crypto.hpp>
 #include <events/events.hpp>
 #include <helpers/logger.hpp>
 #include <helpers/utils.hpp>
@@ -103,7 +104,9 @@ inline std::shared_ptr<events::StreamSession> create_stream_session(immer::box<s
       .app_host_state_folder = std::filesystem::path(state->host->host_base_state_folder) /
                                current_client.app_state_folder / run_app.base.title,
 
-      .aes_key = aes_key,
+      // Convert hex-encoded AES key/IV to binary for GCM encryption
+      // Moonlight sends rikey as 32-char hex string, AES-128 needs 16 bytes
+      .aes_key = crypto::hex_to_str(aes_key, true),
       .aes_iv = aes_iv,
 
       // Moonlight protocol extension to support IP-less connections
