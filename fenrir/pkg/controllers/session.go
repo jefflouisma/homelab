@@ -1351,10 +1351,10 @@ echo "=== Done ==="
 					Name:      "dev",
 					MountPath: "/dev",
 				},
-				// {
-				// 	Name:      "dev-uinput",
-				// 	MountPath: "/dev/uinput",
-				// },
+				{
+					Name:      "dev-uinput",
+					MountPath: "/dev/uinput",
+				},
 				{
 					Name:      "host-udev",
 					MountPath: "/run/udev",
@@ -1555,15 +1555,15 @@ echo "=== Done ==="
 				},
 			},
 		},
-		// corev1.Volume{
-		// 	Name: "dev-uinput",
-		// 	VolumeSource: corev1.VolumeSource{
-		// 		HostPath: &corev1.HostPathVolumeSource{
-		// 			Path: "/dev/uinput",
-		// 			Type: ptr.To(corev1.HostPathFile),
-		// 		},
-		// 	},
-		// },
+		corev1.Volume{
+			Name: "dev-uinput",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/dev/uinput",
+					Type: ptr.To(corev1.HostPathCharDev),
+				},
+			},
+		},
 		corev1.Volume{
 			Name: "host-udev",
 			VolumeSource: corev1.VolumeSource{
