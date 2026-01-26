@@ -25,14 +25,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
     git \
-    # Dolphin core dependencies
+    # Dolphin core dependencies (use libXXX-dev for header+runtime, or specific runtime libs)
     libhidapi-hidraw0 \
-    libenet7 \
-    libfmt9 \
     libevdev2 \
     libusb-1.0-0 \
     libbluetooth3 \
-    libgl1-mesa-glx \
+    libgl1 \
     libxi6 \
     libx11-6 \
     && rm -rf /var/lib/apt/lists/*
