@@ -137,6 +137,10 @@ RUN chmod +x /usr/local/bin/startup.sh
 # Copy default configuration
 COPY config/retroarch.cfg /root/.config/retroarch/retroarch.cfg
 
+# Copy Wolf virtual Xbox controller autoconfig profile
+# This maps the Wolf X-Box One (virtual) pad buttons correctly
+COPY autoconfig/linuxraw/ /usr/share/retroarch/autoconfig/linuxraw/
+
 # Environment for Wolf/Wayland streaming
 ENV XDG_RUNTIME_DIR=/tmp/runtime-root
 ENV WAYLAND_DISPLAY=wayland-0
