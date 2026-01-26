@@ -238,11 +238,10 @@ data:
     analytics_enabled = "false"
 
     # Wayland/GPU compatibility
-    # Vulkan fails for Dolphin with "Surface has no formats" - use OpenGL instead
     video_shared_context = "false"
     driver_switch_enable = "false"
-    # glcore provides OpenGL Core context which works on Wayland
-    video_driver = "glcore"
+    # Vulkan works with PSP (Dolphin has separate compatibility issues)
+    video_driver = "vulkan"
 
     # Logging - enabled for Grafana/Loki debugging
     log_verbosity = "true"
