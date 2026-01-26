@@ -25,6 +25,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
     git \
+    # Dolphin core dependencies
+    libhidapi-hidraw0 \
+    libenet7 \
+    libfmt9 \
+    libevdev2 \
+    libusb-1.0-0 \
+    libbluetooth3 \
+    libgl1-mesa-glx \
+    libxi6 \
+    libx11-6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Download RetroArch assets from libretro-assets GitHub repo
@@ -64,6 +74,12 @@ RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/flycast_li
 # GameCube/Wii (dolphin)
 RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/dolphin_libretro.so.zip -O /tmp/core.zip \
     && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
+
+# Download Dolphin Sys folder (required for game compatibility)
+RUN mkdir -p /roms/system/dolphin-emu && \
+    git clone --depth 1 https://github.com/dolphin-emu/dolphin.git /tmp/dolphin && \
+    cp -r /tmp/dolphin/Data/Sys /roms/system/dolphin-emu/ && \
+    rm -rf /tmp/dolphin
 
 # Nintendo 3DS (citra)
 RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/citra_libretro.so.zip -O /tmp/core.zip \
