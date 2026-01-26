@@ -100,8 +100,20 @@ RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/fbneo_libr
 # Set permissions on cores
 RUN chmod +x /usr/lib/libretro/*.so
 
+# Download core info files (.info) for proper core detection
+RUN git clone --depth 1 https://github.com/libretro/libretro-core-info.git /tmp/info && \
+    mkdir -p /usr/share/retroarch/info && \
+    cp /tmp/info/*.info /usr/share/retroarch/info/ && \
+    rm -rf /tmp/info
+
+# Download database files (.rdb) for content scanning
+RUN git clone --depth 1 https://github.com/libretro/libretro-database.git /tmp/db && \
+    mkdir -p /usr/share/retroarch/database && \
+    cp -r /tmp/db/rdb /usr/share/retroarch/database/ && \
+    rm -rf /tmp/db
+
 # Create directories
-RUN mkdir -p /roms /saves /config /screenshots
+RUN mkdir -p /roms /saves /config /screenshots /config/playlists
 
 # Copy startup script that waits for Wayland display
 COPY startup.sh /usr/local/bin/startup.sh

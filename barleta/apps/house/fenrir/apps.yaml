@@ -201,13 +201,26 @@ data:
     # Content directories
     rgui_browser_directory = "/roms"
 
+    # Core/Library paths (required for cores to be visible)
+    libretro_directory = "/usr/lib/libretro"
+    libretro_info_path = "/usr/share/retroarch/info"
+
+    # Database for content scanning
+    content_database_path = "/usr/share/retroarch/database/rdb"
+    playlist_directory = "/config/playlists"
+
     # Menu settings
     menu_driver = "ozone"
     menu_show_online_updater = "false"
     menu_show_core_updater = "false"
+
+    # UI Scaling (DPI-based, responsive to screen size)
+    menu_scale_factor = "1.0"
+    video_windowed_fullscreen = "true"
 
     # Disable analytics
     analytics_enabled = "false"
 
     # Logging
     log_verbosity = "false"
+
