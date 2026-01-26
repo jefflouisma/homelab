@@ -88,8 +88,8 @@ spec:
       serviceAccountName: fenrir-operator
       containers:
         - name: operator
-          # Operator with /dev/uinput mount enabled for controller support
-          image: ghcr.io/jefflouisma/fenrir-operator:5d24cc7
+          # Operator with /dev/uinput mount + GID 491 (input) for controller access
+          image: ghcr.io/jefflouisma/fenrir-operator:1e7609e
           imagePullPolicy: Always
           volumeMounts:
             - name: operator-bin
