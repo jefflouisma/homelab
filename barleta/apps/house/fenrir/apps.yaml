@@ -237,6 +237,14 @@ data:
     # Disable analytics
     analytics_enabled = "false"
 
+    # Wayland/Vulkan compatibility (fixes Dolphin swapchain crash)
+    # Disable hardware shared context - causes crashes on Wayland
+    video_shared_context = "false"
+    # Prevent cores from changing video driver
+    driver_switch_enable = "false"
+    # Force consistent video driver
+    video_driver = "vulkan"
+
     # Logging - enabled for Grafana/Loki debugging
     log_verbosity = "true"
     log_to_file = "false"
