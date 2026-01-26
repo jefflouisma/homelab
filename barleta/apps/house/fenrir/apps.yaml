@@ -21,6 +21,16 @@ spec:
   appAssetWebP: "UklGRlAAAABXRUJQVlA4IEQAAADwAQCdASoBAAEAAkA4JZQCdAEO/hOMAAD+9f/e/fn3/vf+7/3v/e/94AAAAAAA"
   template:
     spec:
+      # Fix permissions on saves volume for UID 1000 (Dolphin needs to create User dirs)
+      initContainers:
+        - name: fix-saves-permissions
+          image: busybox
+          command: ['sh', '-c', 'chown -R 1000:1000 /saves && chmod -R 755 /saves']
+          volumeMounts:
+            - name: saves
+              mountPath: /saves
+          securityContext:
+            runAsUser: 0
       containers:
         # Only app container - operator adds wolf, pulseaudio, wolf-agent
         - name: retroarch
