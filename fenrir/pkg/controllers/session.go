@@ -711,12 +711,13 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 		}
 	}
 
-	// Add video (486) and render (489) groups for DRI device access
-	// These GIDs are from the Harvester host and needed for GPU hardware encoding
+	// Add video (486), render (489), and input (491) groups for hardware access
+	// These GIDs are from the Harvester host and needed for GPU encoding + controller input
 	podToCreate.Spec.SecurityContext.SupplementalGroups = append(
 		podToCreate.Spec.SecurityContext.SupplementalGroups,
-		486, // video group
-		489, // render group
+		486, // video group for DRI access
+		489, // render group for GPU encoding
+		491, // input group for /dev/input/eventX controller devices
 	)
 
 	// Set RuntimeClass for GPU access if not already specified in app template
