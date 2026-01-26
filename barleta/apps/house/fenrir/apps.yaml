@@ -109,6 +109,11 @@ spec:
             - name: retroarch-config-template
               mountPath: /config-template/retroarch.cfg
               subPath: retroarch.cfg
+            - name: roms
+              mountPath: /roms
+              readOnly: true
+            - name: saves
+              mountPath: /saves
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000
@@ -121,6 +126,12 @@ spec:
         - name: retroarch-config-template
           configMap:
             name: retroarch-config
+        - name: roms
+          persistentVolumeClaim:
+            claimName: fenrir-games
+        - name: saves
+          persistentVolumeClaim:
+            claimName: fenrir-saves
 
       restartPolicy: Always
 ---
