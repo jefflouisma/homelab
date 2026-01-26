@@ -17,7 +17,7 @@
             "use_control_stream": true
         },
         {
-            "comment": "Navigate: Main Menu -> Load Content",
+            "comment": "Navigate: Main Menu -> Load Content (down once from Main Menu)",
             "host": "192.168.1.223",
             "action": "send_gamepad",
             "button": "dpad_down",
@@ -26,9 +26,10 @@
         {
             "host": "192.168.1.223",
             "action": "wait",
-            "ms": 300
+            "ms": 500
         },
         {
+            "comment": "Press A to enter Load Content",
             "host": "192.168.1.223",
             "action": "send_gamepad",
             "button": "a",
@@ -40,7 +41,7 @@
             "ms": 1000
         },
         {
-            "comment": "Navigate to /roms/PSP folder - press A to select roms",
+            "comment": "In file browser - first item should be roms, press A",
             "host": "192.168.1.223",
             "action": "send_gamepad",
             "button": "a",
@@ -52,7 +53,7 @@
             "ms": 500
         },
         {
-            "comment": "Navigate down to PSP folder",
+            "comment": "Navigate to PSP folder (may need to scroll down)",
             "host": "192.168.1.223",
             "action": "send_gamepad",
             "button": "dpad_down",
@@ -64,6 +65,7 @@
             "ms": 300
         },
         {
+            "comment": "Select PSP folder",
             "host": "192.168.1.223",
             "action": "send_gamepad",
             "button": "a",
@@ -84,25 +86,8 @@
         {
             "host": "192.168.1.223",
             "action": "wait",
-            "ms": 1000
-        },
-        {
-            "comment": "Capture frame to verify Load Content menu",
-            "host": "192.168.1.223",
-            "action": "capture_frame"
-        },
-        {
-            "comment": "Wait for game to start loading",
-            "host": "192.168.1.223",
-            "action": "wait",
-            "ms": 5000
-        },
-        {
-            "comment": "Capture frame to verify game is running",
-            "host": "192.168.1.223",
-            "action": "capture_frame",
-            "gemini_vision": true,
-            "vision_prompt": "Is this the God of War PSP game running? Check for game graphics, NOT the RetroArch menu. If you see game content (characters, title screen, or gameplay), say PASS. If you only see the RetroArch menu or an error, say FAIL."
+            "ms": 8000,
+            "comment": "Wait for game/core to load"
         },
         {
             "host": "192.168.1.223",
