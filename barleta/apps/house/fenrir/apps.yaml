@@ -199,6 +199,8 @@ data:
     input_driver = "linuxraw"
     input_autodetect_enable = "true"
     input_joypad_driver = "linuxraw"
+    # Point to autoconfig dir containing Wolf Xbox controller profile
+    joypad_autoconfig_dir = "/usr/share/retroarch/autoconfig"
     gamemode_enable = "false"
 
     # Save directories
