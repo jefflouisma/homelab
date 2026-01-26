@@ -1,0 +1,119 @@
+{
+    "host": "192.168.1.223",
+    "action": "sequence",
+    "screenshot_dir": "/Volumes/4TB_Drive/Documents/homelab/barleta/screenshots",
+    "timeout_ms": 180000,
+    "steps": [
+        {
+            "host": "192.168.1.223",
+            "action": "list_apps"
+        },
+        {
+            "host": "192.168.1.223",
+            "action": "test_stream",
+            "app": "RetroArch",
+            "verify_video": true,
+            "capture_after_ms": 5000,
+            "use_control_stream": true
+        },
+        {
+            "comment": "Navigate: Main Menu -> Load Content",
+            "host": "192.168.1.223",
+            "action": "send_gamepad",
+            "button": "dpad_down",
+            "button_action": "tap"
+        },
+        {
+            "host": "192.168.1.223",
+            "action": "wait",
+            "ms": 300
+        },
+        {
+            "host": "192.168.1.223",
+            "action": "send_gamepad",
+            "button": "a",
+            "button_action": "tap"
+        },
+        {
+            "host": "192.168.1.223",
+            "action": "wait",
+            "ms": 1000
+        },
+        {
+            "comment": "Navigate to /roms/PSP folder - press A to select roms",
+            "host": "192.168.1.223",
+            "action": "send_gamepad",
+            "button": "a",
+            "button_action": "tap"
+        },
+        {
+            "host": "192.168.1.223",
+            "action": "wait",
+            "ms": 500
+        },
+        {
+            "comment": "Navigate down to PSP folder",
+            "host": "192.168.1.223",
+            "action": "send_gamepad",
+            "button": "dpad_down",
+            "button_action": "tap"
+        },
+        {
+            "host": "192.168.1.223",
+            "action": "wait",
+            "ms": 300
+        },
+        {
+            "host": "192.168.1.223",
+            "action": "send_gamepad",
+            "button": "a",
+            "button_action": "tap"
+        },
+        {
+            "host": "192.168.1.223",
+            "action": "wait",
+            "ms": 500
+        },
+        {
+            "comment": "Select God-of-War.cso file",
+            "host": "192.168.1.223",
+            "action": "send_gamepad",
+            "button": "a",
+            "button_action": "tap"
+        },
+        {
+            "host": "192.168.1.223",
+            "action": "wait",
+            "ms": 1000
+        },
+        {
+            "comment": "Capture frame to verify Load Content menu",
+            "host": "192.168.1.223",
+            "action": "capture_frame"
+        },
+        {
+            "comment": "Wait for game to start loading",
+            "host": "192.168.1.223",
+            "action": "wait",
+            "ms": 5000
+        },
+        {
+            "comment": "Capture frame to verify game is running",
+            "host": "192.168.1.223",
+            "action": "capture_frame",
+            "gemini_vision": true,
+            "vision_prompt": "Is this the God of War PSP game running? Check for game graphics, NOT the RetroArch menu. If you see game content (characters, title screen, or gameplay), say PASS. If you only see the RetroArch menu or an error, say FAIL."
+        },
+        {
+            "host": "192.168.1.223",
+            "action": "verify_stream"
+        },
+        {
+            "host": "192.168.1.223",
+            "action": "quit"
+        }
+    ],
+    "validation": {
+        "expect_stream_active": true
+    }
+}

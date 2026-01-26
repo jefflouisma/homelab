@@ -168,16 +168,15 @@ data:
     # RetroArch Configuration for Fenrir/Wolf Streaming
     # Optimized for game streaming via Moonlight
 
-    # Video settings - Wayland + OpenGL for NVIDIA stability
+    # Video settings - Wayland + Vulkan for NVIDIA
     video_driver = "vulkan"
     video_context_driver = "wayland"
     video_fullscreen = "true"
     video_vsync = "true"
     video_frame_delay = "0"
 
-    # Use 1080p by default (streaming resolution)
-    video_fullscreen_x = "1920"
-    video_fullscreen_y = "1080"
+    # Let compositor control resolution (adapts to Moonlight client)
+    video_windowed_fullscreen = "true"
 
     # Audio settings for PulseAudio streaming
     audio_driver = "pulse"
