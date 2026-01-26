@@ -193,10 +193,12 @@ data:
     audio_latency = "64"
     audio_sync = "true"
 
-    # Input settings
-    input_driver = "udev"
+    # Input settings - linuxraw for container compatibility
+    # udev doesn't receive hotplug events in containers (no host udevd access)
+    # linuxraw polls /dev/input/* directly, works for virtual controllers
+    input_driver = "linuxraw"
     input_autodetect_enable = "true"
-    input_joypad_driver = "udev"
+    input_joypad_driver = "linuxraw"
     gamemode_enable = "false"
 
     # Save directories
