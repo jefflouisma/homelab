@@ -194,8 +194,8 @@ data:
     savestate_directory = "/saves/states"
     screenshot_directory = "/screenshots"
 
-    # System/BIOS directory
-    system_directory = "/roms/system"
+    # System/BIOS directory (Dolphin Sys folder baked into image here)
+    system_directory = "/usr/share/retroarch/system"
 
     # Content directories
     rgui_browser_directory = "/roms"

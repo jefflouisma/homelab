@@ -74,9 +74,10 @@ RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/dolphin_li
     && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
 
 # Download Dolphin Sys folder (required for game compatibility)
-RUN mkdir -p /roms/system/dolphin-emu && \
+# Note: /roms is a PVC mount, so we put system files in /usr/share/retroarch/system
+RUN mkdir -p /usr/share/retroarch/system/dolphin-emu && \
     git clone --depth 1 https://github.com/dolphin-emu/dolphin.git /tmp/dolphin && \
-    cp -r /tmp/dolphin/Data/Sys /roms/system/dolphin-emu/ && \
+    cp -r /tmp/dolphin/Data/Sys /usr/share/retroarch/system/dolphin-emu/ && \
     rm -rf /tmp/dolphin
 
 # Nintendo 3DS (citra)
