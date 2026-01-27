@@ -193,12 +193,12 @@ data:
     audio_latency = "64"
     audio_sync = "true"
 
-    # Input settings - linuxraw for container compatibility
-    # udev doesn't receive hotplug events in containers (no host udevd access)
-    # linuxraw polls /dev/input/* directly, works for virtual controllers
-    input_driver = "linuxraw"
+    # Input settings - SDL2 for reliable controller input
+    # linuxraw has KNOWN BUG where devices detected but input doesn't register (libretro/RetroArch#16767)
+    # SDL2 properly handles input events and works with virtual controllers
+    input_driver = "sdl2"
     input_autodetect_enable = "true"
-    input_joypad_driver = "linuxraw"
+    input_joypad_driver = "sdl2"
     # Point to autoconfig dir containing Wolf Xbox controller profile
     joypad_autoconfig_dir = "/usr/share/retroarch/autoconfig"
     gamemode_enable = "false"
