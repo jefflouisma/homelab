@@ -43,7 +43,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 # ARGs for cache invalidation - only change these when repos are updated
 ARG SMITHAY_COMMIT=a166cf4c94b5aedc332a65aa1dd753e8148829c3
 # Vulkan renderer branch: feature/wgpu-vulkan-renderer
-ARG GST_COMMIT=605902e
+ARG GST_COMMIT=02e41ee
 
 WORKDIR /tmp/
 
