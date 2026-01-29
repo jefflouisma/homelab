@@ -11,7 +11,7 @@ FROM $BASE_IMAGE AS gst-builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Minimal deps for Rust build + openssl for cargo-c
+# Minimal deps for Rust build + openssl for cargo-c + Vulkan SDK for vulkan feature
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
     curl \
@@ -23,6 +23,8 @@ RUN apt-get update -y && \
     libssl-dev \
     libwayland-dev libwayland-server0 libinput-dev libxkbcommon-dev libgbm-dev \
     libglib2.0-dev libegl-dev libgles-dev libopengl-dev libdrm-dev \
+    # Vulkan SDK for ash-based renderer
+    libvulkan-dev vulkan-validationlayers glslc \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust and set version
@@ -40,7 +42,8 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 
 # ARGs for cache invalidation - only change these when repos are updated
 ARG SMITHAY_COMMIT=a166cf4c94b5aedc332a65aa1dd753e8148829c3
-ARG GST_COMMIT=cd4d8e7
+# Vulkan renderer branch: feature/wgpu-vulkan-renderer
+ARG GST_COMMIT=08743cf
 
 WORKDIR /tmp/
 
@@ -62,7 +65,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     echo '[patch."https://github.com/games-on-whales/smithay"]' > .cargo/config.toml && \
     echo 'smithay = { path = "/tmp/smithay-patched" }' >> .cargo/config.toml && \
     cargo install cargo-c -j 1 && \
-    cargo cinstall --jobs 1 --features="cuda" --prefix=/usr/local/lib/x86_64-linux-gnu/ --libdir=/usr/local/lib/x86_64-linux-gnu/gstreamer-1.0
+    cargo cinstall --jobs 1 --features="cuda,vulkan" --prefix=/usr/local/lib/x86_64-linux-gnu/ --libdir=/usr/local/lib/x86_64-linux-gnu/gstreamer-1.0
 
 ########################################################
 # STAGE 2: Wolf C++ builder (~16 min)
@@ -153,6 +156,8 @@ RUN apt-get update -y && \
     libwayland-server0 libinput10 libxkbcommon0 libgbm1 \
     libglvnd0 libgl1 libglx0 libegl1 libgles2 xwayland hwdata \
     libnvidia-egl-wayland1 \
+    # Vulkan runtime for ash-based renderer
+    libvulkan1 \
     && rm -rf /var/lib/apt/lists/* \
     # Create GBM directory for nvidia backend symlink (created at runtime by startup.sh)
     # libgbm searches in /usr/lib/gbm/ by default, NOT /usr/lib/x86_64-linux-gnu/gbm/
