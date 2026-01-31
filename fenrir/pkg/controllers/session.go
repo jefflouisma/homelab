@@ -793,6 +793,12 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				Name:      "egl-platform",
 				MountPath: "/usr/share/egl/egl_external_platform.d",
 			},
+			// udev access for SDL2 joystick hotplug detection
+			// Required for RetroArch to detect Wolf's virtual Xbox controller
+			corev1.VolumeMount{
+				Name:      "host-udev",
+				MountPath: "/run/udev",
+			},
 		)
 
 		podToCreate.Spec.Containers[i].Env = append(podToCreate.Spec.Containers[i].Env, mapToEnvApplyList(map[string]string{
