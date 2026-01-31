@@ -45,5 +45,8 @@ keys.txt
 
 # Sensitive files (local secrets)
 id_rsa
+id_rsa.pub
+argocd-deploy-key
+argocd-deploy-key.pub
 g913-k8s-prod-arc.*.private-key.pem
 barleta/local.yaml
