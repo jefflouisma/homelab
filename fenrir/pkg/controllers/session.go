@@ -1078,8 +1078,11 @@ chmod 666 /dev/dri/renderD* 2>/dev/null || true
 chmod 666 /dev/dri/card* 2>/dev/null || true
 chmod 666 /dev/nvidia* 2>/dev/null || true
 chmod 666 /dev/uinput 2>/dev/null || true
-ls -la /dev/dri/ /dev/nvidia* /dev/uinput 2>/dev/null || true
+chmod 666 /dev/input/event* 2>/dev/null || true
+chmod 666 /dev/input/js* 2>/dev/null || true
+ls -la /dev/dri/ /dev/nvidia* /dev/uinput /dev/input/ 2>/dev/null || true
 echo "=== Done ==="
+
 `,
 			},
 			SecurityContext: &corev1.SecurityContext{

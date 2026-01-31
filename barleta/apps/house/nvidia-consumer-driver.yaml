@@ -50,6 +50,12 @@ data:
       modprobe nvidia || true
     fi
     
+    # Load uinput module for virtual input device support (Wolf gamepad)
+    if ! lsmod | grep -q "^uinput "; then
+      echo "Loading uinput module..."
+      modprobe uinput || true
+    fi
+    
     # Create device nodes
     echo "Creating device nodes..."
     if [ -e /usr/bin/nvidia-smi ]; then
