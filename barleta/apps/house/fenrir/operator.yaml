@@ -109,8 +109,8 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: WOLF_IMAGE
-              # Wolf with /run/udev mount for SDL2 joystick hotplug detection
-              value: ghcr.io/jefflouisma/fenrir-wolf:dce0407
+              # Wolf with EGL fence error handling fix (cd4d8e7 in gst-wayland-display)
+              value: ghcr.io/jefflouisma/fenrir-wolf:c5ee12d
             - name: IMAGE_PULL_SECRET
               value: ghcr-secret
           resources:
