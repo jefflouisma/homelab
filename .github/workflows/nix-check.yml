@@ -1,0 +1,32 @@
+name: NixOS Flake Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.nix'
+      - 'flake.lock'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.nix'
+      - 'flake.lock'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v14
+
+      - name: Setup Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      - name: Check flake
+        run: nix flake check --no-build
+
+      - name: Show flake info
+        run: nix flake show

@@ -13,7 +13,7 @@ Thumbs.db
 *.key
 *.pem
 *.crt
-secrets/
+!secrets/.sops.yaml  # Allow sops config
 .env
 .env.*
 
@@ -32,3 +32,18 @@ id_rsa*
 .env 
 # Rust build artifacts
 moonlight-mcp/target/
+
+# NixOS / Nix Flakes
+result
+result-*
+.direnv/
+.envrc
+
+# sops-nix age keys (keep these local, never commit)
+*.age
+keys.txt
+
+# Sensitive files (local secrets)
+id_rsa
+g913-k8s-prod-arc.*.private-key.pem
+barleta/local.yaml
