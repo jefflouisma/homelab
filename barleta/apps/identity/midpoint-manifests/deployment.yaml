@@ -74,7 +74,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: harvester-longhorn
+  storageClassName: local-path
   resources:
     requests:
       storage: 5Gi

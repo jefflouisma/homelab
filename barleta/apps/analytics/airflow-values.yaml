@@ -61,7 +61,7 @@ dags:
   persistence:
     enabled: true
     size: 1Gi
-    storageClassName: longhorn
+    storageClassName: local-path
   gitSync:
     enabled: false
 
