@@ -122,7 +122,8 @@ spec:
   ports:
     - port: 3000
       targetPort: 3000
-  type: ClusterIP
+      nodePort: 31664
+  type: NodePort
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
