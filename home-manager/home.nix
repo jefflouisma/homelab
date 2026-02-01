@@ -32,8 +32,6 @@
     # System utilities
     htop
     btop
-    tmux
-    neovim
     ripgrep
     fd
     fzf
