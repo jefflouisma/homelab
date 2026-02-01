@@ -1,0 +1,29 @@
+# Analytics ArgoCD Application
+# Deploys Grafana and Loki for observability
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: analytics
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jefflouisma/homelab.git
+    targetRevision: main
+    path: barleta/apps/analytics
+    directory:
+      recurse: true
+      include: "*.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: analytics
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
