@@ -39,6 +39,11 @@ data:
                     <auditServiceFactoryClass>com.evolveum.midpoint.repo.sqale.audit.SqaleAuditServiceFactory</auditServiceFactoryClass>
                 </auditService>
             </audit>
+            <keystore>
+                <keyStorePath>${midpoint.home}/keystore.jceks</keyStorePath>
+                <keyStorePassword>changeit</keyStorePassword>
+                <encryptionKeyAlias>default</encryptionKeyAlias>
+            </keystore>
             <administrator>
                 <initialPassword>admin123</initialPassword>
             </administrator>
