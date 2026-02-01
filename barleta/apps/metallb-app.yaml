@@ -39,7 +39,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:jefflouisma/homelab.git
+    repoURL: https://github.com/jefflouisma/homelab.git
     targetRevision: main
     path: barleta/apps/platform/metallb-config
   destination:
