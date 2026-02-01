@@ -43,6 +43,10 @@ spec:
           env:
             - name: MP_SET_midpoint_repository_database
               value: postgresql
+            - name: MP_SET_midpoint_repository_type
+              value: native
+            - name: MP_SET_midpoint_repository_initializationFailTimeout
+              value: "60000"
             - name: MP_SET_midpoint_repository_jdbcUrl
               value: jdbc:postgresql://postgresql.identity.svc.cluster.local:5432/midpoint
             - name: MP_SET_midpoint_repository_jdbcUsername
@@ -57,6 +61,8 @@ spec:
                 secretKeyRef:
                   name: midpoint-admin-secret
                   key: password
+            - name: MP_INIT_CFG
+              value: /opt/midpoint/var
           resources:
             requests:
               cpu: 500m
