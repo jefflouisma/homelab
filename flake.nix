@@ -35,6 +35,11 @@
       };
     };
 
+    # Disko configurations for standalone CLI usage
+    diskoConfigurations = {
+      g913 = import ./hosts/g913/disko.nix { lib = nixpkgs.lib; };
+    };
+
     # Expose overlays if needed
     overlays.default = import ./overlays;
   };
