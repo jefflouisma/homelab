@@ -7,8 +7,8 @@ metadata:
   namespace: house
 spec:
   accessModes:
-    - ReadWriteMany
-  storageClassName: longhorn
+    - ReadWriteOnce
+  storageClassName: local-path
   resources:
     requests:
       storage: 500Gi
@@ -20,8 +20,8 @@ metadata:
   namespace: house
 spec:
   accessModes:
-    - ReadWriteMany
-  storageClassName: longhorn
+    - ReadWriteOnce
+  storageClassName: local-path
   resources:
     requests:
       storage: 10Gi
@@ -33,8 +33,8 @@ metadata:
   namespace: house
 spec:
   accessModes:
-    - ReadWriteMany
-  storageClassName: longhorn
+    - ReadWriteOnce
+  storageClassName: local-path
   resources:
     requests:
       storage: 1Gi
