@@ -40,15 +40,15 @@ sudo apt install -y \
     lsb-release
 
 # ===========================================
-# 3. INSTALL DOCKER
+# 3. INSTALL REALTEK RTL8126 DRIVER (if needed)
 # ===========================================
-info "Installing Docker..."
-if ! command -v docker &> /dev/null; then
-    curl -fsSL https://get.docker.com | sudo sh
-    sudo usermod -aG docker $USER
-    info "Docker installed. You'll need to log out and back in for group changes."
-else
-    info "Docker already installed."
+if lspci | grep -i "RTL8126" &> /dev/null; then
+    info "Realtek RTL8126 5GbE detected. Checking driver..."
+    # The r8169 driver should work in kernel 6.4+, but if not:
+    if ! ip link | grep -q "enp"; then
+        warn "Network not detected. You may need to install rtl8126 driver manually."
+        warn "See: https://github.com/openwrt/rtl8126"
+    fi
 fi
 
 # ===========================================
@@ -57,8 +57,9 @@ fi
 if lspci | grep -i nvidia &> /dev/null; then
     info "NVIDIA GPU detected. Installing drivers..."
     sudo apt install -y nvidia-driver-570 nvidia-container-toolkit
-    sudo nvidia-ctk runtime configure --runtime=docker
-    sudo systemctl restart docker
+    # Configure for containerd (K3s uses containerd, not Docker)
+    sudo nvidia-ctk runtime configure --runtime=containerd
+    sudo systemctl restart containerd || true
 else
     warn "No NVIDIA GPU detected, skipping driver installation."
 fi
@@ -145,7 +146,7 @@ echo -e "${GREEN}Setup Complete!${NC}"
 echo "=========================================="
 echo ""
 echo "Next steps:"
-echo "  1. Log out and back in (for Docker group + Zsh)"
+echo "  1. Log out and back in (for Zsh shell change)"
 echo "  2. Verify K3s: kubectl get nodes"
 echo "  3. Install ArgoCD: kubectl apply -k ~/homelab/barleta/argocd"
 echo ""
