@@ -56,6 +56,10 @@ spec:
                 secretKeyRef:
                   name: midpoint-db-secret
                   key: password
+            - name: MP_SET_midpoint_repository_missingSchemaAction
+              value: create
+            - name: MP_SET_midpoint_repository_upgradeableSchemaAction
+              value: upgrade
             - name: MP_SET_midpoint_administrator_initialPassword
               valueFrom:
                 secretKeyRef:
