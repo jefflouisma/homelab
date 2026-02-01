@@ -10,7 +10,7 @@
     ../../modules/hardware/realtek-5gbe.nix
     
     # Service modules
-    ../../modules/services/kubernetes.nix
+    # ../../modules/services/kubernetes.nix  # TODO: Use K3s instead - vanilla k8s module has breaking changes
     
     # Common profiles
     ../../modules/profiles/server.nix
