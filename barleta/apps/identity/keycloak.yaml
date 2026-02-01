@@ -12,13 +12,9 @@ spec:
   source:
     repoURL: https://charts.bitnami.com/bitnami
     chart: keycloak
-    targetRevision: 22.2.6
+    targetRevision: "*"
     helm:
       valuesObject:
-        image:
-          registry: quay.io
-          repository: keycloak/keycloak
-          tag: 25.0.6
         auth:
           adminUser: admin
           adminPassword: "changeme"  # Override in secret

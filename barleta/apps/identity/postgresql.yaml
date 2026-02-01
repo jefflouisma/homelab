@@ -12,11 +12,9 @@ spec:
   source:
     repoURL: https://charts.bitnami.com/bitnami
     chart: postgresql
-    targetRevision: 15.5.38
+    targetRevision: "*"
     helm:
       valuesObject:
-        image:
-          tag: 16.4.0-debian-12-r0
         global:
           postgresql:
             auth:
