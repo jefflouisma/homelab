@@ -17,6 +17,34 @@ type: Opaque
 stringData:
   password: "admin123"
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: midpoint-config
+  namespace: identity
+data:
+  config.xml: |
+    <?xml version="1.0"?>
+    <configuration>
+        <midpoint>
+            <repository>
+                <type>native</type>
+                <database>postgresql</database>
+                <jdbcUrl>jdbc:postgresql://postgresql.identity.svc.cluster.local:5432/midpoint</jdbcUrl>
+                <jdbcUsername>postgres</jdbcUsername>
+                <jdbcPassword>changeme</jdbcPassword>
+            </repository>
+            <audit>
+                <auditService>
+                    <auditServiceFactoryClass>com.evolveum.midpoint.repo.sqale.audit.SqaleAuditServiceFactory</auditServiceFactoryClass>
+                </auditService>
+            </audit>
+            <administrator>
+                <initialPassword>admin123</initialPassword>
+            </administrator>
+        </midpoint>
+    </configuration>
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -41,46 +69,8 @@ spec:
             - containerPort: 8080
               name: http
           env:
-            - name: MP_SET_midpoint_repository_database
-              value: postgresql
-            - name: MP_SET_midpoint_repository_type
-              value: native
-            - name: MP_SET_midpoint_repository_initializationFailTimeout
-              value: "60000"
-            - name: MP_SET_midpoint_repository_jdbcUrl
-              value: jdbc:postgresql://postgresql.identity.svc.cluster.local:5432/midpoint
-            - name: MP_SET_midpoint_repository_jdbcUsername
-              value: postgres
-            - name: MP_SET_midpoint_repository_jdbcPassword
-              valueFrom:
-                secretKeyRef:
-                  name: midpoint-db-secret
-                  key: password
-            - name: MP_SET_midpoint_repository_missingSchemaAction
-              value: create
-            - name: MP_SET_midpoint_repository_upgradeableSchemaAction
-              value: upgrade
-            - name: MP_SET_midpoint_administrator_initialPassword
-              valueFrom:
-                secretKeyRef:
-                  name: midpoint-admin-secret
-                  key: password
-            # Audit configuration for native repository
-            - name: MP_SET_midpoint_audit_database
-              value: postgresql
-            - name: MP_SET_midpoint_audit_type
-              value: native
-            - name: MP_SET_midpoint_audit_jdbcUrl
-              value: jdbc:postgresql://postgresql.identity.svc.cluster.local:5432/midpoint
-            - name: MP_SET_midpoint_audit_jdbcUsername
-              value: postgres
-            - name: MP_SET_midpoint_audit_jdbcPassword
-              valueFrom:
-                secretKeyRef:
-                  name: midpoint-db-secret
-                  key: password
-            - name: MP_INIT_CFG
-              value: /opt/midpoint/var
+            - name: MP_ENTRY_POINT
+              value: /opt/midpoint-dirs-docker-entrypoint
           resources:
             requests:
               cpu: 500m
@@ -91,22 +81,28 @@ spec:
           volumeMounts:
             - name: midpoint-home
               mountPath: /opt/midpoint/var
+            - name: midpoint-config-volume
+              mountPath: /opt/midpoint/var/config.xml
+              subPath: config.xml
           livenessProbe:
             httpGet:
               path: /midpoint/actuator/health
               port: 8080
-            initialDelaySeconds: 120
+            initialDelaySeconds: 180
             periodSeconds: 30
           readinessProbe:
             httpGet:
               path: /midpoint/actuator/health
               port: 8080
-            initialDelaySeconds: 60
+            initialDelaySeconds: 90
             periodSeconds: 10
       volumes:
         - name: midpoint-home
           persistentVolumeClaim:
             claimName: midpoint-data
+        - name: midpoint-config-volume
+          configMap:
+            name: midpoint-config
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
