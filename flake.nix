@@ -36,8 +36,9 @@
     };
 
     # Disko configurations for standalone CLI usage
+    # Must export the disko.devices attribute directly
     diskoConfigurations = {
-      g913 = import ./hosts/g913/disko.nix { lib = nixpkgs.lib; };
+      g913 = (import ./hosts/g913/disko.nix { lib = nixpkgs.lib; }).disko.devices;
     };
 
     # Expose overlays if needed
