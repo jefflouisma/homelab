@@ -1,4 +1,22 @@
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: midpoint-db-secret
+  namespace: identity
+type: Opaque
+stringData:
+  password: "changeme"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: midpoint-admin-secret
+  namespace: identity
+type: Opaque
+stringData:
+  password: "admin123"
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

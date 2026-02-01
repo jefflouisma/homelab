@@ -12,9 +12,11 @@ spec:
   source:
     repoURL: https://charts.bitnami.com/bitnami
     chart: keycloak
-    targetRevision: 24.4.2
+    targetRevision: 22.2.6
     helm:
       valuesObject:
+        image:
+          tag: 25.0.6-debian-12-r1
         auth:
           adminUser: admin
           adminPassword: "changeme"  # Override in secret
