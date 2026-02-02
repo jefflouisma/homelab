@@ -228,5 +228,7 @@ LABEL org.opencontainers.image.source="https://github.com/games-on-whales/wolf/"
 LABEL org.opencontainers.image.description="Wolf: stream virtual desktops and games in Docker"
 
 # See GOW/base-app
+# Cache-bust: Force COPY when startup.sh changes (ARG invalidates cache from this point)
+ARG STARTUP_SCRIPT_HASH=20260202_v15
 COPY --chmod=777 docker/startup.sh /opt/gow/startup-app.sh
 ENTRYPOINT ["/entrypoint.sh"]
