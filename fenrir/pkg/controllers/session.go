@@ -1428,6 +1428,14 @@ echo "=== Done ==="
 					Name:      "nvidia-uvm-tools",
 					MountPath: "/dev/nvidia-uvm-tools",
 				},
+				// Mount operator's ConfigMap startup-app.sh to override wolf image's embedded script
+				// This ensures our EGL path fixes are used instead of the image's hardcoded paths
+				{
+					Name:      "config",
+					MountPath: "/opt/gow/startup-app.sh",
+					SubPath:   "startup-app.sh",
+					ReadOnly:  true,
+				},
 			},
 		},
 	)
