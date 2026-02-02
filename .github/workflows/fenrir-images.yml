@@ -69,7 +69,8 @@ jobs:
           file: fenrir/images/wolf/docker/wolf.Dockerfile
           tags: ghcr.io/jefflouisma/fenrir-wolf:${{ steps.vars.outputs.tag }}
           push: true
-          cache-from: type=gha
+          # Temporarily removed cache to force fresh build including startup.sh
+          # cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Build/push fenrir-retroarch
