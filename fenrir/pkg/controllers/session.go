@@ -1437,6 +1437,43 @@ echo "=== Done ==="
 					SubPath:   "startup-app.sh",
 					ReadOnly:  true,
 				},
+		},
+		},
+		// Sidecar container to fix Wayland socket permissions after wolf creates it
+		// The exec in wolf's startup.sh kills background processes, so we need a separate container
+		corev1.Container{
+			Name:  "wayland-socket-fixer",
+			Image: "busybox:latest",
+			Command: []string{"/bin/sh", "-c"},
+			Args: []string{`
+SOCKET_PATH="/tmp/.X11-unix/wayland-1"
+echo "[socket-fixer] Starting Wayland socket permission fixer..."
+i=0
+while [ $i -lt 120 ]; do
+    if [ -S "$SOCKET_PATH" ]; then
+        echo "[socket-fixer] Found socket at $SOCKET_PATH"
+        ls -la "$SOCKET_PATH"
+        chmod 777 "$SOCKET_PATH" && echo "[socket-fixer] chmod 777 SUCCESS"
+        chown 1000:1000 "$SOCKET_PATH" && echo "[socket-fixer] chown 1000:1000 SUCCESS"
+        ls -la "$SOCKET_PATH"
+        echo "[socket-fixer] Done, sleeping forever"
+        sleep infinity
+    fi
+    i=$((i+1))
+    sleep 0.5
+done
+echo "[socket-fixer] TIMEOUT: Socket not found after 60s"
+exit 1
+`},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "wolf-runtime",
+					MountPath: "/tmp/.X11-unix",
+				},
+			},
+			SecurityContext: &corev1.SecurityContext{
+				RunAsUser:  ptr.To(int64(0)), // Run as root to chmod/chown
+				RunAsGroup: ptr.To(int64(0)),
 			},
 		},
 	)
