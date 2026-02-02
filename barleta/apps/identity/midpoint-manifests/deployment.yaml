@@ -44,6 +44,10 @@ data:
                 <keyStorePassword>changeit</keyStorePassword>
                 <encryptionKeyAlias>default</encryptionKeyAlias>
             </keystore>
+            <icf>
+                <scanClasspath>true</scanClasspath>
+                <scanDirectory>${midpoint.home}/icf-connectors</scanDirectory>
+            </icf>
             <administrator>
                 <initialPassword>admin123</initialPassword>
             </administrator>
