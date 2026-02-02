@@ -80,6 +80,15 @@ spec:
           env:
             - name: MP_ENTRY_POINT
               value: /opt/midpoint-dirs-docker-entrypoint
+            - name: MP_SET_midpoint_repository_database
+              value: postgresql
+            - name: MP_SET_midpoint_repository_jdbcUrl
+              value: jdbc:postgresql://postgresql.identity.svc.cluster.local:5432/midpoint
+            - name: MP_SET_midpoint_repository_jdbcUsername
+              value: postgres
+            - name: MP_SET_midpoint_repository_jdbcPassword
+              value: changeme
+            - name: MP_UNSET_midpoint_repository_h2_baseDir
           resources:
             requests:
               cpu: 500m
