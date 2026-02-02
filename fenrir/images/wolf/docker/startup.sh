@@ -47,12 +47,14 @@ fi
 # Create EGL external platform configuration for NVIDIA GBM backend
 # Required for libgbm to find nvidia-drm driver and create DMA buffers
 # See: https://github.com/games-on-whales/wolf/issues/301
-mkdir -p /usr/share/egl/egl_external_platform.d
-chmod 777 /usr/share/egl/egl_external_platform.d 2>/dev/null || true
+# NOTE: /usr/share/egl/egl_external_platform.d is mounted as writable emptyDir in K8s
+# The path is also symlinked/available via __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS env var
+EGL_PLATFORM_DIR="/usr/share/egl/egl_external_platform.d"
+mkdir -p "$EGL_PLATFORM_DIR" 2>/dev/null || true
 
 # Create NVIDIA GBM platform config if nvidia-egl-gbm library exists
 if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
-    cat > /usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json << 'EOF'
+    cat > "$EGL_PLATFORM_DIR/15_nvidia_gbm.json" 2>/dev/null << 'EOF' || echo "[startup.sh] Could not write EGL GBM config (path may be read-only)" >&2
 {
     "file_format_version" : "1.0.0",
     "ICD" : {
@@ -64,7 +66,7 @@ fi
 
 # Create NVIDIA Wayland platform config if library exists
 if [ -f /nvidia-libs/libnvidia-egl-wayland.so.1 ]; then
-    cat > /usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json << 'EOF'
+    cat > "$EGL_PLATFORM_DIR/10_nvidia_wayland.json" 2>/dev/null << 'EOF' || echo "[startup.sh] Could not write EGL Wayland config (path may be read-only)" >&2
 {
     "file_format_version" : "1.0.0",
     "ICD" : {
