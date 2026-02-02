@@ -1810,7 +1810,7 @@ func (c *SessionController) reconcilePVC(ctx context.Context, session *v1alpha1t
 			WithSpec(
 				v1ac.PersistentVolumeClaimSpec().
 					WithAccessModes("ReadWriteOnce").
-					WithStorageClassName("longhorn").
+					WithStorageClassName("local-path").
 					WithResources(v1ac.VolumeResourceRequirements().
 						WithRequests(corev1.ResourceList{
 							corev1.ResourceStorage: resource.MustParse("100Gi"),
