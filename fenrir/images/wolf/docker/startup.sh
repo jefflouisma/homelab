@@ -79,30 +79,26 @@ fi
 # Background loop to fix Wayland socket permissions after wolf creates it.
 # Wolf runs as root but clients (e.g., retroarch) run as uid 1000.
 # The socket needs to be world-writable (or chowned) for clients to connect.
-# Use nohup to ensure background process survives exec.
-nohup sh -c '
+{
     SOCKET_PATH="/tmp/.X11-unix/wayland-1"
-    echo "[startup.sh] Starting Wayland socket permission fixer (PID: $$)..." >&2
+    LOG_FILE="/tmp/permission-fixer.log"
+    echo "[$$] Starting permission fixer at $(date)" > "$LOG_FILE"
     for i in $(seq 1 60); do
         if [ -S "$SOCKET_PATH" ]; then
-            echo "[startup.sh] Found socket at $SOCKET_PATH, fixing permissions..." >&2
-            ls -la "$SOCKET_PATH" >&2
-            if chmod 777 "$SOCKET_PATH" 2>&1; then
-                echo "[startup.sh] chmod 777 SUCCESS" >&2
-            else
-                echo "[startup.sh] chmod 777 FAILED (likely permission denied)" >&2
-            fi
-            if chown 1000:1000 "$SOCKET_PATH" 2>&1; then
-                echo "[startup.sh] chown 1000:1000 SUCCESS" >&2
-            else
-                echo "[startup.sh] chown 1000:1000 FAILED (likely permission denied)" >&2
-            fi
-            ls -la "$SOCKET_PATH" >&2
+            echo "[$$] Found socket, fixing permissions..." >> "$LOG_FILE"
+            ls -la "$SOCKET_PATH" >> "$LOG_FILE" 2>&1
+            chmod 777 "$SOCKET_PATH" >> "$LOG_FILE" 2>&1 && echo "[$$] chmod 777 SUCCESS" >> "$LOG_FILE"
+            chown 1000:1000 "$SOCKET_PATH" >> "$LOG_FILE" 2>&1 && echo "[$$] chown SUCCESS" >> "$LOG_FILE"
+            ls -la "$SOCKET_PATH" >> "$LOG_FILE" 2>&1
+            echo "[$$] Done" >> "$LOG_FILE"
+            # Also dump to stderr for container logs
+            cat "$LOG_FILE" >&2
             exit 0
         fi
         sleep 0.5
     done
-    echo "[startup.sh] TIMEOUT: Socket not found after 30s" >&2
-' >/dev/null &
+    echo "[$$] TIMEOUT: Socket not found" >> "$LOG_FILE"
+    cat "$LOG_FILE" >&2
+} &
 
 exec /wolf/wolf
