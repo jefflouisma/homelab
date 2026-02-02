@@ -1293,11 +1293,15 @@ echo "=== Done ==="
 				// Tell libgbm where to find nvidia-drm_gbm.so (created by startup.sh)
 				// Default libgbm search path is /usr/lib/gbm/ (NOT /usr/lib/x86_64-linux-gnu/gbm/)
 				"GBM_BACKENDS_PATH": "/usr/lib/gbm",
-				"LD_LIBRARY_PATH":   "/nvrtc-libs:/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu",
-				// DRI device group access - Harvester host GIDs
+				// Vulkan ICD configuration - ensure NVIDIA Vulkan driver is used
+				// This is critical for Vulkan encoding and rendering
+				"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/nvidia_icd.json:/etc/vulkan/icd.d/nvidia_icd.json",
+				"VK_LAYER_PATH":    "/usr/share/vulkan/explicit_layer.d:/etc/vulkan/explicit_layer.d",
+				"LD_LIBRARY_PATH":  "/nvrtc-libs:/nvidia-libs:/nvidia-userspace:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu",
+				// DRI device group access - Ubuntu K3s host GIDs
 				// Wolf's 15-setup_devices.sh uses GOW_ prefix
-				"GOW_VIDEO_GID":  "486", // video group GID
-				"GOW_RENDER_GID": "489", // render group GID
+				"GOW_VIDEO_GID":  "44",  // video group GID (Ubuntu)
+				"GOW_RENDER_GID": "993", // render group GID (Ubuntu)
 				// Ensure wolf user gets access to DRI + NVIDIA devices
 				"GOW_REQUIRED_DEVICES": "/dev/uinput /dev/input/event* /dev/dri/renderD* /dev/dri/card* /dev/nvidia*",
 			}),
@@ -1749,12 +1753,14 @@ else
     ls -la /nvidia-libs/ 2>&1 | head -20 >&2
 fi
 
-# Create EGL external platform configuration for NVIDIA GBM/Wayland.
-mkdir -p /usr/share/egl/egl_external_platform.d
-chmod 777 /usr/share/egl/egl_external_platform.d 2>/dev/null || true
+# Create EGL external platform configuration in the writable mounted path.
+# The __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS env var points to /etc/wolf/cfg/egl_external_platform.d
+EGL_PLATFORM_DIR="/etc/wolf/cfg/egl_external_platform.d"
+mkdir -p "$EGL_PLATFORM_DIR"
 
 if [ -f /nvidia-libs/libnvidia-egl-gbm.so.1 ]; then
-    cat > /usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json << 'EOF'
+    echo "[startup.sh] Creating EGL GBM platform config in $EGL_PLATFORM_DIR" >&2
+    cat > "$EGL_PLATFORM_DIR/15_nvidia_gbm.json" << 'EOF'
 {
     "file_format_version" : "1.0.0",
     "external_platform" : {
@@ -1765,7 +1771,8 @@ EOF
 fi
 
 if [ -f /nvidia-libs/libnvidia-egl-wayland.so.1 ]; then
-    cat > /usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json << 'EOF'
+    echo "[startup.sh] Creating EGL Wayland platform config in $EGL_PLATFORM_DIR" >&2
+    cat > "$EGL_PLATFORM_DIR/10_nvidia_wayland.json" << 'EOF'
 {
     "file_format_version" : "1.0.0",
     "external_platform" : {
@@ -1774,6 +1781,10 @@ if [ -f /nvidia-libs/libnvidia-egl-wayland.so.1 ]; then
 }
 EOF
 fi
+
+# Also create symlink for apps that look in /usr/share/egl (best effort, ignore if read-only)
+mkdir -p /usr/share/egl 2>/dev/null || true
+ln -sfn "$EGL_PLATFORM_DIR" /usr/share/egl/egl_external_platform.d 2>/dev/null || echo "[startup.sh] /usr/share/egl is read-only, using __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS env var" >&2
 
 exec /wolf/wolf
 `,
