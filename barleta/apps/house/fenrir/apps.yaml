@@ -58,7 +58,13 @@ spec:
               fi
 
               export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
-              WAYLAND_SOCKET="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY:-wayland-0}"
+              # Handle both relative (wayland-0) and absolute (/tmp/.X11-unix/wayland-1) paths
+              WAYLAND_DISPLAY_VAL="${WAYLAND_DISPLAY:-wayland-0}"
+              if [[ "$WAYLAND_DISPLAY_VAL" = /* ]]; then
+                  WAYLAND_SOCKET="$WAYLAND_DISPLAY_VAL"
+              else
+                  WAYLAND_SOCKET="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY_VAL}"
+              fi
               echo "Waiting for Wayland display at ${WAYLAND_SOCKET}..."
               TIMEOUT=30
               WAITED=0
