@@ -1436,6 +1436,13 @@ echo "=== Done ==="
 					SubPath:   "startup-app.sh",
 					ReadOnly:  true,
 				},
+				// Mount host /lib/x86_64-linux-gnu so nvidia-libs symlinks resolve
+				// Symlinks in /nvidia-libs point to /lib/x86_64-linux-gnu/...
+				{
+					Name:      "host-lib-x86",
+					MountPath: "/lib/x86_64-linux-gnu",
+					ReadOnly:  true,
+				},
 			},
 		},
 	)
@@ -1580,6 +1587,17 @@ echo "=== Done ==="
 				HostPath: &corev1.HostPathVolumeSource{
 					Path: "/var/lib/nvidia-userspace",
 					Type: ptr.To(corev1.HostPathDirectoryOrCreate),
+				},
+			},
+		},
+		// Mount host /lib/x86_64-linux-gnu so nvidia-libs symlinks can resolve
+		// The symlinks in /var/lib/nvidia/lib/ point to /lib/x86_64-linux-gnu/...
+		corev1.Volume{
+			Name: "host-lib-x86",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/lib/x86_64-linux-gnu",
+					Type: ptr.To(corev1.HostPathDirectory),
 				},
 			},
 		},
