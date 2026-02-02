@@ -313,10 +313,9 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
                                     // Step 2.5: Connect control stream if enabled (like real Moonlight)
                                     let mut control_stream_handle: Option<ControlStream> = None;
                                     if *use_control_stream {
-                                        // Extract control port from RTSP URL (default: 47999)
-                                        let control_port = pairing::parse_rtsp_host_port(session_url)
-                                            .map(|(_, p)| p.saturating_sub(10) + 1) // Control port is typically rtsp_port - 10 + 1
-                                            .unwrap_or(47999);
+                                        // ENet control port is always 47999 (fixed port in Wolf/Moonlight protocol)
+                                        // The RTSP port calculation was incorrect - Wolf uses a fixed ENet port
+                                        let control_port = 47999u16;
                                         
                                         eprintln!(
                                             "[DEBUG] Connecting control stream to {}:{} with rikey={}",
