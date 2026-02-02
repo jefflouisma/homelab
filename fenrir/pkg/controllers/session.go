@@ -1263,7 +1263,7 @@ echo "=== Done ==="
 				"WOLF_CFG_FILE":           "/etc/wolf/cfg/config.toml",
 				"WOLF_PULSE_IMAGE":        "ghcr.io/games-on-whales/pulseaudio:master",
 				"WOLF_CFG_FOLDER":         "/etc/wolf/cfg",
-				"WOLF_RENDER_NODE":        "/dev/dri/renderD129", // renderD129=NVIDIA
+				"WOLF_RENDER_NODE":        "/dev/dri/renderD128", // renderD128=NVIDIA RTX 5080 (pci 01:00.0)
 				"WOLF_USE_ZERO_COPY":      "FALSE",
 				"GST_PLUGIN_FEATURE_RANK": "vaapi*:NONE",
 				"GST_DEBUG":               "1",
