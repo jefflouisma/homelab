@@ -1397,6 +1397,12 @@ echo "=== Done ==="
 					Name:      "egl-platform",
 					MountPath: "/etc/wolf/cfg/egl_external_platform.d",
 				},
+				// Also mount to /usr/share/egl/egl_external_platform.d for wolf's built-in startup-app.sh
+				// which writes EGL configs to this path before our custom startup.sh runs
+				{
+					Name:      "egl-platform",
+					MountPath: "/usr/share/egl/egl_external_platform.d",
+				},
 				{
 					Name:      "egl-vendor",
 					MountPath: "/usr/share/glvnd/egl_vendor.d",
