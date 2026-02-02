@@ -8,9 +8,10 @@ RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/.X11-unix}"
 export XDG_RUNTIME_DIR="$RUNTIME_DIR"
 
 # Wayland clients require XDG_RUNTIME_DIR to be private (0700).
-mkdir -p "$RUNTIME_DIR"
+# In sidecar mode, the dir may be owned by root/init, so don't fail if chown fails.
+mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
 chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
-chown "$(id -u)":"$(id -g)" "$RUNTIME_DIR" 2>/dev/null || true
+# Skip chown - in sidecar mode we can't change ownership of shared volume
 
 # Use runtime cookie when available and mirror to HOME for libpulse fallback.
 PULSE_COOKIE_PATH="${PULSE_COOKIE:-${RUNTIME_DIR}/.config/pulse/cookie}"
@@ -23,7 +24,13 @@ if [ -f "$PULSE_COOKIE_PATH" ]; then
 fi
 
 # Wait for Wayland display socket
-WAYLAND_SOCKET="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY:-wayland-0}"
+# Handle both relative (wayland-0) and absolute (/tmp/.X11-unix/wayland-1) paths
+WAYLAND_DISPLAY_VAL="${WAYLAND_DISPLAY:-wayland-0}"
+if [[ "$WAYLAND_DISPLAY_VAL" = /* ]]; then
+    WAYLAND_SOCKET="$WAYLAND_DISPLAY_VAL"
+else
+    WAYLAND_SOCKET="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY_VAL}"
+fi
 echo "Waiting for Wayland display at ${WAYLAND_SOCKET}..."
 TIMEOUT=30
 WAITED=0

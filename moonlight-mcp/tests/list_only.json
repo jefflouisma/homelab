@@ -1,5 +1,5 @@
 {
-    "host": "192.168.1.223",
+    "host": "192.168.1.221",
     "action": "list_apps",
     "timeout_ms": 30000
 }

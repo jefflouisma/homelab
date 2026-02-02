@@ -1,15 +1,15 @@
 {
-  "host": "192.168.1.223",
+  "host": "192.168.1.221",
   "action": "sequence",
   "screenshot_dir": "/Volumes/4TB_Drive/Documents/homelab/barleta/screenshots",
   "timeout_ms": 120000,
   "steps": [
     {
-      "host": "192.168.1.223",
+      "host": "192.168.1.221",
       "action": "list_apps"
     },
     {
-      "host": "192.168.1.223",
+      "host": "192.168.1.221",
       "action": "test_stream",
       "app": "RetroArch",
       "verify_video": true,
@@ -17,27 +17,27 @@
       "use_control_stream": true
     },
     {
-      "host": "192.168.1.223",
+      "host": "192.168.1.221",
       "action": "wait",
       "ms": 3000
     },
     {
-      "host": "192.168.1.223",
+      "host": "192.168.1.221",
       "action": "send_gamepad",
       "button": "start",
       "button_action": "tap"
     },
     {
-      "host": "192.168.1.223",
+      "host": "192.168.1.221",
       "action": "wait",
       "ms": 1000
     },
     {
-      "host": "192.168.1.223",
+      "host": "192.168.1.221",
       "action": "verify_stream"
     },
     {
-      "host": "192.168.1.223",
+      "host": "192.168.1.221",
       "action": "quit"
     }
   ],
