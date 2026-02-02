@@ -1247,8 +1247,9 @@ echo "=== Done ==="
 			},
 		},
 		corev1.Container{
-			Name:  "wolf",
-			Image: WOLF_IMAGE,
+			Name:            "wolf",
+			Image:           WOLF_IMAGE,
+			ImagePullPolicy: corev1.PullAlways,
 			Env: mapToEnvApplyList(map[string]string{
 				"PUID":                    "1000",
 				"PGID":                    "1000",
