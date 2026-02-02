@@ -229,6 +229,6 @@ LABEL org.opencontainers.image.description="Wolf: stream virtual desktops and ga
 
 # See GOW/base-app
 # Cache-bust: Force COPY when startup.sh changes (ARG invalidates cache from this point)
-ARG STARTUP_SCRIPT_HASH=20260202_v15
+ARG STARTUP_SCRIPT_HASH=20260202_v19
 COPY --chmod=777 docker/startup.sh /opt/gow/startup-app.sh
 ENTRYPOINT ["/entrypoint.sh"]
