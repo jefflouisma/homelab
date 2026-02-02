@@ -76,8 +76,23 @@ if [ -f /nvidia-libs/libnvidia-egl-wayland.so.1 ]; then
 EOF
 fi
 
-# Ensure Wayland socket is created with permissive mode so non-root clients can connect.
-# The runtime dir itself is owned by the session user with 0700 perms.
-umask 000
+# Background loop to fix Wayland socket permissions after wolf creates it.
+# Wolf runs as root but clients (e.g., retroarch) run as uid 1000.
+# The socket needs to be world-writable (or chowned) for clients to connect.
+(
+    SOCKET_PATH="/tmp/.X11-unix/wayland-1"
+    echo "[startup.sh] Starting Wayland socket permission fixer..." >&2
+    for i in $(seq 1 30); do
+        if [ -S "$SOCKET_PATH" ]; then
+            chmod 777 "$SOCKET_PATH" 2>/dev/null && \
+                echo "[startup.sh] Fixed Wayland socket permissions: chmod 777 $SOCKET_PATH" >&2
+            # Also chown to match the client uid if XDG requirements need it
+            chown 1000:1000 "$SOCKET_PATH" 2>/dev/null && \
+                echo "[startup.sh] Fixed Wayland socket ownership: chown 1000:1000 $SOCKET_PATH" >&2
+            break
+        fi
+        sleep 0.5
+    done
+) &
 
 exec /wolf/wolf
