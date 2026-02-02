@@ -806,7 +806,7 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 			"DISPLAY": ":0",
 			// Container must have extra logic to wait for this to be set up
 			// unfortunately.
-			"WAYLAND_DISPLAY":          "/tmp/.X11-unix/wayland-1", // Absolute path bypasses XDG_RUNTIME_DIR perm check
+			"WAYLAND_DISPLAY":          "wayland-1",
 			"TZ":                       "America/Los_Angeles",
 			"UNAME":                    "retro",
 			"XDG_RUNTIME_DIR":          "/tmp/.X11-unix",
@@ -1342,7 +1342,7 @@ echo "=== Done ==="
 			},
 			SecurityContext: &corev1.SecurityContext{
 				Privileged: ptr.To(true),
-				RunAsUser:  ptr.To(int64(0)), // Run as root for DRM access
+				RunAsUser:  ptr.To(int64(1000)), // Run as uid 1000 so wayland socket matches XDG_RUNTIME_DIR owner
 				RunAsGroup: ptr.To(int64(0)), // Run as root group
 				Capabilities: &corev1.Capabilities{
 					Add: []corev1.Capability{"SYS_ADMIN"},
