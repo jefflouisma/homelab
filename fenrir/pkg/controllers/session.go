@@ -2138,6 +2138,12 @@ func GenerateWolfConfig(
 					"encoder_pipeline": "nvh264enc preset=low-latency-hq zerolatency=true gop-size=0 rc-mode=cbr-ld-hq bitrate={bitrate} aud=false ! h264parse ! video/x-h264, profile=main, stream-format=byte-stream",
 					"plugin_name":      "nvcodec",
 				},
+				// Software fallback encoder for when NVENC is not available
+				{
+					"check_elements":   []string{"x264enc", "videoconvert"},
+					"encoder_pipeline": "videoconvert ! x264enc tune=zerolatency speed-preset=ultrafast bitrate={bitrate} ! h264parse ! video/x-h264, profile=baseline, stream-format=byte-stream",
+					"plugin_name":      "x264",
+				},
 			},
 			"hevc_encoders": []map[string]interface{}{
 				{
