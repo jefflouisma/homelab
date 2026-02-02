@@ -806,7 +806,7 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 			"DISPLAY": ":0",
 			// Container must have extra logic to wait for this to be set up
 			// unfortunately.
-			"WAYLAND_DISPLAY":          "wayland-1",
+			"WAYLAND_DISPLAY":          "/tmp/.X11-unix/wayland-1", // Absolute path bypasses XDG_RUNTIME_DIR perm check
 			"TZ":                       "America/Los_Angeles",
 			"UNAME":                    "retro",
 			"XDG_RUNTIME_DIR":          "/tmp/.X11-unix",
@@ -867,7 +867,7 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				# XDG_RUNTIME_DIR must be owned by the runtime user and not accessible by others.
 				# Wayland clients refuse to connect if permissions are too open.
 				chown -R 1000:1000 /tmp/.X11-unix
-				chmod 755 /tmp/.X11-unix
+				chmod 700 /tmp/.X11-unix
 				mkdir -p /tmp/.X11-unix/.config/pulse
 				touch /tmp/.X11-unix/.config/pulse/cookie /tmp/.X11-unix/.pulse-cookie
 				chmod 600 /tmp/.X11-unix/.config/pulse/cookie /tmp/.X11-unix/.pulse-cookie
