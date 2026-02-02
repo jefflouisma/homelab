@@ -35,7 +35,7 @@ spec:
         # Only app container - operator adds wolf, pulseaudio, wolf-agent
         - name: retroarch
           # RetroArch with Wolf X-Box autoconfig profile for controller support
-          image: ghcr.io/jefflouisma/fenrir-retroarch:0a4afda
+          image: ghcr.io/jefflouisma/fenrir-retroarch:f633cbd
           command:
             - /bin/bash
             - -c

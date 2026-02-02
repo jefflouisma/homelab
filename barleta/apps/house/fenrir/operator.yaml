@@ -89,7 +89,7 @@ spec:
       containers:
         - name: operator
           # Operator with /run/udev mount for SDL2 joystick hotplug detection
-          image: ghcr.io/jefflouisma/fenrir-operator:0a4afda
+          image: ghcr.io/jefflouisma/fenrir-operator:f633cbd
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
@@ -106,7 +106,7 @@ spec:
                   fieldPath: metadata.name
             - name: WOLF_IMAGE
               # Wolf with EGL fence error handling fix (cd4d8e7 in gst-wayland-display)
-              value: ghcr.io/jefflouisma/fenrir-wolf:0a4afda
+              value: ghcr.io/jefflouisma/fenrir-wolf:f633cbd
             - name: IMAGE_PULL_SECRET
               value: ghcr-secret
           resources:
