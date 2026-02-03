@@ -104,10 +104,12 @@ spec:
     - name: http
       port: 8080
       targetPort: 8080
+      nodePort: 31665
     - name: https
       port: 8443
       targetPort: 8443
-  type: ClusterIP
+      nodePort: 31666
+  type: NodePort
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
