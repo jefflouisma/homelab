@@ -56,7 +56,7 @@ A comprehensive curriculum for practicing analytics engineering skills using the
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Keycloak Admin | http://keycloak.barleta.local:31664/admin | admin / Barleta2024! |
+| Keycloak Admin | http://keycloak.barleta.local:31664/admin | admin / changeme |
 | ArgoCD | http://argocd.barleta.local:31664 | admin / (from secret) |
 
 ### Database Access
