@@ -73,7 +73,7 @@ GRANT ALL PRIVILEGES ON SCHEMA raw_uci, raw_olist, raw_instacart,
 
 **Connection String:**
 ```
-postgresql://analytics:Analytics2024!@postgresql.identity.svc.cluster.local:5432/midpoint
+postgresql://analytics:Analytics2024!@postgresql.identity.svc.cluster.local:5432/analytics
 ```
 
 ### 2. Orchestration: Apache Airflow
@@ -244,7 +244,7 @@ df = pd.read_excel('Online Retail.xlsx')
 df.columns = ['invoice_no', 'stock_code', 'description', 'quantity', 
               'invoice_date', 'unit_price', 'customer_id', 'country']
 
-engine = create_engine('postgresql://analytics:Analytics2024!@postgresql.identity.svc:5432/midpoint')
+engine = create_engine('postgresql://analytics:Analytics2024!@postgresql.identity.svc:5432/analytics')
 df.to_sql('transactions', engine, schema='raw_uci', if_exists='replace', index=False)
 "
 ```
@@ -756,7 +756,7 @@ spec:
 
 1. **Create analytics schemas**: Run SQL to create schemas in existing PostgreSQL
    ```bash
-   kubectl exec -it postgresql-0 -n identity -- psql -U postgres -d midpoint -c "
+   kubectl exec -it postgresql-0 -n identity -- psql -U postgres -d analytics -c "
      CREATE SCHEMA IF NOT EXISTS raw_uci;
      CREATE SCHEMA IF NOT EXISTS raw_olist;
      CREATE SCHEMA IF NOT EXISTS raw_instacart;
@@ -995,7 +995,7 @@ host all all 0.0.0.0/0 oidc issuer="http://keycloak.identity.svc.cluster.local:8
 
 ```conf
 # ORDER MATTERS - Service accounts first
-host    midpoint    midpoint    10.0.0.0/8    md5
+host    analytics   analytics   10.0.0.0/8    md5
 host    keycloak    postgres    10.0.0.0/8    md5
 host    airflow     airflow     10.0.0.0/8    md5
 host    superset    superset    10.0.0.0/8    md5

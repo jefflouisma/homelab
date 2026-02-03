@@ -10,7 +10,7 @@ A comprehensive curriculum for practicing analytics engineering skills using the
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Barleta Analytics Platform                    │
 ├─────────────────────────────────────────────────────────────────┤
-│  Identity Layer (Keycloak SSO + FreeIPA LDAP + MidPoint IGA)   │
+│  Identity Layer (Keycloak SSO)                                │
 ├─────────────────────────────────────────────────────────────────┤
 │  Orchestration    │  Transformation  │  Visualization           │
 │  ─────────────    │  ──────────────  │  ─────────────           │
@@ -37,8 +37,7 @@ A comprehensive curriculum for practicing analytics engineering skills using the
 ```
 192.168.1.10    airflow.barleta.local superset.barleta.local grafana.barleta.local
 192.168.1.10    metabase.barleta.local datahub.barleta.local postgresql.barleta.local
-192.168.1.10    keycloak.barleta.local midpoint.barleta.local argocd.barleta.local
-192.168.1.212   ipa.barleta.local
+192.168.1.10    keycloak.barleta.local argocd.barleta.local
 ```
 
 ## Access URLs
@@ -51,14 +50,13 @@ A comprehensive curriculum for practicing analytics engineering skills using the
 | Superset | http://superset.barleta.local:31664 | Keycloak OIDC |
 | Grafana | http://grafana.barleta.local:31664 | Keycloak OIDC |
 | DataHub | http://datahub.barleta.local:31664 | Keycloak OIDC |
-| Metabase | http://metabase.barleta.local:31664 | FreeIPA LDAP |
+| Metabase | http://metabase.barleta.local:31664 | Keycloak OIDC |
 
 ### Admin Services
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | Keycloak Admin | http://keycloak.barleta.local:31664/admin | admin / Barleta2024! |
-| MidPoint | http://midpoint.barleta.local:31664 | administrator / Admin123! |
 | ArgoCD | http://argocd.barleta.local:31664 | admin / (from secret) |
 
 ### Database Access
@@ -67,7 +65,6 @@ A comprehensive curriculum for practicing analytics engineering skills using the
 |---------|------|------|-------------|
 | PostgreSQL (external) | postgresql.barleta.local | 32432 | postgres / Barleta2024! |
 | PostgreSQL (in-cluster) | postgresql.identity.svc.cluster.local | 5432 | postgres / Barleta2024! |
-| FreeIPA LDAP | 192.168.1.212 | 389 | See Keycloak federation |
 
 ---
 
@@ -182,7 +179,6 @@ dbt debug
 - `metabase` - Metabase metadata
 - `datahub` - DataHub metadata
 - `keycloak` - Keycloak identity data
-- `midpoint` - MidPoint IGA data
 
 ### Lesson 2.2: Staging Models
 **Objective**: Create clean, standardized staging models
@@ -593,7 +589,7 @@ datahub ingest -c dbt_recipe.yaml
 2. Login with LDAP credentials (chris/Ilovejeff1)
 3. Create questions and dashboards
 
-**Note**: Metabase uses FreeIPA LDAP for authentication (not Keycloak OIDC - requires Enterprise edition).
+**Note**: Metabase uses Keycloak OIDC for authentication.
 
 **Exercise 14**:
 - Create a "Sales Overview" question
@@ -617,12 +613,6 @@ postgresql://postgres:Barleta2024!@postgresql.barleta.local:32432/superset
 ```bash
 # From Airflow/dbt running in Kubernetes
 postgresql://postgres:Barleta2024!@postgresql.identity.svc.cluster.local:5432/superset
-```
-
-### LDAP (FreeIPA)
-```bash
-# Test LDAP bind
-ldapwhoami -x -H ldap://192.168.1.212 -D "uid=chris,cn=users,cn=accounts,dc=barleta,dc=local" -w 'Ilovejeff1'
 ```
 
 ---
