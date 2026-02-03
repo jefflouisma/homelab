@@ -38,6 +38,8 @@ spec:
             - --hostname-strict=false
             - --http-enabled=true
             - --proxy-headers=xforwarded
+            - --spi-cookie-default-secure=false
+            - --spi-cookie-default-same-site-attribute=lax
           env:
             - name: KEYCLOAK_ADMIN
               valueFrom:
