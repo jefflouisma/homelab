@@ -38,6 +38,9 @@ spec:
             - --hostname-strict=false
             - --http-enabled=true
             - --proxy-headers=xforwarded
+            - --spi-cookie-default-same-site-attribute=None
+            - --hostname=keycloak.barleta.local
+            - --hostname-port=31665
           env:
             - name: KEYCLOAK_ADMIN
               valueFrom:
