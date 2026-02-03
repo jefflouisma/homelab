@@ -32,7 +32,7 @@ data:
                 'client_secret': 'bn7Ueb6QmyBMtHwByabmCUHHvDEpBwJi',
                 'api_base_url': 'http://keycloak.identity.svc.cluster.local:8080/realms/barleta/protocol/openid-connect/',
                 'access_token_url': 'http://keycloak.identity.svc.cluster.local:8080/realms/barleta/protocol/openid-connect/token',
-                'authorize_url': 'http://keycloak.barleta.local:31664/realms/barleta/protocol/openid-connect/auth',
+                'authorize_url': 'http://keycloak.barleta.local:31665/realms/barleta/protocol/openid-connect/auth',
                 'userinfo_endpoint': 'http://keycloak.identity.svc.cluster.local:8080/realms/barleta/protocol/openid-connect/userinfo',
                 'client_kwargs': {
                     'scope': 'openid email profile'
