@@ -30,12 +30,12 @@ data:
             'remote_app': {
                 'client_id': 'superset',
                 'client_secret': '7GhOhgWzqXRgncLJUHLrwliw5nwRc8ow',
-                'server_metadata_url': 'http://keycloak.identity.svc.cluster.local:8080/realms/barleta/.well-known/openid-configuration',
-                'api_base_url': 'http://keycloak.identity.svc.cluster.local:8080/realms/barleta/protocol/openid-connect/',
-                'access_token_url': 'http://keycloak.identity.svc.cluster.local:8080/realms/barleta/protocol/openid-connect/token',
+                'server_metadata_url': 'http://192.168.1.10:31665/realms/barleta/.well-known/openid-configuration',
+                'api_base_url': 'http://192.168.1.10:31665/realms/barleta/protocol/openid-connect/',
+                'access_token_url': 'http://192.168.1.10:31665/realms/barleta/protocol/openid-connect/token',
                 'authorize_url': 'http://192.168.1.10:31665/realms/barleta/protocol/openid-connect/auth',
-                'userinfo_endpoint': 'http://keycloak.identity.svc.cluster.local:8080/realms/barleta/protocol/openid-connect/userinfo',
-                'jwks_uri': 'http://keycloak.identity.svc.cluster.local:8080/realms/barleta/protocol/openid-connect/certs',
+                'userinfo_endpoint': 'http://192.168.1.10:31665/realms/barleta/protocol/openid-connect/userinfo',
+                'jwks_uri': 'http://192.168.1.10:31665/realms/barleta/protocol/openid-connect/certs',
                 'client_kwargs': {
                     'scope': 'openid email profile'
                 },
