@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<!-- ES-DE Settings for Fenrir/Wolf Streaming -->
+<!-- Optimized for gamepad-first navigation via Moonlight -->
+<config>
+    <!-- ROM directory (symlinked from ~/ROMs in startup.sh) -->
+    <string name="ROMDirectory" value="~/ROMs" />
+
+    <!-- Media directory for scraped art -->
+    <string name="MediaDirectory" value="/Emulation/storage/es-de/media" />
+
+    <!-- Theme settings -->
+    <string name="ThemeSet" value="linear-es-de" />
+    <string name="ThemeVariant" value="dark" />
+    <string name="ThemeColorScheme" value="dark" />
+    <bool name="ThemeSystemView" value="true" />
+
+    <!-- Video settings for streaming -->
+    <string name="ScreenWidth" value="1920" />
+    <string name="ScreenHeight" value="1080" />
+    <bool name="Windowed" value="false" />
+    <bool name="SplashScreen" value="false" />
+
+    <!-- Input -->
+    <bool name="OnlyFirstGamepadNavigation" value="false" />
+
+    <!-- Scraper - use ScreenScraper by default -->
+    <string name="Scraper" value="screenscraper" />
+
+    <!-- Sound -->
+    <bool name="NavigationSounds" value="true" />
+    <int name="SoundVolumeNavigation" value="70" />
+    <int name="SoundVolumeVideos" value="80" />
+
+    <!-- Gamelist behavior -->
+    <bool name="GamelistVideoAudio" value="true" />
+    <bool name="ShowHiddenFiles" value="false" />
+    <bool name="ShowHiddenGames" value="false" />
+
+    <!-- RetroArch integration -->
+    <string name="AlternativeEmulatorGlobal" value="" />
+</config>

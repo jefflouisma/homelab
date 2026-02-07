@@ -1,0 +1,181 @@
+# Fenrir EmuDeck Application
+# ES-DE frontend with standalone emulators via AppImage Extract Pattern
+# + RetroArch cores for retro systems
+---
+apiVersion: direwolf.games-on-whales.github.io/v1alpha1
+kind: App
+metadata:
+  name: emudeck
+  namespace: house
+spec:
+  id: 2
+  title: "EmuDeck"
+  isHDRSupported: false
+  wolfConfig:
+    startVirtualCompositor: true
+    startAudioServer: true
+    runner:
+      type: process
+      runCommand: "sleep infinity"
+  # Minimal 1x1 transparent WebP placeholder (base64)
+  appAssetWebP: "UklGRlAAAABXRUJQVlA4IEQAAADwAQCdASoBAAEAAkA4JZQCdAEO/hOMAAD+9f/e/fn3/vf+7/3v/e/94AAAAAAA"
+  template:
+    spec:
+      initContainers:
+        # Fix permissions on all PVC mounts for UID 1000
+        - name: fix-permissions
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              chown -R 1000:1000 /Emulation/saves && chmod -R 755 /Emulation/saves
+              chown -R 1000:1000 /Emulation/bios && chmod -R 755 /Emulation/bios
+              # Don't chown roms — large volume, and read-only is fine
+          volumeMounts:
+            - name: saves
+              mountPath: /Emulation/saves
+            - name: bios
+              mountPath: /Emulation/bios
+          securityContext:
+            runAsUser: 0
+      containers:
+        - name: emudeck
+          image: ghcr.io/jefflouisma/fenrir-emudeck:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/.X11-unix}"
+              export XDG_RUNTIME_DIR="$RUNTIME_DIR"
+              mkdir -p "$RUNTIME_DIR"
+              chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
+
+              PULSE_COOKIE_PATH="${RUNTIME_DIR}/.config/pulse/cookie"
+              export PULSE_COOKIE="$PULSE_COOKIE_PATH"
+              HOME_DIR="/home/retro"
+              mkdir -p "$HOME_DIR"
+              export HOME="$HOME_DIR"
+              if [ -r "$PULSE_COOKIE_PATH" ]; then
+                  mkdir -p "$HOME_DIR/.config/pulse"
+                  cp -f "$PULSE_COOKIE_PATH" "$HOME_DIR/.config/pulse/cookie" || true
+                  chmod 600 "$HOME_DIR/.config/pulse/cookie" 2>/dev/null || true
+              fi
+
+              export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
+              export QT_QPA_PLATFORM=wayland
+
+              # Handle both relative (wayland-0) and absolute paths
+              WAYLAND_DISPLAY_VAL="${WAYLAND_DISPLAY:-wayland-0}"
+              if [[ "$WAYLAND_DISPLAY_VAL" = /* ]]; then
+                  WAYLAND_SOCKET="$WAYLAND_DISPLAY_VAL"
+              else
+                  WAYLAND_SOCKET="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY_VAL}"
+              fi
+              echo "Waiting for Wayland display at ${WAYLAND_SOCKET}..."
+              TIMEOUT=30
+              WAITED=0
+              while [ ! -S "${WAYLAND_SOCKET}" ] && [ $WAITED -lt $TIMEOUT ]; do
+                  sleep 1
+                  WAITED=$((WAITED + 1))
+                  echo "Waiting for wayland socket... ($WAITED/$TIMEOUT)"
+              done
+
+              if [ ! -S "${WAYLAND_SOCKET}" ]; then
+                  echo "ERROR: Wayland display not available after ${TIMEOUT}s"
+                  exit 1
+              fi
+
+              PULSE_SOCKET="${XDG_RUNTIME_DIR}/pulse-socket"
+              echo "Waiting for PulseAudio socket at ${PULSE_SOCKET}..."
+              TIMEOUT=30
+              WAITED=0
+              while [ ! -S "${PULSE_SOCKET}" ] && [ $WAITED -lt $TIMEOUT ]; do
+                  sleep 1
+                  WAITED=$((WAITED + 1))
+                  echo "Waiting for pulse socket... ($WAITED/$TIMEOUT)"
+              done
+
+              if [ ! -S "${PULSE_SOCKET}" ]; then
+                  echo "ERROR: PulseAudio socket not available after ${TIMEOUT}s"
+                  exit 1
+              fi
+
+              export PULSE_SERVER="${PULSE_SERVER:-unix:${PULSE_SOCKET}}"
+              PULSE_SINK_NAME="$(pactl list sinks short 2>/dev/null | awk '$2 ~ /^virtual_sink/ {print $2; exit}')"
+              if [ -n "${PULSE_SINK_NAME}" ]; then
+                  export PULSE_SINK="${PULSE_SINK_NAME}"
+                  export PULSE_SOURCE="${PULSE_SINK_NAME}.monitor"
+                  pactl set-default-sink "${PULSE_SINK_NAME}" || true
+                  pactl set-default-source "${PULSE_SINK_NAME}.monitor" || true
+                  echo "Using PulseAudio sink ${PULSE_SINK_NAME}"
+              else
+                  echo "WARN: No virtual_sink found; using default PulseAudio sink"
+              fi
+
+              # Set up ES-DE directories
+              ln -sfn /Emulation/roms "$HOME_DIR/ROMs"
+
+              # ES-DE config
+              ESDE_CONFIG_DIR="$HOME_DIR/.config/es-de"
+              mkdir -p "$ESDE_CONFIG_DIR"
+              if [ ! -f "$ESDE_CONFIG_DIR/es_settings.xml" ]; then
+                  cp /etc/es-de/es_settings.xml "$ESDE_CONFIG_DIR/es_settings.xml"
+              fi
+
+              # RetroArch config
+              RETROARCH_CONFIG_DIR="$HOME_DIR/.config/retroarch"
+              mkdir -p "$RETROARCH_CONFIG_DIR"
+              if [ ! -f "$RETROARCH_CONFIG_DIR/retroarch.cfg" ]; then
+                  cp /etc/retroarch.cfg "$RETROARCH_CONFIG_DIR/retroarch.cfg"
+              fi
+
+              # Ensure save subdirectories exist
+              mkdir -p /Emulation/saves/retroarch/{saves,states} 2>/dev/null || true
+              mkdir -p /Emulation/saves/pcsx2/memcards 2>/dev/null || true
+              mkdir -p /Emulation/saves/ppsspp 2>/dev/null || true
+              mkdir -p /Emulation/saves/duckstation 2>/dev/null || true
+              mkdir -p /Emulation/saves/rpcs3 2>/dev/null || true
+
+              echo "Launching ES-DE frontend..."
+              exec es-de --resolution 1920 1080
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "8"
+              memory: 16Gi
+          volumeMounts:
+            - name: roms
+              mountPath: /Emulation/roms
+              readOnly: true
+            - name: saves
+              mountPath: /Emulation/saves
+            - name: bios
+              mountPath: /Emulation/bios
+              readOnly: true
+            - name: esde-storage
+              mountPath: /Emulation/storage
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            privileged: true
+
+      volumes:
+        - name: roms
+          persistentVolumeClaim:
+            claimName: fenrir-games
+        - name: saves
+          persistentVolumeClaim:
+            claimName: fenrir-saves
+        - name: bios
+          persistentVolumeClaim:
+            claimName: fenrir-bios
+        - name: esde-storage
+          persistentVolumeClaim:
+            claimName: fenrir-config
+
+      restartPolicy: Always

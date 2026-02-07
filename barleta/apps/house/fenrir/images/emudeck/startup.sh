@@ -1,0 +1,88 @@
+#!/bin/bash
+# EmuDeck startup script for Wolf streaming
+# Waits for Wayland display, sets up ES-DE directories, and launches ES-DE
+# Based on the proven RetroArch startup.sh pattern
+
+set -e
+
+echo "=== EmuDeck Container Starting ==="
+
+# ─── XDG Runtime ──────────────────────────────────────────────────────────────
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/.X11-unix}"
+export XDG_RUNTIME_DIR="$RUNTIME_DIR"
+
+mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
+chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
+
+# ─── PulseAudio Cookie ───────────────────────────────────────────────────────
+PULSE_COOKIE_PATH="${PULSE_COOKIE:-${RUNTIME_DIR}/.config/pulse/cookie}"
+export PULSE_COOKIE="$PULSE_COOKIE_PATH"
+HOME_DIR="${HOME:-/home/retro}"
+if [ -f "$PULSE_COOKIE_PATH" ]; then
+    mkdir -p "$HOME_DIR/.config/pulse"
+    cp -f "$PULSE_COOKIE_PATH" "$HOME_DIR/.config/pulse/cookie"
+    chmod 600 "$HOME_DIR/.config/pulse/cookie" 2>/dev/null || true
+fi
+
+# ─── Wait for Wayland ────────────────────────────────────────────────────────
+WAYLAND_DISPLAY_VAL="${WAYLAND_DISPLAY:-wayland-0}"
+if [[ "$WAYLAND_DISPLAY_VAL" = /* ]]; then
+    WAYLAND_SOCKET="$WAYLAND_DISPLAY_VAL"
+else
+    WAYLAND_SOCKET="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY_VAL}"
+fi
+echo "Waiting for Wayland display at ${WAYLAND_SOCKET}..."
+TIMEOUT=30
+WAITED=0
+while [ ! -S "${WAYLAND_SOCKET}" ] && [ $WAITED -lt $TIMEOUT ]; do
+    sleep 1
+    WAITED=$((WAITED + 1))
+    echo "Waiting for wayland socket... ($WAITED/$TIMEOUT)"
+done
+
+if [ ! -S "${WAYLAND_SOCKET}" ]; then
+    echo "ERROR: Wayland display not available after ${TIMEOUT}s"
+    exit 1
+fi
+echo "Wayland display ready."
+
+# ─── ES-DE Directory Setup ───────────────────────────────────────────────────
+# Create the symlink from ~/ROMs to /Emulation/roms so ES-DE auto-discovers
+mkdir -p "$HOME_DIR"
+ln -sfn /Emulation/roms "$HOME_DIR/ROMs"
+
+# Set up ES-DE config directory
+ESDE_CONFIG_DIR="$HOME_DIR/.config/es-de"
+mkdir -p "$ESDE_CONFIG_DIR"
+
+# Copy default ES-DE settings if not already customized (PVC persistence)
+if [ ! -f "$ESDE_CONFIG_DIR/es_settings.xml" ]; then
+    cp /etc/es-de/es_settings.xml "$ESDE_CONFIG_DIR/es_settings.xml"
+    echo "Copied default ES-DE settings."
+fi
+
+# Set up RetroArch config directory
+RETROARCH_CONFIG_DIR="$HOME_DIR/.config/retroarch"
+mkdir -p "$RETROARCH_CONFIG_DIR"
+
+if [ ! -f "$RETROARCH_CONFIG_DIR/retroarch.cfg" ]; then
+    cp /etc/retroarch.cfg "$RETROARCH_CONFIG_DIR/retroarch.cfg"
+    echo "Copied default RetroArch config."
+fi
+
+# Ensure saves directory exists
+mkdir -p /Emulation/saves/retroarch/states 2>/dev/null || true
+mkdir -p /Emulation/saves/retroarch/saves 2>/dev/null || true
+mkdir -p /Emulation/saves/pcsx2/memcards 2>/dev/null || true
+mkdir -p /Emulation/saves/ppsspp 2>/dev/null || true
+mkdir -p /Emulation/saves/duckstation 2>/dev/null || true
+mkdir -p /Emulation/saves/rpcs3 2>/dev/null || true
+
+# ─── Qt Wayland Platform ─────────────────────────────────────────────────────
+# Standalone emulators (PCSX2, DuckStation) are Qt apps — force Wayland
+export QT_QPA_PLATFORM=wayland
+export SDL_VIDEODRIVER=wayland
+
+# ─── Launch ES-DE ─────────────────────────────────────────────────────────────
+echo "Launching ES-DE frontend..."
+exec es-de --resolution 1920 1080 "$@"
