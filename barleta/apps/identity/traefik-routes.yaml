@@ -58,4 +58,17 @@ spec:
       kind: Rule
       services:
         - name: argocd-server
-          port: 80
+          # argocd-server serves HTTPS; if Traefik connects over HTTP you'll get a 307 redirect loop.
+          port: 443
+          scheme: https
+          serversTransport: argocd-transport
+  tls: {}
+---
+# Traefik -> ArgoCD uses a self-signed cert by default; skip backend verification.
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: argocd-transport
+  namespace: argocd
+spec:
+  insecureSkipVerify: true
