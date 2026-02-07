@@ -1,0 +1,49 @@
+{
+    "host": "192.168.1.221",
+    "action": "sequence",
+    "screenshot_dir": "/Volumes/4TB_Drive/Documents/homelab/barleta/screenshots",
+    "timeout_ms": 180000,
+    "steps": [
+        {
+            "comment": "Launch EmuDeck and capture initial ES-DE system view",
+            "host": "192.168.1.221",
+            "action": "test_stream",
+            "app": "EmuDeck",
+            "verify_video": true,
+            "capture_after_ms": 15000,
+            "use_control_stream": true,
+            "screenshot_dir": "/Volumes/4TB_Drive/Documents/homelab/barleta/screenshots"
+        },
+        {
+            "comment": "Press A to enter the first system (Wii)",
+            "host": "192.168.1.221",
+            "action": "send_gamepad",
+            "button": "a",
+            "button_action": "tap"
+        },
+        {
+            "comment": "Wait for game list to load",
+            "host": "192.168.1.221",
+            "action": "wait",
+            "ms": 5000
+        },
+        {
+            "comment": "Press A to select/launch the game",
+            "host": "192.168.1.221",
+            "action": "send_gamepad",
+            "button": "a",
+            "button_action": "tap"
+        },
+        {
+            "comment": "Wait for emulator to boot the game (30s)",
+            "host": "192.168.1.221",
+            "action": "wait",
+            "ms": 30000
+        },
+        {
+            "comment": "Verify stream still alive after game launch",
+            "host": "192.168.1.221",
+            "action": "verify_stream"
+        }
+    ]
+}

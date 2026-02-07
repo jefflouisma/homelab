@@ -1,0 +1,36 @@
+{
+    "host": "192.168.1.221",
+    "action": "sequence",
+    "screenshot_dir": "/Volumes/4TB_Drive/Documents/homelab/barleta/screenshots",
+    "timeout_ms": 120000,
+    "steps": [
+        {
+            "host": "192.168.1.221",
+            "action": "list_apps"
+        },
+        {
+            "host": "192.168.1.221",
+            "action": "test_stream",
+            "app": "EmuDeck",
+            "verify_video": true,
+            "capture_after_ms": 15000,
+            "use_control_stream": true
+        },
+        {
+            "host": "192.168.1.221",
+            "action": "wait",
+            "ms": 3000
+        },
+        {
+            "host": "192.168.1.221",
+            "action": "verify_stream"
+        },
+        {
+            "host": "192.168.1.221",
+            "action": "quit"
+        }
+    ],
+    "validation": {
+        "expect_stream_active": true
+    }
+}

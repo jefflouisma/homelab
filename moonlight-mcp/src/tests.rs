@@ -473,17 +473,24 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
                                                         ),
                                                     });
 
-                                                    // Add error details if present
+                                                    // Add error details if present (skip null/empty)
                                                     if let Some(errors) = validation.error_messages
                                                     {
-                                                        steps.push(StepResult {
-                                                            name: "vision_errors".into(),
-                                                            passed: false,
-                                                            message: format!(
-                                                                "Errors detected: {}",
-                                                                errors
-                                                            ),
-                                                        });
+                                                        let errors_trimmed = errors.trim();
+                                                        if !errors_trimmed.is_empty()
+                                                            && errors_trimmed != "null"
+                                                            && errors_trimmed != "none"
+                                                            && errors_trimmed != "N/A"
+                                                        {
+                                                            steps.push(StepResult {
+                                                                name: "vision_errors".into(),
+                                                                passed: false,
+                                                                message: format!(
+                                                                    "Errors detected: {}",
+                                                                    errors
+                                                                ),
+                                                            });
+                                                        }
                                                     }
                                                 }
                                                 Err(e) => {
@@ -644,36 +651,88 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
             left_trigger,
             right_trigger,
         } => {
-            match pairing::send_gamepad_input(
-                &test.host,
-                button.as_deref(),
-                button_action.as_deref(),
-                *left_stick_x,
-                *left_stick_y,
-                *right_stick_x,
-                *right_stick_y,
-                *left_trigger,
-                *right_trigger,
-            )
-            .await
-            {
-                Ok(()) => {
-                    let msg = if let Some(b) = button {
-                        format!("Sent gamepad button: {}", b)
-                    } else {
-                        "Sent gamepad analog input".into()
-                    };
-                    steps.push(StepResult {
-                        name: "send_gamepad".into(),
-                        passed: true,
-                        message: msg,
-                    });
+            // Map button name to Xbox-style button flags (same as Moonlight protocol)
+            let button_flags: u16 = button.as_ref().map(|b| match b.to_lowercase().as_str() {
+                "a" => 0x1000,
+                "b" => 0x2000,
+                "x" => 0x4000,
+                "y" => 0x8000,
+                "lb" | "left_bumper" => 0x0100,
+                "rb" | "right_bumper" => 0x0200,
+                "start" => 0x0010,
+                "select" | "back" => 0x0020,
+                "left_stick" | "ls" => 0x0040,
+                "right_stick" | "rs" => 0x0080,
+                "dpad_up" => 0x0001,
+                "dpad_down" => 0x0002,
+                "dpad_left" => 0x0004,
+                "dpad_right" => 0x0008,
+                _ => 0,
+            }).unwrap_or(0);
+
+            // Get session crypto from Wolf API to establish control stream
+            match pairing::get_session_crypto(&test.host).await {
+                Ok(crypto) => {
+                    // Connect to control stream using session's AES key
+                    match ControlStream::connect(&test.host, 47999, &crypto.rikey, crypto.rikeyid).await {
+                        Ok(mut cs) => {
+                            let action = button_action.as_deref().unwrap_or("tap");
+                            let result = match action {
+                                "tap" => cs.send_gamepad_tap(button_flags).await,
+                                "press" | "down" => {
+                                    cs.send_gamepad(
+                                        button_flags,
+                                        left_trigger.unwrap_or(0),
+                                        right_trigger.unwrap_or(0),
+                                        left_stick_x.unwrap_or(0),
+                                        left_stick_y.unwrap_or(0),
+                                        right_stick_x.unwrap_or(0),
+                                        right_stick_y.unwrap_or(0),
+                                    ).await
+                                }
+                                "release" | "up" => {
+                                    // Send zero state (all released)
+                                    cs.send_gamepad(0, 0, 0, 0, 0, 0, 0).await
+                                }
+                                _ => cs.send_gamepad_tap(button_flags).await,
+                            };
+
+                            match result {
+                                Ok(()) => {
+                                    let msg = if let Some(b) = button {
+                                        format!("Sent gamepad button '{}' ({}) via control stream", b, action)
+                                    } else {
+                                        "Sent gamepad analog input via control stream".into()
+                                    };
+                                    steps.push(StepResult {
+                                        name: "send_gamepad".into(),
+                                        passed: true,
+                                        message: msg,
+                                    });
+                                }
+                                Err(e) => {
+                                    steps.push(StepResult {
+                                        name: "send_gamepad".into(),
+                                        passed: false,
+                                        message: format!("Failed to send gamepad via control stream: {}", e),
+                                    });
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            steps.push(StepResult {
+                                name: "send_gamepad".into(),
+                                passed: false,
+                                message: format!("Failed to connect control stream: {}", e),
+                            });
+                        }
+                    }
                 }
                 Err(e) => {
                     steps.push(StepResult {
                         name: "send_gamepad".into(),
                         passed: false,
-                        message: format!("Failed to send gamepad: {}", e),
+                        message: format!("Failed to get session crypto: {}", e),
                     });
                 }
             }

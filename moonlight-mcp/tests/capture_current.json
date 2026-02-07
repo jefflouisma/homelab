@@ -1,0 +1,10 @@
+{
+    "host": "192.168.1.221",
+    "action": "test_stream",
+    "app": "EmuDeck",
+    "verify_video": true,
+    "capture_after_ms": 5000,
+    "use_control_stream": true,
+    "screenshot_dir": "/Volumes/4TB_Drive/Documents/homelab/barleta/screenshots",
+    "timeout_ms": 60000
+}

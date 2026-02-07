@@ -759,6 +759,61 @@ pub struct StreamStatus {
     pub error: Option<String>,
 }
 
+/// Session crypto info needed for control stream
+#[derive(Debug, Clone)]
+pub struct SessionCrypto {
+    /// AES key (hex encoded, 32 chars)
+    pub rikey: String,
+    /// Key ID (used as IV base)
+    pub rikeyid: u32,
+}
+
+/// Get the active session's crypto info from Wolf's sessions API
+/// This is needed to establish a control stream for sending gamepad input
+pub async fn get_session_crypto(host: &str) -> Result<SessionCrypto> {
+    let client = create_mtls_client()?;
+
+    let urls = [
+        format!("https://{}:8443/api/v1/sessions", host),
+        format!("https://{}:47984/api/v1/sessions", host),
+    ];
+
+    for url in urls {
+        let response = match client.get(&url).send().await {
+            Ok(resp) => resp,
+            Err(_) => continue,
+        };
+
+        if !response.status().is_success() {
+            continue;
+        }
+
+        let body = response.text().await?;
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+            if let Some(sessions) = json.get("sessions").and_then(|s| s.as_array()) {
+                if let Some(session) = sessions.first() {
+                    let rikey = session
+                        .get("aes_key")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| anyhow!("Session missing aes_key"))?
+                        .to_string();
+                    let rikeyid_str = session
+                        .get("aes_iv")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| anyhow!("Session missing aes_iv"))?;
+                    let rikeyid: u32 = rikeyid_str
+                        .parse()
+                        .map_err(|_| anyhow!("Invalid aes_iv: {}", rikeyid_str))?;
+
+                    return Ok(SessionCrypto { rikey, rikeyid });
+                }
+            }
+        }
+    }
+
+    Err(anyhow!("No active sessions found to get crypto info from"))
+}
+
 /// Quit/stop the current streaming session
 pub async fn native_quit(host: &str) -> Result<()> {
     let client = create_mtls_client()?;

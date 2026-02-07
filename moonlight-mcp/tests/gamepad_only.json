@@ -1,0 +1,25 @@
+{
+    "host": "192.168.1.221",
+    "action": "sequence",
+    "timeout_ms": 60000,
+    "steps": [
+        {
+            "comment": "Send gamepad A via control stream to navigate in ES-DE",
+            "host": "192.168.1.221",
+            "action": "send_gamepad",
+            "button": "a",
+            "button_action": "tap"
+        },
+        {
+            "comment": "Wait for navigation",
+            "host": "192.168.1.221",
+            "action": "wait",
+            "ms": 3000
+        },
+        {
+            "comment": "Verify stream still active",
+            "host": "192.168.1.221",
+            "action": "verify_stream"
+        }
+    ]
+}

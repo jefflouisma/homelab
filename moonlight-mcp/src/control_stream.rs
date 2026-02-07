@@ -171,6 +171,67 @@ impl ControlStream {
         self.send_encrypted(&payload).await
     }
 
+    /// Send gamepad input through the control stream
+    ///
+    /// This is the CORRECT way to send input in the Moonlight protocol.
+    /// Input flows through the encrypted ENet control stream, NOT HTTP.
+    /// 
+    /// Packet format (multi-controller, type 0x0D):
+    /// [header: 4 bytes] [active_flags: u16] [controller_num: u16]
+    /// [button_flags: u16] [left_trigger: u8] [right_trigger: u8]
+    /// [left_stick_x: i16] [left_stick_y: i16]
+    /// [right_stick_x: i16] [right_stick_y: i16]
+    pub async fn send_gamepad(
+        &mut self,
+        button_flags: u16,
+        left_trigger: u8,
+        right_trigger: u8,
+        left_stick_x: i16,
+        left_stick_y: i16,
+        right_stick_x: i16,
+        right_stick_y: i16,
+    ) -> Result<()> {
+        // Multi-controller input packet (type 0x0D)
+        let input_type: u8 = 0x0D;
+        
+        let mut data = Vec::with_capacity(16);
+        // Header short (identifies multi-controller format)
+        data.extend_from_slice(&0x001eu16.to_le_bytes()); // packet length field
+        // Active gamepad flags (controller 0 is active)
+        data.extend_from_slice(&0x0001u16.to_le_bytes());
+        // Controller number (0 = first controller)
+        data.extend_from_slice(&0x0000u16.to_le_bytes());
+        // Button flags
+        data.extend_from_slice(&button_flags.to_le_bytes());
+        // Triggers
+        data.push(left_trigger);
+        data.push(right_trigger);
+        // Sticks
+        data.extend_from_slice(&left_stick_x.to_le_bytes());
+        data.extend_from_slice(&left_stick_y.to_le_bytes());
+        data.extend_from_slice(&right_stick_x.to_le_bytes());
+        data.extend_from_slice(&right_stick_y.to_le_bytes());
+        
+        eprintln!(
+            "[CONTROL] Sending gamepad: buttons=0x{:04x} lt={} rt={} lx={} ly={} rx={} ry={}",
+            button_flags, left_trigger, right_trigger,
+            left_stick_x, left_stick_y, right_stick_x, right_stick_y
+        );
+        
+        self.send_input(input_type, &data).await
+    }
+
+    /// Send a gamepad button tap (press + release with delay)
+    pub async fn send_gamepad_tap(&mut self, button_flags: u16) -> Result<()> {
+        // Press
+        self.send_gamepad(button_flags, 0, 0, 0, 0, 0, 0).await?;
+        // Small delay between press and release
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // Release (all zeros)
+        self.send_gamepad(0, 0, 0, 0, 0, 0, 0).await?;
+        Ok(())
+    }
+
     /// Wait for and receive a response (with timeout)
     pub async fn recv_with_timeout(&self, timeout_ms: u64) -> Result<Vec<u8>> {
         let mut buf = [0u8; 2048];
