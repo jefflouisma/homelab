@@ -14,7 +14,7 @@ LABEL org.opencontainers.image.description="EmuDeck for Fenrir game streaming (E
 ARG ESDE_VERSION=3.4.0
 ARG PCSX2_VERSION=2.6.3
 ARG PPSSPP_VERSION=1.19.3
-ARG SHADPS4_VERSION=0.6.0
+ARG SHADPS4_VERSION=0.14.0
 # DuckStation and RPCS3 use rolling/latest releases
 
 # =============================================================================
@@ -205,12 +205,14 @@ RUN RPCS3_URL=$(wget -qO- "https://api.github.com/repos/RPCS3/rpcs3-binaries-lin
     ln -s /opt/rpcs3/AppRun /usr/local/bin/rpcs3 && \
     rm -f /tmp/rpcs3.AppImage
 
-# shadPS4 (PS4) — Direct binary tarball
+# shadPS4 (PS4) — SDL zip release (tag format: v.X.Y.Z)
 RUN mkdir -p /opt/shadps4 && \
-    curl -fsSL "https://github.com/shadps4-emu/shadPS4/releases/download/v${SHADPS4_VERSION}/shadps4-linux64-qt.tar.gz" | \
-    tar -xz -C /opt/shadps4 --strip-components=1 && \
+    wget -q "https://github.com/shadps4-emu/shadPS4/releases/download/v.${SHADPS4_VERSION}/shadps4-linux-sdl-${SHADPS4_VERSION}.zip" \
+      -O /tmp/shadps4.zip && \
+    unzip -q /tmp/shadps4.zip -d /opt/shadps4 && \
     chmod +x /opt/shadps4/shadps4 && \
-    ln -s /opt/shadps4/shadps4 /usr/local/bin/shadps4
+    ln -s /opt/shadps4/shadps4 /usr/local/bin/shadps4 && \
+    rm -f /tmp/shadps4.zip
 
 # =============================================================================
 # Stage 5: Directory structure & configuration
