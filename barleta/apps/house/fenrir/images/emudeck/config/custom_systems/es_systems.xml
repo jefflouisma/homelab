@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!-- ES-DE custom PS3 system override -->
+<!-- Overrides default "RPCS3 Shortcut" with "RPCS3 Directory" for headless container -->
+<systemList>
+    <system>
+        <name>ps3</name>
+        <fullname>Sony PlayStation 3</fullname>
+        <path>%ROMPATH%/ps3</path>
+        <extension>.ps3 .PS3 .ps3dir .PS3DIR .desktop</extension>
+        <!-- Directory mode first = default for headless container -->
+        <command label="RPCS3 Directory (Standalone)">%EMULATOR_RPCS3% --no-gui %ROM%</command>
+        <command label="RPCS3 Game Serial (Standalone)">%EMULATOR_RPCS3% --no-gui %RPCS3_GAMEID%:%INJECT%=%BASENAME%.ps3</command>
+        <command label="RPCS3 Shortcut (Standalone)">%ENABLESHORTCUTS% %EMULATOR_OS-SHELL% %ROM%</command>
+        <platform>ps3</platform>
+        <theme>ps3</theme>
+    </system>
+</systemList>

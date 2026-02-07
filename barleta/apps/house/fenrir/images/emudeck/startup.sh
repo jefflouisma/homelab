@@ -61,6 +61,25 @@ if [ ! -f "$ESDE_CONFIG_DIR/es_settings.xml" ]; then
     echo "Copied default ES-DE settings."
 fi
 
+# Copy custom ES-DE system definitions (PS3 with RPCS3 Directory as default)
+ESDE_CUSTOM_SYSTEMS="$ESDE_CONFIG_DIR/custom_systems"
+mkdir -p "$ESDE_CUSTOM_SYSTEMS"
+if [ ! -f "$ESDE_CUSTOM_SYSTEMS/es_systems.xml" ]; then
+    cp /etc/es-de/custom_systems/es_systems.xml "$ESDE_CUSTOM_SYSTEMS/es_systems.xml"
+    echo "Copied custom ES-DE system definitions (PS3/RPCS3)."
+fi
+
+# ─── RPCS3 Configuration ────────────────────────────────────────────────────
+RPCS3_CONFIG_DIR="$HOME_DIR/.config/rpcs3"
+mkdir -p "$RPCS3_CONFIG_DIR"
+
+# Auto-install PS3 firmware if available in BIOS directory
+if [ -f "/Emulation/bios/PS3UPDAT.PUP" ] && [ ! -d "$RPCS3_CONFIG_DIR/dev_flash" ]; then
+    echo "PS3 firmware found, installing..."
+    rpcs3 --installfw /Emulation/bios/PS3UPDAT.PUP 2>&1 || echo "RPCS3 firmware install returned non-zero (may still succeed)"
+    echo "PS3 firmware installation complete."
+fi
+
 # Set up RetroArch config directory
 RETROARCH_CONFIG_DIR="$HOME_DIR/.config/retroarch"
 mkdir -p "$RETROARCH_CONFIG_DIR"

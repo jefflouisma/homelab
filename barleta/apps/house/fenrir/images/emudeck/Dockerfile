@@ -249,6 +249,7 @@ COPY autoconfig/linuxraw/ /usr/share/retroarch/autoconfig/linuxraw/
 
 # Copy ES-DE configuration
 COPY config/es_settings.xml /etc/es-de/es_settings.xml
+COPY config/custom_systems/ /etc/es-de/custom_systems/
 
 # =============================================================================
 # Stage 6: Environment & entry point
