@@ -39,8 +39,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     git \
     curl \
-    # AppImage extraction dependencies
-    libfuse2 \
+    # AppImage extraction (unsquashfs for cross-build compat)
+    squashfs-tools \
+    python3-minimal \
     file \
     # Dolphin core dependencies
     libhidapi-hidraw0 \
@@ -65,6 +66,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgles2 \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy AppImage extraction helper (supports both squashfs and DwarFS)
+COPY extract-appimage.sh /usr/local/bin/extract-appimage
+RUN chmod +x /usr/local/bin/extract-appimage
+
+# DwarFS extractor for AppImages that use DwarFS (e.g. PPSSPP)
+ARG DWARFS_VERSION=0.14.1
+RUN wget -q "https://github.com/mhx/dwarfs/releases/download/v${DWARFS_VERSION}/dwarfs-fuse-extract-${DWARFS_VERSION}-Linux-x86_64" \
+      -O /usr/local/bin/dwarfsextract && \
+    chmod +x /usr/local/bin/dwarfsextract
+
 # =============================================================================
 # Stage 2: ES-DE Frontend (AppImage extract)
 # =============================================================================
@@ -72,9 +83,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # v3.4.0: package_files/246875981, v3.3.0: package_files/210210324
 RUN wget -q "https://gitlab.com/es-de/emulationstation-de/-/package_files/246875981/download" \
       -O /tmp/esde.AppImage && \
-    chmod +x /tmp/esde.AppImage && \
-    cd /tmp && /tmp/esde.AppImage --appimage-extract && \
-    mv squashfs-root /opt/es-de && \
+    extract-appimage /tmp/esde.AppImage /opt/es-de && \
     ln -s /opt/es-de/AppRun /usr/local/bin/es-de && \
     rm -f /tmp/esde.AppImage
 
@@ -171,27 +180,21 @@ RUN git clone --depth 1 https://github.com/libretro/libretro-database.git /tmp/d
 # PCSX2 (PS2) — AppImage
 RUN wget -q "https://github.com/PCSX2/pcsx2/releases/download/v${PCSX2_VERSION}/pcsx2-v${PCSX2_VERSION}-linux-appimage-x64-Qt.AppImage" \
       -O /tmp/pcsx2.AppImage && \
-    chmod +x /tmp/pcsx2.AppImage && \
-    cd /tmp && /tmp/pcsx2.AppImage --appimage-extract && \
-    mv squashfs-root /opt/pcsx2 && \
+    extract-appimage /tmp/pcsx2.AppImage /opt/pcsx2 && \
     ln -s /opt/pcsx2/AppRun /usr/local/bin/pcsx2-qt && \
     rm -f /tmp/pcsx2.AppImage
 
 # DuckStation (PS1) — AppImage (rolling release)
 RUN wget -q "https://github.com/stenzek/duckstation/releases/download/latest/DuckStation-x64.AppImage" \
       -O /tmp/duckstation.AppImage && \
-    chmod +x /tmp/duckstation.AppImage && \
-    cd /tmp && /tmp/duckstation.AppImage --appimage-extract && \
-    mv squashfs-root /opt/duckstation && \
+    extract-appimage /tmp/duckstation.AppImage /opt/duckstation && \
     ln -s /opt/duckstation/AppRun /usr/local/bin/duckstation-qt && \
     rm -f /tmp/duckstation.AppImage
 
 # PPSSPP (PSP) — AppImage
 RUN wget -q "https://github.com/hrydgard/ppsspp/releases/download/v${PPSSPP_VERSION}/PPSSPP-v${PPSSPP_VERSION}-anylinux-x86_64.AppImage" \
       -O /tmp/ppsspp.AppImage && \
-    chmod +x /tmp/ppsspp.AppImage && \
-    cd /tmp && /tmp/ppsspp.AppImage --appimage-extract && \
-    mv squashfs-root /opt/ppsspp && \
+    extract-appimage /tmp/ppsspp.AppImage /opt/ppsspp && \
     ln -s /opt/ppsspp/AppRun /usr/local/bin/PPSSPPSDL && \
     rm -f /tmp/ppsspp.AppImage
 
@@ -199,20 +202,17 @@ RUN wget -q "https://github.com/hrydgard/ppsspp/releases/download/v${PPSSPP_VERS
 RUN RPCS3_URL=$(wget -qO- "https://api.github.com/repos/RPCS3/rpcs3-binaries-linux/releases/latest" | \
       grep -oP '"browser_download_url":\s*"\K[^"]+\.AppImage') && \
     wget -q "$RPCS3_URL" -O /tmp/rpcs3.AppImage && \
-    chmod +x /tmp/rpcs3.AppImage && \
-    cd /tmp && /tmp/rpcs3.AppImage --appimage-extract && \
-    mv squashfs-root /opt/rpcs3 && \
+    extract-appimage /tmp/rpcs3.AppImage /opt/rpcs3 && \
     ln -s /opt/rpcs3/AppRun /usr/local/bin/rpcs3 && \
     rm -f /tmp/rpcs3.AppImage
 
-# shadPS4 (PS4) — SDL zip release (tag format: v.X.Y.Z)
-RUN mkdir -p /opt/shadps4 && \
-    wget -q "https://github.com/shadps4-emu/shadPS4/releases/download/v.${SHADPS4_VERSION}/shadps4-linux-sdl-${SHADPS4_VERSION}.zip" \
+# shadPS4 (PS4) — zip contains an AppImage (tag format: v.X.Y.Z)
+RUN wget -q "https://github.com/shadps4-emu/shadPS4/releases/download/v.${SHADPS4_VERSION}/shadps4-linux-sdl-${SHADPS4_VERSION}.zip" \
       -O /tmp/shadps4.zip && \
-    unzip -q /tmp/shadps4.zip -d /opt/shadps4 && \
-    chmod +x /opt/shadps4/shadps4 && \
-    ln -s /opt/shadps4/shadps4 /usr/local/bin/shadps4 && \
-    rm -f /tmp/shadps4.zip
+    unzip -q /tmp/shadps4.zip -d /tmp/shadps4-extract && \
+    extract-appimage /tmp/shadps4-extract/Shadps4-sdl.AppImage /opt/shadps4 && \
+    ln -s /opt/shadps4/AppRun /usr/local/bin/shadps4 && \
+    rm -rf /tmp/shadps4.zip /tmp/shadps4-extract
 
 # =============================================================================
 # Stage 5: Directory structure & configuration
