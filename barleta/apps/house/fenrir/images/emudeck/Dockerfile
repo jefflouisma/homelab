@@ -52,7 +52,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-6 \
     # Standalone emulator shared dependencies
     libsdl2-2.0-0 \
-    libsdl2-gamecontroller0 \
     libqt6widgets6 \
     libqt6gui6 \
     libqt6core6 \
