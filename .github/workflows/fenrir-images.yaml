@@ -1,21 +1,21 @@
-name: Build Fenrir Container Images
+name: Build EmuDeck Container Image
 
 on:
   push:
     branches: [main]
     paths:
-      - 'barleta/apps/house/fenrir/images/**'
+      - 'barleta/apps/house/fenrir/images/emudeck/**'
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/pegasus-emulators
+  IMAGE_NAME: ${{ github.repository_owner }}/fenrir-emudeck
 
 jobs:
-  build-pegasus-emulators:
+  build-emudeck:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     
     steps:
@@ -32,21 +32,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=
-            type=raw,value=latest
-      
+      - name: Extract short SHA
+        id: vars
+        run: echo "tag=$(echo ${GITHUB_SHA} | cut -c1-7)" >> $GITHUB_OUTPUT
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: barleta/apps/house/fenrir/images/pegasus-emulators
+          context: barleta/apps/house/fenrir/images/emudeck
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Update GitOps manifest
+        run: |
+          TAG="${{ steps.vars.outputs.tag }}"
+          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-emudeck:)[^\s]+|${1}'"${TAG}"'|g' \
+            barleta/apps/house/fenrir/emudeck-app.yaml
+
+      - name: Commit manifest updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add barleta/apps/house/fenrir/emudeck-app.yaml
+          git diff --staged --quiet || git commit -m "ci: update fenrir-emudeck image to ${{ steps.vars.outputs.tag }}"
+          git push
