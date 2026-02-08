@@ -61,11 +61,23 @@ jobs:
           cache-from: type=gha,scope=fenrir-moonlight-proxy
           cache-to: type=gha,mode=max,scope=fenrir-moonlight-proxy
 
+      - name: Build/push fenrir-wolf-agent
+        uses: docker/build-push-action@v6
+        with:
+          context: fenrir
+          file: fenrir/Dockerfile
+          build-args: APP_NAME=wolf-agent
+          tags: ghcr.io/jefflouisma/fenrir-wolf-agent:${{ steps.vars.outputs.tag }}
+          push: true
+          cache-from: type=gha,scope=fenrir-wolf-agent
+          cache-to: type=gha,mode=max,scope=fenrir-wolf-agent
+
       - name: Update GitOps manifests
         run: |
           TAG="${{ steps.vars.outputs.tag }}"
           perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-operator:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/wolf-operator.yaml
           perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-moonlight-proxy:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/moonlight-proxy.yaml
+          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-wolf-agent:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/wolf-operator.yaml
 
       - name: Commit manifest updates
         run: |
@@ -73,6 +85,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add barleta/apps/house/fenrir/wolf-operator.yaml \
                   barleta/apps/house/fenrir/moonlight-proxy.yaml
+          # Also commit any wolf-agent tag references
           if git diff --cached --quiet; then
             echo "No manifest changes to commit."
             exit 0

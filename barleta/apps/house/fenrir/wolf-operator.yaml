@@ -91,6 +91,8 @@ spec:
           # Operator with /run/udev mount for SDL2 joystick hotplug detection
           image: ghcr.io/jefflouisma/fenrir-operator:846ffb6
           imagePullPolicy: Always
+          args:
+            - --wolf-agent-image=ghcr.io/jefflouisma/fenrir-wolf-agent:846ffb6
           env:
             - name: NAMESPACE
               valueFrom:
