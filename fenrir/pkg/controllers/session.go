@@ -806,6 +806,14 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				Name:      "host-udev",
 				MountPath: "/run/udev",
 			},
+			// Host /dev/input bind mount — Wolf creates virtual joypads on the HOST
+			// via /dev/uinput (HostPath). Device nodes appear in host /dev/input/
+			// but container devtmpfs overlay hides them. Explicit bind mount makes
+			// host input devices visible (same pattern as nvidia device mounts).
+			corev1.VolumeMount{
+				Name:      "dev-input",
+				MountPath: "/dev/input",
+			},
 		)
 
 		podToCreate.Spec.Containers[i].Env = append(podToCreate.Spec.Containers[i].Env, mapToEnvApplyList(map[string]string{
@@ -1645,6 +1653,20 @@ exit 1
 				HostPath: &corev1.HostPathVolumeSource{
 					Path: "/dev/uinput",
 					Type: ptr.To(corev1.HostPathCharDev),
+				},
+			},
+		},
+		// Host /dev/input — Wolf creates virtual joypads via /dev/uinput which
+		// appear as device nodes in host /dev/input/. Without this bind mount,
+		// containers have their own devtmpfs overlay that hides host devices.
+		// Wolf's ProcessRunner doesn't inject devices (only DockerRunner does
+		// via mknod + fake-udev), so this explicit mount is required.
+		corev1.Volume{
+			Name: "dev-input",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/dev/input",
+					Type: ptr.To(corev1.HostPathDirectoryOrCreate),
 				},
 			},
 		},
