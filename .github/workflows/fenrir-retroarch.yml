@@ -51,13 +51,13 @@ jobs:
       - name: Update GitOps manifests
         run: |
           TAG="${{ steps.vars.outputs.tag }}"
-          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-retroarch:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/apps.yaml
+          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-retroarch:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/retroarch-apps.yaml
 
       - name: Commit manifest updates
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add barleta/apps/house/fenrir/apps.yaml
+          git add barleta/apps/house/fenrir/retroarch-apps.yaml
           if git diff --cached --quiet; then
             echo "No manifest changes to commit."
             exit 0

@@ -10,9 +10,9 @@ Fenrir is a Kubernetes-native adaptation of [Wolf (games-on-whales)](https://gam
 | Component | Description |
 |-----------|-------------|
 | `crds.yaml` | Custom Resource Definitions (App, Session, Pairing, User) |
-| `operator.yaml` | Fenrir operator for session management |
+| `wolf-operator.yaml` | Fenrir operator + Wolf streaming server |
 | `moonlight-proxy.yaml` | Entry point for Moonlight clients |
-| `apps.yaml` | Available games (Pegasus, shadps4, RetroArch) |
+| `retroarch-apps.yaml` | RetroArch game definitions |
 | `storage.yaml` | PVCs for games and saves |
 
 ## Quick Start (GitOps)

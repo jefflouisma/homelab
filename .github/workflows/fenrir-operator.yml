@@ -64,14 +64,14 @@ jobs:
       - name: Update GitOps manifests
         run: |
           TAG="${{ steps.vars.outputs.tag }}"
-          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-operator:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/operator.yaml
+          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-operator:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/wolf-operator.yaml
           perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-moonlight-proxy:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/moonlight-proxy.yaml
 
       - name: Commit manifest updates
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add barleta/apps/house/fenrir/operator.yaml \
+          git add barleta/apps/house/fenrir/wolf-operator.yaml \
                   barleta/apps/house/fenrir/moonlight-proxy.yaml
           if git diff --cached --quiet; then
             echo "No manifest changes to commit."
