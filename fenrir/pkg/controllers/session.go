@@ -898,12 +898,6 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 					MountPath: "/mnt/data/wolf",
 				},
 				{
-					Name:      "config",
-					MountPath: "/opt/gow/startup-app.sh",
-					SubPath:   "startup-app.sh",
-					ReadOnly:  true,
-				},
-				{
 					Name:      "wolf-runtime",
 					MountPath: "/tmp/.X11-unix",
 				},
