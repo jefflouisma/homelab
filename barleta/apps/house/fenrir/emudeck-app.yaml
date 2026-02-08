@@ -163,50 +163,72 @@ spec:
                   generate-ps4-shortcuts.sh /Emulation/roms/ps4 /Emulation/storage/ps4-games
               fi
 
-              # ── Virtual Controller Detection ──────────────────────────────
-              # /dev/input is bind-mounted from host (HostPath volume in operator).
-              # Wolf creates Xbox joypad on HOST via uinput (inputtino library)
-              # ~23s after session start. Device nodes appear directly in our
-              # /dev/input/ without needing mknod or fake-udev.
-              # Just wait for the joypad to appear and point SDL2 at it.
-              echo "Waiting for Wolf virtual controller in /dev/input/..."
-              CTRL_TIMEOUT=30
+              # ── Virtual Controller Injection ──────────────────────────────
+              # Wolf creates Xbox joypad via uinput ~34s after pod start.
+              # The device node appears in Wolf's container devtmpfs only,
+              # NOT in /dev/input HostPath (dynamically created uinput devices
+              # don't propagate to host devtmpfs from container namespaces).
+              # However, /sys (sysfs) IS kernel-wide — all containers see it.
+              # Strategy: scan sysfs for Wolf's joypad, extract major:minor,
+              # then mknod the device into our own /dev/input/.
+              echo "Waiting for Wolf virtual controller in sysfs..."
+              CTRL_TIMEOUT=45
               CTRL_WAITED=0
-              WOLF_EVENT=""
-              while [ -z "$WOLF_EVENT" ] && [ $CTRL_WAITED -lt $CTRL_TIMEOUT ]; do
-                  for ev in /dev/input/event*; do
-                      [ -c "$ev" ] || continue
-                      # Check sysfs for device name (sysfs is available to all containers)
-                      ev_name=$(basename "$ev")
-                      name_file="/sys/class/input/$ev_name/device/name"
+              WOLF_EVENT_DEV=""
+              while [ -z "$WOLF_EVENT_DEV" ] && [ $CTRL_WAITED -lt $CTRL_TIMEOUT ]; do
+                  for input_dir in /sys/class/input/event*; do
+                      [ -d "$input_dir" ] || continue
+                      name_file="$input_dir/device/name"
                       if [ -f "$name_file" ] && grep -qi "wolf\|x-box.*pad\|xbox.*virtual" "$name_file" 2>/dev/null; then
-                          WOLF_EVENT="$ev"
+                          WOLF_EVENT_DEV="$input_dir"
                           break
                       fi
                   done
-                  if [ -z "$WOLF_EVENT" ]; then
+                  if [ -z "$WOLF_EVENT_DEV" ]; then
                       sleep 1
                       CTRL_WAITED=$((CTRL_WAITED + 1))
-                      echo "Waiting for Wolf joypad... ($CTRL_WAITED/$CTRL_TIMEOUT)"
+                      [ $((CTRL_WAITED % 5)) -eq 0 ] && echo "Scanning sysfs for Wolf joypad... ($CTRL_WAITED/$CTRL_TIMEOUT)"
                   fi
               done
 
-              if [ -n "$WOLF_EVENT" ]; then
-                  DEV_NAME=$(cat "/sys/class/input/$(basename $WOLF_EVENT)/device/name" 2>/dev/null)
-                  echo "Found Wolf joypad: $DEV_NAME ($WOLF_EVENT)"
-                  # Ensure permissions (init container sets these too, but joypad appears later)
-                  chmod 666 "$WOLF_EVENT" 2>/dev/null || true
-                  export SDL_JOYSTICK_DEVICE="$WOLF_EVENT"
-                  echo "SDL_JOYSTICK_DEVICE=$SDL_JOYSTICK_DEVICE"
-                  ls -la /dev/input/ 2>/dev/null
+              if [ -n "$WOLF_EVENT_DEV" ]; then
+                  EVENT_NAME=$(basename "$WOLF_EVENT_DEV")
+                  DEV_NAME=$(cat "$WOLF_EVENT_DEV/device/name" 2>/dev/null)
+                  echo "Found Wolf joypad: $DEV_NAME ($EVENT_NAME)"
+
+                  # Create device node via mknod (sysfs has major:minor)
+                  if [ -f "$WOLF_EVENT_DEV/dev" ]; then
+                      MAJOR=$(cut -d: -f1 < "$WOLF_EVENT_DEV/dev")
+                      MINOR=$(cut -d: -f2 < "$WOLF_EVENT_DEV/dev")
+                      mkdir -p /dev/input
+                      mknod "/dev/input/$EVENT_NAME" c "$MAJOR" "$MINOR" 2>/dev/null || true
+                      chmod 666 "/dev/input/$EVENT_NAME" 2>/dev/null || true
+                      echo "Created /dev/input/$EVENT_NAME (major=$MAJOR, minor=$MINOR)"
+
+                      # Also create js* device for legacy joystick API
+                      for js_dir in /sys/class/input/js*; do
+                          [ -d "$js_dir" ] || continue
+                          # Check if this js device is linked to the same physical device
+                          js_phys=$(readlink -f "$js_dir/device" 2>/dev/null)
+                          ev_phys=$(readlink -f "$WOLF_EVENT_DEV/device" 2>/dev/null)
+                          if [ "$js_phys" = "$ev_phys" ] && [ -f "$js_dir/dev" ]; then
+                              JS_NAME=$(basename "$js_dir")
+                              JS_MAJOR=$(cut -d: -f1 < "$js_dir/dev")
+                              JS_MINOR=$(cut -d: -f2 < "$js_dir/dev")
+                              mknod "/dev/input/$JS_NAME" c "$JS_MAJOR" "$JS_MINOR" 2>/dev/null || true
+                              chmod 666 "/dev/input/$JS_NAME" 2>/dev/null || true
+                              echo "Created /dev/input/$JS_NAME (major=$JS_MAJOR, minor=$JS_MINOR)"
+                          fi
+                      done
+
+                      export SDL_JOYSTICK_DEVICE="/dev/input/$EVENT_NAME"
+                      echo "SDL_JOYSTICK_DEVICE=$SDL_JOYSTICK_DEVICE"
+                  fi
               else
-                  echo "WARN: Wolf joypad not found after ${CTRL_TIMEOUT}s"
-                  echo "  Available input devices:"
-                  ls -la /dev/input/ 2>/dev/null || echo "  /dev/input/ is empty"
-                  for ev in /dev/input/event*; do
-                      [ -c "$ev" ] || continue
-                      name_file="/sys/class/input/$(basename $ev)/device/name"
-                      [ -f "$name_file" ] && echo "  $(basename $ev): $(cat $name_file)"
+                  echo "WARN: Wolf joypad not found in sysfs after ${CTRL_TIMEOUT}s"
+                  echo "  All input devices in sysfs:"
+                  for d in /sys/class/input/event*; do
+                      [ -f "$d/device/name" ] && echo "  $(basename $d): $(cat $d/device/name)"
                   done
               fi
 
