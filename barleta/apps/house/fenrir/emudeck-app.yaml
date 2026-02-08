@@ -168,7 +168,7 @@ spec:
               # when it receives PlugDeviceEvent via SSE. A background watcher
               # polls for those files and mknods devices into /dev/input/.
               # ES-DE launches immediately — controller appears when ready.
-              mkdir -p /etc/wolf/devices /dev/input 2>/dev/null || true
+              mkdir -p /etc/wolf/devices /etc/wolf/devices/.done /dev/input 2>/dev/null || true
 
               # Background device watcher — uses Wolf's fake-udev for SDL2 detection
               # mknod alone is insufficient: SDL2/libudev needs netlink udev events
@@ -182,6 +182,8 @@ spec:
                   mkdir -p /run/udev/data 2>/dev/null || true
                   touch /run/udev/control 2>/dev/null || true
                   chmod 777 /run/udev/control 2>/dev/null || true
+                  # Fix ownership so UID 1000 can write device database entries
+                  chown -R 1000:1000 /run/udev 2>/dev/null || true
 
                   # Wait for fake-udev binary (copied by wolf container at startup)
                   echo "CONTROLLER: Waiting for fake-udev binary..."
@@ -249,6 +251,8 @@ spec:
                               echo "CONTROLLER: udevadm trigger fallback for $devname"
                           fi
                       fi
+                      # Move processed signal file to .done/ to prevent re-processing
+                      mv "$sigfile" /etc/wolf/devices/.done/ 2>/dev/null || true
                   }
                   while true; do
                       for f in /etc/wolf/devices/*.json; do
