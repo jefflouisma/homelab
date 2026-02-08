@@ -96,9 +96,17 @@ mkdir -p /Emulation/saves/pcsx2/memcards 2>/dev/null || true
 mkdir -p /Emulation/saves/ppsspp 2>/dev/null || true
 mkdir -p /Emulation/saves/duckstation 2>/dev/null || true
 mkdir -p /Emulation/saves/rpcs3 2>/dev/null || true
+mkdir -p /Emulation/saves/shadps4 2>/dev/null || true
+
+# ─── PS4 Game Name Resolution ────────────────────────────────────────────────
+# Generate named symlinks for PS4 games (CUSA* → human-readable titles)
+if [ -d "/Emulation/roms/ps4" ]; then
+    echo "Generating PS4 game shortcuts..."
+    generate-ps4-shortcuts.sh /Emulation/roms/ps4 /Emulation/storage/ps4-games
+fi
 
 # ─── Qt Wayland Platform ─────────────────────────────────────────────────────
-# Standalone emulators (PCSX2, DuckStation) are Qt apps — force Wayland
+# Standalone emulators (PCSX2, DuckStation, RPCS3, shadPS4) are Qt apps — force Wayland
 export QT_QPA_PLATFORM=wayland
 export SDL_VIDEODRIVER=wayland
 

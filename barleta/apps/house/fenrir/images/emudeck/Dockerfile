@@ -240,6 +240,10 @@ RUN mkdir -p \
 COPY startup.sh /usr/local/bin/startup.sh
 RUN chmod +x /usr/local/bin/startup.sh
 
+# Copy PS4 game name resolution script
+COPY generate-ps4-shortcuts.sh /usr/local/bin/generate-ps4-shortcuts.sh
+RUN chmod +x /usr/local/bin/generate-ps4-shortcuts.sh
+
 # Copy RetroArch configuration
 COPY config/retroarch.cfg /etc/retroarch.cfg
 

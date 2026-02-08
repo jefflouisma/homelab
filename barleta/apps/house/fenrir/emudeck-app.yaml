@@ -137,9 +137,10 @@ spec:
               mkdir -p /Emulation/saves/ppsspp 2>/dev/null || true
               mkdir -p /Emulation/saves/duckstation 2>/dev/null || true
               mkdir -p /Emulation/saves/rpcs3 2>/dev/null || true
+              mkdir -p /Emulation/saves/shadps4 2>/dev/null || true
 
               # RPCS3 / PS3 configuration
-              # Copy custom ES-DE system definitions (RPCS3 Directory as default PS3 command)
+              # Copy custom ES-DE system definitions (RPCS3 Directory as default PS3 command + PS4 shadPS4)
               ESDE_CUSTOM_DIR="$HOME_DIR/.config/es-de/custom_systems"
               mkdir -p "$ESDE_CUSTOM_DIR"
               if [ -d /etc/es-de/custom_systems ]; then
@@ -157,6 +158,12 @@ spec:
                   rpcs3 --installfw /Emulation/bios/PS3UPDAT.PUP 2>&1 || echo "WARN: PS3 firmware install returned non-zero (may still be OK)"
               else
                   echo "INFO: No PS3 firmware found at /Emulation/bios/PS3UPDAT.PUP (skipping)"
+              fi
+
+              # PS4 game name resolution — generate named symlinks from param.sfo
+              if [ -d "/Emulation/roms/ps4" ]; then
+                  echo "Generating PS4 game shortcuts..."
+                  generate-ps4-shortcuts.sh /Emulation/roms/ps4 /Emulation/storage/ps4-games
               fi
 
               echo "Launching ES-DE frontend..."

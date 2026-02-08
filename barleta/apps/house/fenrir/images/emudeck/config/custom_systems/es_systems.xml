@@ -14,4 +14,15 @@
         <platform>ps3</platform>
         <theme>ps3</theme>
     </system>
+    <system>
+        <name>ps4</name>
+        <fullname>Sony PlayStation 4</fullname>
+        <!-- Use the symlink directory with named .ps4 links -->
+        <path>/Emulation/storage/ps4-games</path>
+        <extension>.ps4 .PS4</extension>
+        <!-- shadPS4 launches eboot.bin from the game folder (the .ps4 symlink target) -->
+        <command label="shadPS4 (Standalone)">%EMULATOR_SHADPS4% -g %ROM%/eboot.bin</command>
+        <platform>ps4</platform>
+        <theme>ps4</theme>
+    </system>
 </systemList>
