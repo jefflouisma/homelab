@@ -785,6 +785,13 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				Name:      "gbm-backend",
 				MountPath: "/usr/lib/gbm",
 			},
+			// /dev/shm override: Kubernetes default is 64MB which is too small for
+			// RPCS3 SPU recompiler, shadPS4 shader compilation, and Dolphin (Wii).
+			// 8GB provides plenty of headroom on the 64GB G913.
+			corev1.VolumeMount{
+				Name:      "dshm",
+				MountPath: "/dev/shm",
+			},
 			corev1.VolumeMount{
 				Name:      "egl-vendor",
 				MountPath: "/usr/share/glvnd/egl_vendor.d",
@@ -1344,6 +1351,11 @@ echo "=== Done ==="
 				},
 			},
 			VolumeMounts: []corev1.VolumeMount{
+				// /dev/shm override for Wolf's child processes (emulators)
+				{
+					Name:      "dshm",
+					MountPath: "/dev/shm",
+				},
 				{
 					Name:      "wolf-cfg",
 					MountPath: "/etc/wolf",
@@ -1518,6 +1530,18 @@ exit 1
 			Name: "nvrtc-libs",
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+		// /dev/shm backed by tmpfs (RAM) — Kubernetes default is only 64MB.
+		// RPCS3 SPU recompiler, shadPS4 Vulkan shaders, and Dolphin all need
+		// significant shared memory. 8Gi is ~12.5% of the G913's 64GB RAM.
+		corev1.Volume{
+			Name: "dshm",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium:    corev1.StorageMediumMemory,
+					SizeLimit: func() *resource.Quantity { q := resource.MustParse("8Gi"); return &q }(),
+				},
 			},
 		},
 		corev1.Volume{
