@@ -289,9 +289,25 @@ type AddSessionResponse struct {
 type WolfEventType string
 
 const (
-	PauseStreamEventType WolfEventType = "wolf::core::events::PauseStreamEvent"
+	PauseStreamEventType  WolfEventType = "wolf::core::events::PauseStreamEvent"
+	PlugDeviceEventType   WolfEventType = "wolf::core::events::PlugDeviceEvent"
+	UnplugDeviceEventType WolfEventType = "wolf::core::events::UnplugDeviceEvent"
 )
 
 type PauseStreamEvent struct {
 	SessionID string `json:"session_id"`
+}
+
+// PlugDeviceEvent matches Wolf's C++ PlugDeviceEvent struct.
+// Wolf broadcasts this via SSE when a virtual input device (joypad, mouse, keyboard)
+// is created via uinput. Each udev_events entry contains DEVNAME, MAJOR, MINOR, etc.
+type PlugDeviceEvent struct {
+	SessionID      string              `json:"session_id"`
+	UdevEvents     []map[string]string `json:"udev_events"`
+	UdevHwDbEntries []UdevHwDbEntry    `json:"udev_hw_db_entries"`
+}
+
+type UdevHwDbEntry struct {
+	Path    string   `json:"first"`
+	Entries []string `json:"second"`
 }

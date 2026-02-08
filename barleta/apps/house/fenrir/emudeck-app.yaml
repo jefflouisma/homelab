@@ -164,73 +164,112 @@ spec:
               fi
 
               # ── Virtual Controller Injection ──────────────────────────────
-              # Wolf creates Xbox joypad via uinput ~34s after pod start.
-              # The device node appears in Wolf's container devtmpfs only,
-              # NOT in /dev/input HostPath (dynamically created uinput devices
-              # don't propagate to host devtmpfs from container namespaces).
-              # However, /sys (sysfs) IS kernel-wide — all containers see it.
-              # Strategy: scan sysfs for Wolf's joypad, extract major:minor,
-              # then mknod the device into our own /dev/input/.
-              echo "Waiting for Wolf virtual controller in sysfs..."
-              CTRL_TIMEOUT=45
+              # Wolf creates Xbox joypad via uinput ~34s after Moonlight connects.
+              # The device node only exists in Wolf's container devtmpfs — NOT
+              # visible via /dev/input HostPath, and NOT visible in /sys/class/input
+              # across container namespaces.
+              #
+              # Solution: wolf-agent subscribes to Wolf's SSE events and receives
+              # PlugDeviceEvent (with DEVNAME, MAJOR, MINOR). It writes device
+              # signal files to /etc/wolf/devices/ (shared emptyDir volume).
+              # We watch for those files and mknod the devices into our /dev/input/.
+
+              DEVICES_DIR="/etc/wolf/devices"
+              mkdir -p "$DEVICES_DIR" 2>/dev/null || true
+              mkdir -p /dev/input 2>/dev/null || true
+
+              # Function to process a single device signal file
+              process_device_file() {
+                  local sigfile="$1"
+                  [ -f "$sigfile" ] || return 1
+
+                  # Parse JSON fields using grep+sed (no jq in minimal image)
+                  local devname major minor
+                  devname=$(grep -o '"DEVNAME"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                  major=$(grep -o '"MAJOR"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                  minor=$(grep -o '"MINOR"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+
+                  if [ -z "$devname" ] || [ -z "$major" ] || [ -z "$minor" ]; then
+                      return 1
+                  fi
+
+                  # Only process /dev/input devices (skip other subsystems)
+                  case "$devname" in
+                      /dev/input/*) ;;
+                      *) return 0 ;;
+                  esac
+
+                  # Create parent directory and device node
+                  if [ ! -e "$devname" ]; then
+                      mknod "$devname" c "$major" "$minor" 2>/dev/null || true
+                      chmod 666 "$devname" 2>/dev/null || true
+                      echo "CONTROLLER: Created $devname (major=$major, minor=$minor)"
+                  fi
+                  return 0
+              }
+
+              # Wait for wolf-agent to write device signal files
+              echo "Waiting for wolf-agent device signals in $DEVICES_DIR..."
+              CTRL_TIMEOUT=90
               CTRL_WAITED=0
-              WOLF_EVENT_DEV=""
-              while [ -z "$WOLF_EVENT_DEV" ] && [ $CTRL_WAITED -lt $CTRL_TIMEOUT ]; do
-                  for input_dir in /sys/class/input/event*; do
-                      [ -d "$input_dir" ] || continue
-                      name_file="$input_dir/device/name"
-                      if [ -f "$name_file" ] && grep -qi "wolf\|x-box.*pad\|xbox.*virtual" "$name_file" 2>/dev/null; then
-                          WOLF_EVENT_DEV="$input_dir"
-                          break
+              CONTROLLER_FOUND=""
+              while [ -z "$CONTROLLER_FOUND" ] && [ $CTRL_WAITED -lt $CTRL_TIMEOUT ]; do
+                  for sigfile in "$DEVICES_DIR"/*.json; do
+                      [ -f "$sigfile" ] || continue
+                      if process_device_file "$sigfile"; then
+                          devname=$(grep -o '"DEVNAME"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                          case "$devname" in
+                              /dev/input/event*)
+                                  # Check if this is a joystick/gamepad device
+                                  is_joystick=$(grep -o '"ID_INPUT_JOYSTICK"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" 2>/dev/null | head -1)
+                                  if [ -n "$is_joystick" ]; then
+                                      CONTROLLER_FOUND="$devname"
+                                      echo "CONTROLLER: Found joystick device: $CONTROLLER_FOUND"
+                                      break
+                                  fi
+                                  ;;
+                          esac
                       fi
                   done
-                  if [ -z "$WOLF_EVENT_DEV" ]; then
+
+                  if [ -z "$CONTROLLER_FOUND" ]; then
                       sleep 1
                       CTRL_WAITED=$((CTRL_WAITED + 1))
-                      [ $((CTRL_WAITED % 5)) -eq 0 ] && echo "Scanning sysfs for Wolf joypad... ($CTRL_WAITED/$CTRL_TIMEOUT)"
+                      [ $((CTRL_WAITED % 10)) -eq 0 ] && echo "Waiting for controller signal... ($CTRL_WAITED/$CTRL_TIMEOUT)"
                   fi
               done
 
-              if [ -n "$WOLF_EVENT_DEV" ]; then
-                  EVENT_NAME=$(basename "$WOLF_EVENT_DEV")
-                  DEV_NAME=$(cat "$WOLF_EVENT_DEV/device/name" 2>/dev/null)
-                  echo "Found Wolf joypad: $DEV_NAME ($EVENT_NAME)"
+              # Process ALL device signal files (not just the joystick)
+              for sigfile in "$DEVICES_DIR"/*.json; do
+                  [ -f "$sigfile" ] || continue
+                  process_device_file "$sigfile"
+              done
 
-                  # Create device node via mknod (sysfs has major:minor)
-                  if [ -f "$WOLF_EVENT_DEV/dev" ]; then
-                      MAJOR=$(cut -d: -f1 < "$WOLF_EVENT_DEV/dev")
-                      MINOR=$(cut -d: -f2 < "$WOLF_EVENT_DEV/dev")
-                      mkdir -p /dev/input
-                      mknod "/dev/input/$EVENT_NAME" c "$MAJOR" "$MINOR" 2>/dev/null || true
-                      chmod 666 "/dev/input/$EVENT_NAME" 2>/dev/null || true
-                      echo "Created /dev/input/$EVENT_NAME (major=$MAJOR, minor=$MINOR)"
+              if [ -n "$CONTROLLER_FOUND" ]; then
+                  export SDL_JOYSTICK_DEVICE="$CONTROLLER_FOUND"
+                  echo "SDL_JOYSTICK_DEVICE=$SDL_JOYSTICK_DEVICE"
+                  ls -la /dev/input/ 2>/dev/null || true
 
-                      # Also create js* device for legacy joystick API
-                      for js_dir in /sys/class/input/js*; do
-                          [ -d "$js_dir" ] || continue
-                          # Check if this js device is linked to the same physical device
-                          js_phys=$(readlink -f "$js_dir/device" 2>/dev/null)
-                          ev_phys=$(readlink -f "$WOLF_EVENT_DEV/device" 2>/dev/null)
-                          if [ "$js_phys" = "$ev_phys" ] && [ -f "$js_dir/dev" ]; then
-                              JS_NAME=$(basename "$js_dir")
-                              JS_MAJOR=$(cut -d: -f1 < "$js_dir/dev")
-                              JS_MINOR=$(cut -d: -f2 < "$js_dir/dev")
-                              mknod "/dev/input/$JS_NAME" c "$JS_MAJOR" "$JS_MINOR" 2>/dev/null || true
-                              chmod 666 "/dev/input/$JS_NAME" 2>/dev/null || true
-                              echo "Created /dev/input/$JS_NAME (major=$JS_MAJOR, minor=$JS_MINOR)"
-                          fi
-                      done
-
-                      export SDL_JOYSTICK_DEVICE="/dev/input/$EVENT_NAME"
-                      echo "SDL_JOYSTICK_DEVICE=$SDL_JOYSTICK_DEVICE"
-                  fi
+                  # Trigger udev so SDL2's udev backend picks up the new devices
+                  udevadm trigger --subsystem-match=input --action=add 2>/dev/null || true
               else
-                  echo "WARN: Wolf joypad not found in sysfs after ${CTRL_TIMEOUT}s"
-                  echo "  All input devices in sysfs:"
-                  for d in /sys/class/input/event*; do
-                      [ -f "$d/device/name" ] && echo "  $(basename $d): $(cat $d/device/name)"
-                  done
+                  echo "WARN: No controller signal received after ${CTRL_TIMEOUT}s"
+                  echo "  Signal files in $DEVICES_DIR:"
+                  ls -la "$DEVICES_DIR"/ 2>/dev/null || echo "  (empty)"
+                  echo "  /dev/input contents:"
+                  ls -la /dev/input/ 2>/dev/null || echo "  (empty)"
               fi
+
+              # Background watcher for controller hotplug (handles reconnects)
+              (
+                  while true; do
+                      sleep 5
+                      for sigfile in "$DEVICES_DIR"/*.json; do
+                          [ -f "$sigfile" ] || continue
+                          process_device_file "$sigfile" 2>/dev/null
+                      done
+                  done
+              ) &
 
               echo "Launching ES-DE frontend..."
               exec es-de --resolution 1920 1080
