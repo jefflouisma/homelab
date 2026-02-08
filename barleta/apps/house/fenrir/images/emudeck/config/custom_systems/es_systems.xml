@@ -8,7 +8,7 @@
         <path>%ROMPATH%/ps3</path>
         <extension>.ps3 .PS3 .ps3dir .PS3DIR .desktop</extension>
         <!-- Directory mode first = default for headless container -->
-        <command label="RPCS3 Directory (Standalone)">%EMULATOR_RPCS3% --no-gui %ROM%</command>
+        <command label="RPCS3 Directory (Standalone)">/usr/local/bin/rpcs3 --no-gui %ROM%</command>
         <command label="RPCS3 Game Serial (Standalone)">%EMULATOR_RPCS3% --no-gui %RPCS3_GAMEID%:%INJECT%=%BASENAME%.ps3</command>
         <command label="RPCS3 Shortcut (Standalone)">%ENABLESHORTCUTS% %EMULATOR_OS-SHELL% %ROM%</command>
         <platform>ps3</platform>
@@ -17,11 +17,11 @@
     <system>
         <name>ps4</name>
         <fullname>Sony PlayStation 4</fullname>
-        <!-- Use the symlink directory with named .ps4 links -->
+        <!-- Symlink directory: GameTitle.ps4 → CUSA*/eboot.bin (file symlinks) -->
         <path>/Emulation/storage/ps4-games</path>
         <extension>.ps4 .PS4</extension>
-        <!-- shadPS4 launches eboot.bin from the game folder (the .ps4 symlink target) -->
-        <command label="shadPS4 (Standalone)">%EMULATOR_SHADPS4% -g %ROM%/eboot.bin</command>
+        <!-- %ROM% is a file symlink to eboot.bin, pass directly to shadps4 -->
+        <command label="shadPS4 (Standalone)">/usr/local/bin/shadps4 -g %ROM%</command>
         <platform>ps4</platform>
         <theme>ps4</theme>
     </system>
