@@ -41,7 +41,7 @@ spec:
             runAsUser: 0
       containers:
         - name: emudeck
-          image: ghcr.io/jefflouisma/fenrir-emudeck:546a17d
+          image: ghcr.io/jefflouisma/fenrir-emudeck:839ad04
           command:
             - /bin/bash
             - -c
