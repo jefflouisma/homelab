@@ -433,31 +433,30 @@ func (s *RESTServer) appListHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
-
-	// 2025/03/03 11:34:48 HTTP/2.0 GET /launch map[additionalStates:[1] appid:[firefox] localAudioPlayMode:[0] mode:[1920x1080x60] rikey:[773448F67992470C5C62848D361E1025] rikeyid:[1311662065] sops:[0] surroundAudioInfo:[196610] uniqueid:[0123456789ABCDEF]] 127.0.0.1:65314
-	// 2025/03/03 11:34:48 &{GET /launch?uniqueid=0123456789ABCDEF&appid=firefox&mode=1920x1080x60&additionalStates=1&sops=0&rikey=773448F67992470C5C62848D361E1025&rikeyid=1311662065&localAudioPlayMode=0&surroundAudioInfo=196610 HTTP/2.0 2 0 map[Accept:[*/*] Accept-Encoding:[gzip, deflate, br] Accept-Language:[en-US,en;q=0.9] User-Agent:[Moonlight/1243 CFNetwork/1568.100.1 Darwin/24.0.0]] 0x14000296570 <nil> 0 [] false 127.0.0.1:47984 map[] map[] <nil> map[] 127.0.0.1:65314 /launch?uniqueid=0123456789ABCDEF&appid=firefox&mode=1920x1080x60&additionalStates=1&sops=0&rikey=773448F67992470C5C62848D361E1025&rikeyid=1311662065&localAudioPlayMode=0&surroundAudioInfo=196610 0x1400016a540 <nil> <nil> /launch 0x140001ce0f0 0x14000186540 [] map[]}
+// createSessionForUser handles the core session creation logic shared between
+// launch and resume handlers. It parses request parameters, stops any existing
+// sessions, creates a new session, and waits for the stream URL.
+// Returns the stream URL on success, or writes an error response and returns "".
+func (s *RESTServer) createSessionForUser(w http.ResponseWriter, r *http.Request) string {
 	appID := r.URL.Query().Get("appid")
-	// additionalStates := r.URL.Query().Get("additionalStates") // ???
 	mode := r.URL.Query().Get("mode")
 	rikey := r.URL.Query().Get("rikey")
 	rikeyID := r.URL.Query().Get("rikeyid")
-	// sops := r.URL.Query().Get("sops") // legacy GFE auto-optimize game settings. i dont think wolf has equivalent
 	surroundAudioInfo := r.URL.Query().Get("surroundAudioInfo")
 
 	if appID == "" {
 		writeErrorResponse(w, 400, fmt.Errorf("appid required"))
-		return
+		return ""
 	}
 
 	if rikey == "" {
 		writeErrorResponse(w, 400, fmt.Errorf("rikey required"))
-		return
+		return ""
 	}
 
 	if rikeyID == "" {
 		writeErrorResponse(w, 400, fmt.Errorf("rikeyid required"))
-		return
+		return ""
 	}
 
 	if mode == "" {
@@ -467,23 +466,25 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 	splitMode := strings.Split(mode, "x")
 	if len(splitMode) != 3 {
 		writeErrorResponse(w, 400, fmt.Errorf("invalid mode: %s", mode))
-		return
+		return ""
 	}
 
 	width, err := strconv.Atoi(splitMode[0])
 	if err != nil {
 		writeErrorResponse(w, 400, fmt.Errorf("invalid mode: %s", mode))
-		return
+		return ""
 	}
 
 	height, err := strconv.Atoi(splitMode[1])
 	if err != nil {
 		writeErrorResponse(w, 400, fmt.Errorf("invalid mode: %s", mode))
+		return ""
 	}
 
 	refreshRate, err := strconv.Atoi(splitMode[2])
 	if err != nil {
 		writeErrorResponse(w, 400, fmt.Errorf("invalid mode: %s", mode))
+		return ""
 	}
 
 	if surroundAudioInfo == "" {
@@ -493,13 +494,13 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 	surroundFlags, err := strconv.Atoi(surroundAudioInfo)
 	if err != nil {
 		writeErrorResponse(w, 400, fmt.Errorf("invalid surroundAudioInfo: %s", surroundAudioInfo))
-		return
+		return ""
 	}
 
 	app, err := s.getAppByID(appID)
 	if err != nil {
 		writeErrorResponse(w, 404, fmt.Errorf("app not found: %s", err))
-		return
+		return ""
 	}
 
 	user := r.Context().Value(userContextKey{}).(*v1alpha1types.User)
@@ -512,7 +513,7 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 	// the session URL.
 	if err := s.stopSessionsForUser(user, false); err != nil && !k8serrors.IsNotFound(err) {
 		writeErrorResponse(w, 500, fmt.Errorf("failed to stop existing sessions: %s", err))
-		return
+		return ""
 	}
 
 	klog.Infof("Launching app %s for user %s", app.ObjectMeta.Name, user.ObjectMeta.Name)
@@ -567,7 +568,7 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		writeErrorResponse(w, 500, fmt.Errorf("failed to create session: %s", err))
-		return
+		return ""
 	}
 
 	// Wait for session to be created by the direwolf controller
@@ -587,10 +588,19 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		writeErrorResponse(w, 500, fmt.Errorf("failed to launch app: %s", err))
-		return
+		return ""
 	}
 
 	klog.Infof("[RTSP DEBUG] Returning streamURL to client: %s", streamURL)
+	return streamURL
+}
+
+func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
+	streamURL := s.createSessionForUser(w, r)
+	if streamURL == "" {
+		return // error already written by createSessionForUser
+	}
+
 	sendXML(w, LaunchResponse{
 		Response: Response{
 			StatusCode: 200,
@@ -612,7 +622,7 @@ func (s *RESTServer) resumeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If there's an existing session with a stream URL, resume it
+	// If there's an existing session with a stream URL, resume it directly
 	for _, session := range sessions {
 		if session.Status.StreamURL != "" {
 			klog.Infof("Resuming existing session %s for user %s (streamURL: %s)",
@@ -628,9 +638,21 @@ func (s *RESTServer) resumeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// No active session found — fall back to launching a new one
-	klog.Infof("No active session found for user %s, launching new session", user.Name)
-	s.launchHandler(w, r)
+	// No active session found — create a new one but respond with ResumeResponse
+	// Moonlight protocol requires <resume> field (not <gamesession>) when verb is "resume"
+	klog.Infof("No active session found for user %s, launching new session via resume", user.Name)
+	streamURL := s.createSessionForUser(w, r)
+	if streamURL == "" {
+		return // error already written by createSessionForUser
+	}
+
+	sendXML(w, ResumeResponse{
+		Response: Response{
+			StatusCode: 200,
+		},
+		RTSPSessionURL: streamURL,
+		Resume:         1,
+	})
 }
 
 func (s *RESTServer) cancelHandler(w http.ResponseWriter, r *http.Request) {
