@@ -163,13 +163,25 @@ spec:
                   generate-ps4-shortcuts.sh /Emulation/roms/ps4 /Emulation/storage/ps4-games
               fi
 
-              # Controller hotplug — Wolf creates virtual gamepad via uinput
-              # ~8s after app starts. udevd propagates hotplug events to SDL2.
-              echo "Starting udevd for controller hotplug..."
-              if command -v udevd &>/dev/null; then
-                  udevd --daemon 2>/dev/null || true
-                  udevadm trigger --subsystem-match=input --action=add 2>/dev/null || true
-                  echo "udevd started."
+              # Wait for Wolf virtual gamepad before launching ES-DE.
+              # Wolf creates the Xbox joypad via uinput ~3s after session starts.
+              # SDL2 only scans for controllers at init — no hotplug without udevd
+              # (which requires root, but container runs as UID 1000).
+              # Waiting ensures the device is present for SDL2's initial scan.
+              echo "Waiting for virtual controller..."
+              CTRL_TIMEOUT=15
+              CTRL_WAITED=0
+              while ! ls /dev/input/js* &>/dev/null && [ $CTRL_WAITED -lt $CTRL_TIMEOUT ]; do
+                  sleep 1
+                  CTRL_WAITED=$((CTRL_WAITED + 1))
+                  echo "Waiting for controller device... ($CTRL_WAITED/$CTRL_TIMEOUT)"
+              done
+              if ls /dev/input/js* &>/dev/null; then
+                  echo "Controller detected: $(ls /dev/input/js* 2>/dev/null)"
+                  # Also list event devices for debugging
+                  ls -la /dev/input/event* 2>/dev/null | tail -5 || true
+              else
+                  echo "WARN: No controller detected after ${CTRL_TIMEOUT}s (ES-DE will launch without gamepad)"
               fi
 
               echo "Launching ES-DE frontend..."
