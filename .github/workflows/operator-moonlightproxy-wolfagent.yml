@@ -1,4 +1,4 @@
-name: "Build Fenrir Operator"
+name: "Build Fenrir Go Components (operator, moonlight-proxy, wolf-agent)"
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
     paths:
       - "fenrir/**"
       - "!fenrir/images/**"
-      - ".github/workflows/fenrir-operator.yml"
+      - ".github/workflows/operator-moonlightproxy-wolfagent.yml"
   workflow_dispatch: {}
 
 permissions:
@@ -90,7 +90,7 @@ jobs:
             echo "No manifest changes to commit."
             exit 0
           fi
-          git commit -m "chore(fenrir): bump operator + proxy to ${{ steps.vars.outputs.tag }}"
+          git commit -m "chore(fenrir): bump operator + proxy + wolf-agent to ${{ steps.vars.outputs.tag }}"
           for i in 1 2 3; do
             git pull --rebase origin main && git push && break
             echo "Push attempt $i failed, retrying in 5s..."
