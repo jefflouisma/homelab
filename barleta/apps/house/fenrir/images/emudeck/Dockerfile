@@ -29,7 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libvulkan1 \
     # Audio
     pulseaudio \
-    # Controller support
+    # Controller support (udev needed for hotplug detection of Wolf virtual gamepads)
+    udev \
     joystick \
     # Fonts for UI
     fonts-liberation \

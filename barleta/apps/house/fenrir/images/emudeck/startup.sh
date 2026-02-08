@@ -125,6 +125,20 @@ fi
 export QT_QPA_PLATFORM=wayland
 export SDL_VIDEODRIVER=wayland
 
+# ─── Controller Hotplug (udevd) ──────────────────────────────────────────────
+# Wolf creates virtual gamepad devices via uinput AFTER the app starts (~8s).
+# SDL2 needs udevd to receive hotplug events and discover new controllers.
+# Without this, ES-DE/RetroArch never see the Wolf virtual Xbox pad.
+echo "Starting udevd for controller hotplug detection..."
+if command -v udevd &>/dev/null; then
+    udevd --daemon 2>/dev/null || udevadm daemon 2>/dev/null || true
+    # Trigger existing input devices so SDL2 picks up anything already present
+    udevadm trigger --subsystem-match=input --action=add 2>/dev/null || true
+    echo "udevd started."
+else
+    echo "WARNING: udevd not found, controller hotplug will not work"
+fi
+
 # ─── Launch ES-DE ─────────────────────────────────────────────────────────────
 echo "Launching ES-DE frontend..."
 exec es-de --resolution 1920 1080 "$@"
