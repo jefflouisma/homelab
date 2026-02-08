@@ -152,18 +152,24 @@ spec:
               RPCS3_CONFIG_DIR="$HOME_DIR/.config/rpcs3"
               mkdir -p "$RPCS3_CONFIG_DIR/dev_flash/sys"
 
-              # Auto-install PS3 firmware if available
-              if [ -f /Emulation/bios/PS3UPDAT.PUP ]; then
-                  echo "Installing PS3 firmware from /Emulation/bios/PS3UPDAT.PUP..."
-                  rpcs3 --installfw /Emulation/bios/PS3UPDAT.PUP 2>&1 || echo "WARN: PS3 firmware install returned non-zero (may still be OK)"
-              else
-                  echo "INFO: No PS3 firmware found at /Emulation/bios/PS3UPDAT.PUP (skipping)"
-              fi
+              # NOTE: PS3 firmware is NOT installed at startup. rpcs3 --installfw
+              # opens a Qt GUI that hijacks the Wayland display, then crashes,
+              # destroying the socket before ES-DE can launch.
+              # Firmware installs on first PS3 game launch via RPCS3's own prompt.
 
               # PS4 game name resolution — generate named symlinks from param.sfo
               if [ -d "/Emulation/roms/ps4" ]; then
                   echo "Generating PS4 game shortcuts..."
                   generate-ps4-shortcuts.sh /Emulation/roms/ps4 /Emulation/storage/ps4-games
+              fi
+
+              # Controller hotplug — Wolf creates virtual gamepad via uinput
+              # ~8s after app starts. udevd propagates hotplug events to SDL2.
+              echo "Starting udevd for controller hotplug..."
+              if command -v udevd &>/dev/null; then
+                  udevd --daemon 2>/dev/null || true
+                  udevadm trigger --subsystem-match=input --action=add 2>/dev/null || true
+                  echo "udevd started."
               fi
 
               echo "Launching ES-DE frontend..."
