@@ -89,7 +89,7 @@ spec:
       containers:
         - name: operator
           # Operator with /run/udev mount for SDL2 joystick hotplug detection
-          image: ghcr.io/jefflouisma/fenrir-operator:d41e741
+          image: ghcr.io/jefflouisma/fenrir-operator:846ffb6
           imagePullPolicy: Always
           env:
             - name: NAMESPACE
