@@ -220,7 +220,7 @@ spec:
                               echo "E:ID_INPUT_JOYSTICK=1"
                               echo "E:ID_BUS=usb"
                               echo "G:input"
-                          } > "$udev_db" 2>/dev/null || true
+                          } > "$udev_db" 2>&1 || echo "CONTROLLER: WARNING - failed to write udev db $udev_db"
 
                           # Step 3: Send netlink udev event via fake-udev
                           if [ -x "$FAKE_UDEV" ]; then
@@ -242,9 +242,10 @@ spec:
                               udev_msg=$(printf "ACTION=%s\0DEVNAME=%s\0DEVPATH=%s\0SUBSYSTEM=%s\0MAJOR=%s\0MINOR=%s\0SEQNUM=%s\0ID_INPUT=1\0ID_INPUT_JOYSTICK=1\0" \
                                   "$action" "$udev_devname" "$devpath" "$subsystem" "$major" "$minor" "$seqnum" | base64 -w0)
 
-                              "$FAKE_UDEV" -m "$udev_msg" 2>/dev/null && \
+                              echo "CONTROLLER: Sending fake-udev msg for $devname (msg length=${#udev_msg})"
+                              FUDEV_ERR=$("$FAKE_UDEV" -m "$udev_msg" 2>&1) && \
                                   echo "CONTROLLER: fake-udev event sent for $devname" || \
-                                  echo "CONTROLLER: fake-udev failed for $devname"
+                                  echo "CONTROLLER: fake-udev failed for $devname: $FUDEV_ERR"
                           else
                               # Fallback: try udevadm (won't work for virtual devices but log it)
                               udevadm trigger --subsystem-match=input --action=add 2>/dev/null || true
