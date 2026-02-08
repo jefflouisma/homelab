@@ -78,4 +78,8 @@ jobs:
             exit 0
           fi
           git commit -m "chore(fenrir): bump operator + proxy to ${{ steps.vars.outputs.tag }}"
-          git push
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && break
+            echo "Push attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
