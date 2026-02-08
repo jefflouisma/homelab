@@ -601,8 +601,35 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *RESTServer) resumeHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: Wolf API current cannot support a "resume" to reuse the existing
-	// display/controllers. So we relaunch instead :(
+	user := r.Context().Value(userContextKey{}).(*v1alpha1types.User)
+
+	// Check for existing active sessions for this user
+	sessions, err := s.SessionLister.List(labels.SelectorFromSet(labels.Set{
+		"direwolf/user": user.Name,
+	}))
+	if err != nil {
+		writeErrorResponse(w, 500, fmt.Errorf("failed to list sessions: %s", err))
+		return
+	}
+
+	// If there's an existing session with a stream URL, resume it
+	for _, session := range sessions {
+		if session.Status.StreamURL != "" {
+			klog.Infof("Resuming existing session %s for user %s (streamURL: %s)",
+				session.Name, user.Name, session.Status.StreamURL)
+			sendXML(w, ResumeResponse{
+				Response: Response{
+					StatusCode: 200,
+				},
+				RTSPSessionURL: session.Status.StreamURL,
+				Resume:         1,
+			})
+			return
+		}
+	}
+
+	// No active session found — fall back to launching a new one
+	klog.Infof("No active session found for user %s, launching new session", user.Name)
 	s.launchHandler(w, r)
 }
 

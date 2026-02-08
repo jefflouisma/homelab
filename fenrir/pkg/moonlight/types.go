@@ -70,3 +70,9 @@ type LaunchResponse struct {
 	RTSPSessionURL string `xml:"sessionUrl0"`
 	GameSession    int    `xml:"gamesession"`
 }
+
+type ResumeResponse struct {
+	Response       `xml:",inline"`
+	RTSPSessionURL string `xml:"sessionUrl0"`
+	Resume         int    `xml:"resume"`
+}
