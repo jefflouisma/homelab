@@ -163,25 +163,67 @@ spec:
                   generate-ps4-shortcuts.sh /Emulation/roms/ps4 /Emulation/storage/ps4-games
               fi
 
-              # Wait for Wolf virtual gamepad before launching ES-DE.
-              # Wolf creates the Xbox joypad via uinput ~3s after session starts.
-              # SDL2 only scans for controllers at init — no hotplug without udevd
-              # (which requires root, but container runs as UID 1000).
-              # Waiting ensures the device is present for SDL2's initial scan.
-              echo "Waiting for virtual controller..."
-              CTRL_TIMEOUT=15
+              # ── Virtual Controller Injection ──────────────────────────────
+              # Wolf creates Xbox joypad on HOST via uinput (inputtino library).
+              # Wolf's ProcessRunner doesn't inject devices into containers
+              # (only DockerRunner does via mknod + fake-udev).
+              # We scan /sys (shared in privileged containers) for Wolf's joypad,
+              # extract major/minor numbers, and mknod the device ourselves.
+              echo "Waiting for Wolf virtual controller in sysfs..."
+              CTRL_TIMEOUT=20
               CTRL_WAITED=0
-              while ! ls /dev/input/js* &>/dev/null && [ $CTRL_WAITED -lt $CTRL_TIMEOUT ]; do
-                  sleep 1
-                  CTRL_WAITED=$((CTRL_WAITED + 1))
-                  echo "Waiting for controller device... ($CTRL_WAITED/$CTRL_TIMEOUT)"
+              WOLF_EVENT_DEV=""
+              while [ -z "$WOLF_EVENT_DEV" ] && [ $CTRL_WAITED -lt $CTRL_TIMEOUT ]; do
+                  for input_dir in /sys/class/input/event*; do
+                      [ -d "$input_dir" ] || continue
+                      name_file="$input_dir/device/name"
+                      if [ -f "$name_file" ] && grep -qi "wolf.*pad\|x-box.*virtual" "$name_file" 2>/dev/null; then
+                          WOLF_EVENT_DEV="$input_dir"
+                          break
+                      fi
+                  done
+                  if [ -z "$WOLF_EVENT_DEV" ]; then
+                      sleep 1
+                      CTRL_WAITED=$((CTRL_WAITED + 1))
+                      echo "Scanning sysfs for Wolf joypad... ($CTRL_WAITED/$CTRL_TIMEOUT)"
+                  fi
               done
-              if ls /dev/input/js* &>/dev/null; then
-                  echo "Controller detected: $(ls /dev/input/js* 2>/dev/null)"
-                  # Also list event devices for debugging
-                  ls -la /dev/input/event* 2>/dev/null | tail -5 || true
+
+              if [ -n "$WOLF_EVENT_DEV" ]; then
+                  EVENT_NAME=$(basename "$WOLF_EVENT_DEV")
+                  DEV_NAME=$(cat "$WOLF_EVENT_DEV/device/name" 2>/dev/null)
+                  echo "Found Wolf joypad: $DEV_NAME ($EVENT_NAME)"
+
+                  # Get major:minor from sysfs dev file
+                  if [ -f "$WOLF_EVENT_DEV/dev" ]; then
+                      MAJOR=$(cat "$WOLF_EVENT_DEV/dev" | cut -d: -f1)
+                      MINOR=$(cat "$WOLF_EVENT_DEV/dev" | cut -d: -f2)
+                      mkdir -p /dev/input
+                      mknod "/dev/input/$EVENT_NAME" c "$MAJOR" "$MINOR" 2>/dev/null || true
+                      chmod 666 "/dev/input/$EVENT_NAME" 2>/dev/null || true
+                      echo "Created /dev/input/$EVENT_NAME (major=$MAJOR, minor=$MINOR)"
+
+                      # Also create the js* device if available
+                      JS_DIR=$(find /sys/class/input -name 'js*' -maxdepth 1 2>/dev/null | head -1)
+                      if [ -n "$JS_DIR" ] && [ -f "$JS_DIR/dev" ]; then
+                          JS_NAME=$(basename "$JS_DIR")
+                          JS_MAJOR=$(cat "$JS_DIR/dev" | cut -d: -f1)
+                          JS_MINOR=$(cat "$JS_DIR/dev" | cut -d: -f2)
+                          mknod "/dev/input/$JS_NAME" c "$JS_MAJOR" "$JS_MINOR" 2>/dev/null || true
+                          chmod 666 "/dev/input/$JS_NAME" 2>/dev/null || true
+                          echo "Created /dev/input/$JS_NAME (major=$JS_MAJOR, minor=$JS_MINOR)"
+                      fi
+
+                      # Point SDL2 directly at the evdev device, bypassing libudev
+                      export SDL_JOYSTICK_DEVICE="/dev/input/$EVENT_NAME"
+                      echo "SDL_JOYSTICK_DEVICE=$SDL_JOYSTICK_DEVICE"
+                  fi
               else
-                  echo "WARN: No controller detected after ${CTRL_TIMEOUT}s (ES-DE will launch without gamepad)"
+                  echo "WARN: Wolf joypad not found in sysfs after ${CTRL_TIMEOUT}s"
+                  echo "  Listing all input devices in sysfs:"
+                  for d in /sys/class/input/event*; do
+                      [ -f "$d/device/name" ] && echo "  $(basename $d): $(cat $d/device/name)"
+                  done
               fi
 
               echo "Launching ES-DE frontend..."
