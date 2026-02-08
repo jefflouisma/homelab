@@ -170,8 +170,32 @@ spec:
               # ES-DE launches immediately — controller appears when ready.
               mkdir -p /etc/wolf/devices /dev/input 2>/dev/null || true
 
-              # Background device watcher
+              # Background device watcher — uses Wolf's fake-udev for SDL2 detection
+              # mknod alone is insufficient: SDL2/libudev needs netlink udev events
+              # to discover new input devices. Wolf's fake-udev binary sends
+              # NETLINK_KOBJECT_UEVENT messages that libudev picks up.
               (
+                  FAKE_UDEV="/etc/wolf/fake-udev"
+
+                  # Ensure /run/udev/control exists — libudev checks this to confirm
+                  # udev is "running" before it listens for events
+                  mkdir -p /run/udev/data 2>/dev/null || true
+                  touch /run/udev/control 2>/dev/null || true
+                  chmod 777 /run/udev/control 2>/dev/null || true
+
+                  # Wait for fake-udev binary (copied by wolf container at startup)
+                  echo "CONTROLLER: Waiting for fake-udev binary..."
+                  FUDEV_WAIT=0
+                  while [ ! -x "$FAKE_UDEV" ] && [ $FUDEV_WAIT -lt 30 ]; do
+                      sleep 1
+                      FUDEV_WAIT=$((FUDEV_WAIT + 1))
+                  done
+                  if [ -x "$FAKE_UDEV" ]; then
+                      echo "CONTROLLER: fake-udev ready at $FAKE_UDEV"
+                  else
+                      echo "CONTROLLER: WARNING - fake-udev not found, falling back to udevadm"
+                  fi
+
                   process_device_file() {
                       local sigfile="$1"
                       [ -f "$sigfile" ] || return 1
@@ -182,10 +206,48 @@ spec:
                       [ -z "$devname" ] || [ -z "$major" ] || [ -z "$minor" ] && return 1
                       case "$devname" in /dev/input/*) ;; *) return 0 ;; esac
                       if [ ! -e "$devname" ]; then
+                          # Step 1: Create the device node
                           mknod "$devname" c "$major" "$minor" 2>/dev/null || true
                           chmod 666 "$devname" 2>/dev/null || true
                           echo "CONTROLLER: Created $devname (major=$major, minor=$minor)"
-                          udevadm trigger --subsystem-match=input --action=add 2>/dev/null || true
+
+                          # Step 2: Create udev hwdb entry so libudev can look up device properties
+                          local udev_db="/run/udev/data/c${major}:${minor}"
+                          {
+                              echo "E:ID_INPUT=1"
+                              echo "E:ID_INPUT_JOYSTICK=1"
+                              echo "E:ID_BUS=usb"
+                              echo "G:input"
+                          } > "$udev_db" 2>/dev/null || true
+
+                          # Step 3: Send netlink udev event via fake-udev
+                          if [ -x "$FAKE_UDEV" ]; then
+                              # Construct null-separated KEY=VALUE message from signal JSON
+                              # Strip leading /dev/ from DEVNAME for the udev event (udev convention)
+                              local udev_devname="${devname#/dev/}"
+                              local devpath action subsystem seqnum
+                              devpath=$(grep -o '"DEVPATH"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                              action=$(grep -o '"ACTION"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                              subsystem=$(grep -o '"SUBSYSTEM"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                              seqnum=$(grep -o '"SEQNUM"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                              # Use defaults for missing optional fields
+                              action="${action:-add}"
+                              subsystem="${subsystem:-input}"
+                              devpath="${devpath:-/devices/virtual/input/${udev_devname}}"
+                              seqnum="${seqnum:-$$}"
+
+                              local udev_msg
+                              udev_msg=$(printf "ACTION=%s\0DEVNAME=%s\0DEVPATH=%s\0SUBSYSTEM=%s\0MAJOR=%s\0MINOR=%s\0SEQNUM=%s\0ID_INPUT=1\0ID_INPUT_JOYSTICK=1\0" \
+                                  "$action" "$udev_devname" "$devpath" "$subsystem" "$major" "$minor" "$seqnum" | base64 -w0)
+
+                              "$FAKE_UDEV" -m "$udev_msg" 2>/dev/null && \
+                                  echo "CONTROLLER: fake-udev event sent for $devname" || \
+                                  echo "CONTROLLER: fake-udev failed for $devname"
+                          else
+                              # Fallback: try udevadm (won't work for virtual devices but log it)
+                              udevadm trigger --subsystem-match=input --action=add 2>/dev/null || true
+                              echo "CONTROLLER: udevadm trigger fallback for $devname"
+                          fi
                       fi
                   }
                   while true; do
