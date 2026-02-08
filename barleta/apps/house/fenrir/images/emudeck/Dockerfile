@@ -84,7 +84,7 @@ RUN wget -q "https://github.com/mhx/dwarfs/releases/download/v${DWARFS_VERSION}/
 RUN wget -q "https://gitlab.com/es-de/emulationstation-de/-/package_files/246875981/download" \
       -O /tmp/esde.AppImage && \
     extract-appimage /tmp/esde.AppImage /opt/es-de && \
-    printf '#!/bin/sh\ncd /opt/es-de && exec ./AppRun "$@"\n' > /usr/local/bin/es-de && \
+    printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/es-de/usr/lib:$LD_LIBRARY_PATH\ncd /opt/es-de && exec ./AppRun "$@"\n' > /usr/local/bin/es-de && \
     chmod +x /usr/local/bin/es-de && \
     rm -f /tmp/esde.AppImage
 
@@ -182,7 +182,7 @@ RUN git clone --depth 1 https://github.com/libretro/libretro-database.git /tmp/d
 RUN wget -q "https://github.com/PCSX2/pcsx2/releases/download/v${PCSX2_VERSION}/pcsx2-v${PCSX2_VERSION}-linux-appimage-x64-Qt.AppImage" \
       -O /tmp/pcsx2.AppImage && \
     extract-appimage /tmp/pcsx2.AppImage /opt/pcsx2 && \
-    printf '#!/bin/sh\ncd /opt/pcsx2 && exec ./AppRun "$@"\n' > /usr/local/bin/pcsx2-qt && \
+    printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/pcsx2/usr/lib:$LD_LIBRARY_PATH\ncd /opt/pcsx2 && exec ./AppRun "$@"\n' > /usr/local/bin/pcsx2-qt && \
     chmod +x /usr/local/bin/pcsx2-qt && \
     rm -f /tmp/pcsx2.AppImage
 
@@ -190,7 +190,7 @@ RUN wget -q "https://github.com/PCSX2/pcsx2/releases/download/v${PCSX2_VERSION}/
 RUN wget -q "https://github.com/stenzek/duckstation/releases/download/latest/DuckStation-x64.AppImage" \
       -O /tmp/duckstation.AppImage && \
     extract-appimage /tmp/duckstation.AppImage /opt/duckstation && \
-    printf '#!/bin/sh\ncd /opt/duckstation && exec ./AppRun "$@"\n' > /usr/local/bin/duckstation-qt && \
+    printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/duckstation/usr/lib:$LD_LIBRARY_PATH\ncd /opt/duckstation && exec ./AppRun "$@"\n' > /usr/local/bin/duckstation-qt && \
     chmod +x /usr/local/bin/duckstation-qt && \
     rm -f /tmp/duckstation.AppImage
 
@@ -198,7 +198,7 @@ RUN wget -q "https://github.com/stenzek/duckstation/releases/download/latest/Duc
 RUN wget -q "https://github.com/hrydgard/ppsspp/releases/download/v${PPSSPP_VERSION}/PPSSPP-v${PPSSPP_VERSION}-anylinux-x86_64.AppImage" \
       -O /tmp/ppsspp.AppImage && \
     extract-appimage /tmp/ppsspp.AppImage /opt/ppsspp && \
-    printf '#!/bin/sh\ncd /opt/ppsspp && exec ./AppRun "$@"\n' > /usr/local/bin/PPSSPPSDL && \
+    printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/ppsspp/usr/lib:$LD_LIBRARY_PATH\ncd /opt/ppsspp && exec ./AppRun "$@"\n' > /usr/local/bin/PPSSPPSDL && \
     chmod +x /usr/local/bin/PPSSPPSDL && \
     rm -f /tmp/ppsspp.AppImage
 
@@ -207,7 +207,7 @@ RUN RPCS3_URL=$(wget -qO- "https://api.github.com/repos/RPCS3/rpcs3-binaries-lin
       grep -oP '"browser_download_url":\s*"\K[^"]+\.AppImage') && \
     wget -q "$RPCS3_URL" -O /tmp/rpcs3.AppImage && \
     extract-appimage /tmp/rpcs3.AppImage /opt/rpcs3 && \
-    printf '#!/bin/sh\ncd /opt/rpcs3 && exec ./AppRun "$@"\n' > /usr/local/bin/rpcs3 && \
+    printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/rpcs3/usr/lib:$LD_LIBRARY_PATH\ncd /opt/rpcs3 && exec ./AppRun "$@"\n' > /usr/local/bin/rpcs3 && \
     chmod +x /usr/local/bin/rpcs3 && \
     rm -f /tmp/rpcs3.AppImage
 
@@ -216,7 +216,7 @@ RUN wget -q "https://github.com/shadps4-emu/shadPS4/releases/download/v.${SHADPS
       -O /tmp/shadps4.zip && \
     unzip -q /tmp/shadps4.zip -d /tmp/shadps4-extract && \
     extract-appimage /tmp/shadps4-extract/Shadps4-sdl.AppImage /opt/shadps4 && \
-    printf '#!/bin/sh\ncd /opt/shadps4 && exec ./AppRun "$@"\n' > /usr/local/bin/shadps4 && \
+    printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/shadps4/usr/lib:$LD_LIBRARY_PATH\ncd /opt/shadps4 && exec ./AppRun "$@"\n' > /usr/local/bin/shadps4 && \
     chmod +x /usr/local/bin/shadps4 && \
     rm -rf /tmp/shadps4.zip /tmp/shadps4-extract
 
