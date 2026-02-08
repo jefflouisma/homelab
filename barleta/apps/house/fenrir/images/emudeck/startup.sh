@@ -71,7 +71,7 @@ echo "Copied custom ES-DE system definitions"
 RPCS3_CONFIG_DIR="$HOME_DIR/.config/rpcs3"
 mkdir -p "$RPCS3_CONFIG_DIR/GuiConfigs"
 
-# Pre-create RPCS3 Qt settings to suppress GUI dialogs in headless container
+# Pre-create RPCS3 Qt settings to suppress welcome dialog when launching games
 # Keys sourced from rpcs3/rpcs3qt/gui_settings.h (gui_save definitions)
 RPCS3_GUI_INI="$RPCS3_CONFIG_DIR/GuiConfigs/CurrentSettings.ini"
 if [ ! -f "$RPCS3_GUI_INI" ]; then
@@ -86,14 +86,14 @@ RPCS3_INI
     echo "Created RPCS3 GUI settings (welcome dialog suppressed)"
 fi
 
-# Auto-install PS3 firmware if available in BIOS directory
-if [ -f "/Emulation/bios/PS3UPDAT.PUP" ] && [ ! -d "$RPCS3_CONFIG_DIR/dev_flash" ]; then
-    echo "Installing PS3 firmware from /Emulation/bios/PS3UPDAT.PUP..."
-    # Use --no-gui to prevent RPCS3 from opening its full GUI during install
-    # Timeout after 60s to prevent blocking ES-DE launch
-    timeout 60 rpcs3 --no-gui --installfw /Emulation/bios/PS3UPDAT.PUP 2>&1 || \
-        echo "WARN: PS3 firmware install returned non-zero (may still be OK)"
-fi
+# NOTE: PS3 firmware is NOT installed at startup. RPCS3's --installfw always
+# opens a GUI dialog, which blocks ES-DE from launching. Instead, firmware
+# installation happens when the user first launches a PS3 game from ES-DE:
+# 1. User selects a PS3 game in ES-DE
+# 2. ES-DE launches RPCS3 with the game
+# 3. RPCS3 prompts to install firmware if missing (one-time)
+# 4. PPU modules compile on first run per game
+# 5. Firmware + PPU cache persist on PVC across sessions
 
 # Set up RetroArch config directory
 RETROARCH_CONFIG_DIR="$HOME_DIR/.config/retroarch"
