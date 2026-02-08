@@ -302,12 +302,10 @@ type PauseStreamEvent struct {
 // Wolf broadcasts this via SSE when a virtual input device (joypad, mouse, keyboard)
 // is created via uinput. Each udev_events entry contains DEVNAME, MAJOR, MINOR, etc.
 type PlugDeviceEvent struct {
-	SessionID      string              `json:"session_id"`
-	UdevEvents     []map[string]string `json:"udev_events"`
-	UdevHwDbEntries []UdevHwDbEntry    `json:"udev_hw_db_entries"`
-}
-
-type UdevHwDbEntry struct {
-	Path    string   `json:"first"`
-	Entries []string `json:"second"`
+	SessionID       string              `json:"session_id"`
+	UdevEvents      []map[string]string `json:"udev_events"`
+	// udev_hw_db_entries is a C++ vector<pair<string, vector<string>>> which
+	// serializes as [[key, [values...]], ...]. We don't need it for mknod,
+	// so we skip parsing it.
+	UdevHwDbEntries json.RawMessage `json:"udev_hw_db_entries"`
 }
