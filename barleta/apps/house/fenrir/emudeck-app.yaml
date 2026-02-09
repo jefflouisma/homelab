@@ -163,19 +163,10 @@ spec:
                   generate-ps4-shortcuts.sh /Emulation/roms/ps4 /Emulation/storage/ps4-games
               fi
 
-              # ── Virtual Controller Injection ──────────────────────────────
-              # Wolf creates Xbox joypad via uinput ~34s after Moonlight connects.
-              # The device node only exists in Wolf's container devtmpfs — NOT
-              # visible via /dev/input HostPath, and NOT visible in /sys/class/input
-              # across container namespaces.
-              #
-              # Solution: wolf-agent subscribes to Wolf's SSE events and receives
-              # PlugDeviceEvent (with DEVNAME, MAJOR, MINOR). It writes device
-              # signal files to /etc/wolf/devices/ (shared emptyDir volume).
-              # We watch for those files and mknod the devices into our /dev/input/.
-
-              DEVICES_DIR="/etc/wolf/devices"
-              mkdir -p "$DEVICES_DIR" "$DEVICES_DIR/.done" /dev/input 2>/dev/null || true
+              # ── Virtual Controller (non-blocking) ─────────────────────────
+              # Controller detection runs entirely in background. ES-DE launches
+              # immediately — the controller hotplugs when ready (~34s).
+              mkdir -p /etc/wolf/devices /etc/wolf/devices/.done /dev/input 2>/dev/null || true
 
               # Set up /run/udev so libudev considers udev "running"
               mkdir -p /run/udev/data 2>/dev/null || true
@@ -183,149 +174,79 @@ spec:
               chmod 777 /run/udev/control 2>/dev/null || true
               chown -R 1000:1000 /run/udev 2>/dev/null || true
 
-              # Wait for Wolf's fake-udev binary (sends netlink udev events for SDL2)
-              FAKE_UDEV="/etc/wolf/fake-udev"
-              echo "CONTROLLER: Waiting for fake-udev binary..."
-              FUDEV_WAIT=0
-              while [ ! -x "$FAKE_UDEV" ] && [ $FUDEV_WAIT -lt 30 ]; do
-                  sleep 1
-                  FUDEV_WAIT=$((FUDEV_WAIT + 1))
-              done
-              if [ -x "$FAKE_UDEV" ]; then
-                  echo "CONTROLLER: fake-udev ready at $FAKE_UDEV"
-              else
-                  echo "CONTROLLER: WARNING - fake-udev not found after 30s"
-              fi
-
-              # Function to process a single device signal file
-              process_device_file() {
-                  local sigfile="$1"
-                  [ -f "$sigfile" ] || return 1
-
-                  # Parse JSON fields using grep+sed (no jq in minimal image)
-                  local devname major minor
-                  devname=$(grep -o '"DEVNAME"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
-                  major=$(grep -o '"MAJOR"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
-                  minor=$(grep -o '"MINOR"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
-
-                  if [ -z "$devname" ] || [ -z "$major" ] || [ -z "$minor" ]; then
-                      return 1
-                  fi
-
-                  # Only process /dev/input devices (skip other subsystems)
-                  case "$devname" in
-                      /dev/input/*) ;;
-                      *) return 0 ;;
-                  esac
-
-                  # Create device node if it doesn't exist
-                  if [ ! -e "$devname" ]; then
-                      mknod "$devname" c "$major" "$minor" 2>/dev/null || true
-                      chmod 666 "$devname" 2>/dev/null || true
-                      echo "CONTROLLER: Created $devname (major=$major, minor=$minor)"
-
-                      # Write udev hwdb entry so libudev can look up device properties
-                      local udev_db="/run/udev/data/c${major}:${minor}"
-                      {
-                          echo "E:ID_INPUT=1"
-                          echo "E:ID_INPUT_JOYSTICK=1"
-                          echo "E:ID_BUS=usb"
-                          echo "G:input"
-                      } > "$udev_db" 2>/dev/null || echo "CONTROLLER: WARNING - failed to write $udev_db"
-
-                      # Send netlink udev event via fake-udev (required for SDL2 detection)
-                      if [ -x "$FAKE_UDEV" ]; then
-                          local udev_devname="${devname#/dev/}"
-                          local devpath action subsystem seqnum
-                          devpath=$(grep -o '"DEVPATH"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
-                          action=$(grep -o '"ACTION"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
-                          subsystem=$(grep -o '"SUBSYSTEM"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
-                          seqnum=$(grep -o '"SEQNUM"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
-                          action="${action:-add}"
-                          subsystem="${subsystem:-input}"
-                          devpath="${devpath:-/devices/virtual/input/${udev_devname}}"
-                          seqnum="${seqnum:-$$}"
-
-                          local udev_msg
-                          udev_msg=$(printf "ACTION=%s\0DEVNAME=%s\0DEVPATH=%s\0SUBSYSTEM=%s\0MAJOR=%s\0MINOR=%s\0SEQNUM=%s\0ID_INPUT=1\0ID_INPUT_JOYSTICK=1\0" \
-                              "$action" "$udev_devname" "$devpath" "$subsystem" "$major" "$minor" "$seqnum" | base64 -w0)
-
-                          echo "CONTROLLER: Sending fake-udev event for $devname"
-                          FUDEV_ERR=$("$FAKE_UDEV" -m "$udev_msg" 2>&1) && \
-                              echo "CONTROLLER: fake-udev OK for $devname" || \
-                              echo "CONTROLLER: fake-udev FAILED for $devname: $FUDEV_ERR"
-                      else
-                          udevadm trigger --subsystem-match=input --action=add 2>/dev/null || true
-                          echo "CONTROLLER: udevadm trigger fallback for $devname"
-                      fi
-                  fi
-                  return 0
-              }
-
-              # Wait for wolf-agent to write device signal files (blocking — gives
-              # compositor time to fully initialize before ES-DE renders)
-              echo "Waiting for wolf-agent device signals in $DEVICES_DIR..."
-              CTRL_TIMEOUT=90
-              CTRL_WAITED=0
-              CONTROLLER_FOUND=""
-              while [ -z "$CONTROLLER_FOUND" ] && [ $CTRL_WAITED -lt $CTRL_TIMEOUT ]; do
-                  for sigfile in "$DEVICES_DIR"/*.json; do
-                      [ -f "$sigfile" ] || continue
-                      if process_device_file "$sigfile"; then
-                          devname=$(grep -o '"DEVNAME"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
-                          case "$devname" in
-                              /dev/input/event*)
-                                  is_joystick=$(grep -o '"ID_INPUT_JOYSTICK"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" 2>/dev/null | head -1)
-                                  if [ -n "$is_joystick" ]; then
-                                      CONTROLLER_FOUND="$devname"
-                                      echo "CONTROLLER: Found joystick device: $CONTROLLER_FOUND"
-                                      break
-                                  fi
-                                  ;;
-                          esac
-                          # Move processed file to .done/ to prevent re-processing
-                          mv "$sigfile" "$DEVICES_DIR/.done/" 2>/dev/null || true
-                      fi
-                  done
-
-                  if [ -z "$CONTROLLER_FOUND" ]; then
-                      sleep 1
-                      CTRL_WAITED=$((CTRL_WAITED + 1))
-                      [ $((CTRL_WAITED % 10)) -eq 0 ] && echo "Waiting for controller signal... ($CTRL_WAITED/$CTRL_TIMEOUT)"
-                  fi
-              done
-
-              # Process any remaining device signal files
-              for sigfile in "$DEVICES_DIR"/*.json; do
-                  [ -f "$sigfile" ] || continue
-                  process_device_file "$sigfile"
-                  mv "$sigfile" "$DEVICES_DIR/.done/" 2>/dev/null || true
-              done
-
-              if [ -n "$CONTROLLER_FOUND" ]; then
-                  export SDL_JOYSTICK_DEVICE="$CONTROLLER_FOUND"
-                  echo "SDL_JOYSTICK_DEVICE=$SDL_JOYSTICK_DEVICE"
-                  ls -la /dev/input/ 2>/dev/null || true
-              else
-                  echo "WARN: No controller signal received after ${CTRL_TIMEOUT}s"
-                  echo "  Signal files in $DEVICES_DIR:"
-                  ls -la "$DEVICES_DIR"/ 2>/dev/null || echo "  (empty)"
-                  echo "  /dev/input contents:"
-                  ls -la /dev/input/ 2>/dev/null || echo "  (empty)"
-              fi
-
-              # Background watcher for controller hotplug (handles reconnects)
+              # Background controller watcher
               (
+                  FAKE_UDEV="/etc/wolf/fake-udev"
+                  DEVICES_DIR="/etc/wolf/devices"
+
+                  # Wait for fake-udev binary (copied by wolf container at startup)
+                  echo "CONTROLLER: Waiting for fake-udev binary..."
+                  FUDEV_WAIT=0
+                  while [ ! -x "$FAKE_UDEV" ] && [ $FUDEV_WAIT -lt 30 ]; do
+                      sleep 1
+                      FUDEV_WAIT=$((FUDEV_WAIT + 1))
+                  done
+                  [ -x "$FAKE_UDEV" ] && echo "CONTROLLER: fake-udev ready" || echo "CONTROLLER: WARNING - fake-udev not found"
+
+                  process_device_file() {
+                      local sigfile="$1"
+                      [ -f "$sigfile" ] || return 1
+                      local devname major minor
+                      devname=$(grep -o '"DEVNAME"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                      major=$(grep -o '"MAJOR"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                      minor=$(grep -o '"MINOR"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                      [ -z "$devname" ] || [ -z "$major" ] || [ -z "$minor" ] && return 1
+                      case "$devname" in /dev/input/*) ;; *) return 0 ;; esac
+                      if [ ! -e "$devname" ]; then
+                          mknod "$devname" c "$major" "$minor" 2>/dev/null || true
+                          chmod 666 "$devname" 2>/dev/null || true
+                          echo "CONTROLLER: Created $devname (major=$major, minor=$minor)"
+
+                          # udev hwdb entry for libudev property lookups
+                          {
+                              echo "E:ID_INPUT=1"
+                              echo "E:ID_INPUT_JOYSTICK=1"
+                              echo "E:ID_BUS=usb"
+                              echo "G:input"
+                          } > "/run/udev/data/c${major}:${minor}" 2>/dev/null || true
+
+                          # Send netlink udev event via fake-udev for SDL2 hotplug
+                          if [ -x "$FAKE_UDEV" ]; then
+                              local udev_devname="${devname#/dev/}"
+                              local devpath action subsystem seqnum
+                              devpath=$(grep -o '"DEVPATH"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                              action=$(grep -o '"ACTION"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                              subsystem=$(grep -o '"SUBSYSTEM"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                              seqnum=$(grep -o '"SEQNUM"[[:space:]]*:[[:space:]]*"[^"]*"' "$sigfile" | head -1 | sed 's/.*: *"//;s/"$//')
+                              action="${action:-add}"; subsystem="${subsystem:-input}"
+                              devpath="${devpath:-/devices/virtual/input/${udev_devname}}"
+                              seqnum="${seqnum:-$$}"
+
+                              local udev_msg
+                              udev_msg=$(printf "ACTION=%s\0DEVNAME=%s\0DEVPATH=%s\0SUBSYSTEM=%s\0MAJOR=%s\0MINOR=%s\0SEQNUM=%s\0ID_INPUT=1\0ID_INPUT_JOYSTICK=1\0" \
+                                  "$action" "$udev_devname" "$devpath" "$subsystem" "$major" "$minor" "$seqnum" | base64 -w0)
+
+                              FUDEV_ERR=$("$FAKE_UDEV" -m "$udev_msg" 2>&1) && \
+                                  echo "CONTROLLER: fake-udev OK for $devname" || \
+                                  echo "CONTROLLER: fake-udev FAILED for $devname: $FUDEV_ERR"
+                          else
+                              udevadm trigger --subsystem-match=input --action=add 2>/dev/null || true
+                          fi
+                      fi
+                      mv "$sigfile" "$DEVICES_DIR/.done/" 2>/dev/null || true
+                  }
+
+                  # Poll for device signal files continuously
                   while true; do
-                      sleep 5
-                      for sigfile in "$DEVICES_DIR"/*.json; do
-                          [ -f "$sigfile" ] || continue
-                          process_device_file "$sigfile"
-                          mv "$sigfile" "$DEVICES_DIR/.done/" 2>/dev/null || true
+                      for f in "$DEVICES_DIR"/*.json; do
+                          [ -f "$f" ] && process_device_file "$f"
                       done
+                      sleep 2
                   done
               ) &
 
+              # Brief settle time for compositor, then launch
+              sleep 5
               echo "Launching ES-DE frontend..."
               exec es-de --resolution 1920 1080
           resources:
