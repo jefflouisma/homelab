@@ -1,0 +1,76 @@
+# Cloudflare Tunnel - Routes public traffic to house services
+#
+# The tunnel token is encrypted as a SealedSecret below.
+# Only the Sealed Secrets controller in the cluster can decrypt it.
+# To re-seal after token rotation:
+#   kubeseal --cert pub-cert.pem --format yaml --scope namespace-wide < secret.yaml
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  annotations:
+    sealedsecrets.bitnami.com/namespace-wide: "true"
+  name: cloudflare-tunnel-token
+  namespace: house
+spec:
+  encryptedData:
+    token: AgApzPMJdtZqgURVn50RjxL1eEXPSwuO1MUUwYnd/TJcAcE2U5+6ZI8595X/LWN8rcqJliu8zksoBE/QoPkdIkI+DZodXA2U1vTGcS6B/3YybZXu40lxfe/fhOZAuHZhhz4oGzFjbApZIq71g/8Yvol0iEQf9HlN67Ncl7Cua3VZ8GA9aMa+ZuXh5l+p0LDm/tbVF0c9etidxCBrLyqm3NBxVIoYfn0Md4M7wUF54kN6rArDOY6f7IDa9jyzlgKZ6bZhtrmS51nY55nnngxNIARiP9yJFDuMTbsp9qrh51R7/vlA4Gg4TMMLmy2beSIU/T26fJ3bbT08glIqjLEQEiOKpDdTeY7ILhGAUFipFjGz8mRyapBki84SzsgHJjWMFQtpM1dui/nFuRCPfkcbdQKXJeVvpHxHFN27HPy8w2bRhWljDBoOWzmyCU1ysiXWxgu6YZIeP8DPjddILf18URtpI78g+DLxYsFQfc19Ns3baIM8Wa2uJ7Ph307tOCI8ikSr/BpwD29ECPZPmVt7PQWecsE6oBQemQtiTqQqCfzofJ3Rvp79zApckX/KXgGSIloKq8pcBc1thXM18NsLLdrKqYNiKwUCEv1G4fi2uCHopOxpiteEBAIlqAQ4xs3n6FUCyUguswDg6E+FbAO8kybqYeVvmKJfWJmgoachM8hokPNCtDPDDPnrjP2wpYxTF3gJkhHGH6PeNMuVAhFF/I9/RX3Xf95FCqtiWgFDS3oTp7lUbhUYWQzhp0Fl3utSWS+HSSfVw/1vrYOVoUKg/zVT5gLSz72A/M5w1iknuXXfMiq3Tkpkfi7dMkfXGfB0iewFoBlIUB1rBodu94DhXwfIGGTlD92VcR3GL3pcdokqgEPDjqCD33q0m2UxwTOxtiF6gQ/PsVxkWGfL/stBaWqc/gKzaCL90QhWTAQcX6zcIhddhEAdiMns
+  template:
+    metadata:
+      annotations:
+        sealedsecrets.bitnami.com/namespace-wide: "true"
+      name: cloudflare-tunnel-token
+      namespace: house
+    type: Opaque
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: house
+  labels:
+    app: cloudflared
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:latest
+          args:
+            - tunnel
+            - --no-autoupdate
+            - run
+            - --token
+            - $(TUNNEL_TOKEN)
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-tunnel-token
+                  key: token
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 5
+            periodSeconds: 10
