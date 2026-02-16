@@ -1,10 +1,10 @@
-# Fenrir ArgoCD Application
-# Deploys all Fenrir components to the house namespace
+# House ArgoCD Application
+# Deploys all house services: Agent Zero, Jellyfin, Home Assistant, Prowlarr, Fenrir, NVIDIA
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: fenrir
+  name: house
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -13,7 +13,7 @@ spec:
   source:
     repoURL: https://github.com/jefflouisma/homelab.git
     targetRevision: main
-    path: barleta/apps/house/fenrir
+    path: barleta/apps/house
     directory:
       recurse: true
       include: "*.yaml"
