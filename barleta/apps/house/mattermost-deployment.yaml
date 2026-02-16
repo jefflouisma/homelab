@@ -1,0 +1,186 @@
+# Mattermost Team Edition 11.3.1
+# Open-source team messaging with bundled PostgreSQL
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mattermost-data
+  namespace: house
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mattermost-db
+  namespace: house
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mattermost
+  namespace: house
+  labels:
+    app: mattermost
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mattermost
+  template:
+    metadata:
+      labels:
+        app: mattermost
+    spec:
+      containers:
+        # -----------------------------------
+        # Container 1: PostgreSQL 16 (Database)
+        # -----------------------------------
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_DB
+              value: mattermost
+            - name: POSTGRES_USER
+              value: mmuser
+            - name: POSTGRES_PASSWORD
+              value: mmuser_password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: db-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - mmuser
+                - -d
+                - mattermost
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - mmuser
+                - -d
+                - mattermost
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+        # -----------------------------------
+        # Container 2: Mattermost Team Edition
+        # -----------------------------------
+        - name: mattermost
+          image: mattermost/mattermost-team-edition:11.3.1
+          ports:
+            - containerPort: 8065
+              name: http
+          env:
+            - name: MM_SQLSETTINGS_DRIVERNAME
+              value: postgres
+            - name: MM_SQLSETTINGS_DATASOURCE
+              value: postgres://mmuser:mmuser_password@localhost:5432/mattermost?sslmode=disable&connect_timeout=10
+            - name: MM_SERVICESETTINGS_SITEURL
+              value: http://mattermost.barleta.local
+            - name: MM_SERVICESETTINGS_LISTENADDRESS
+              value: ":8065"
+            - name: TZ
+              value: America/Los_Angeles
+          volumeMounts:
+            - name: app-data
+              mountPath: /mattermost/data
+              subPath: data
+            - name: app-data
+              mountPath: /mattermost/config
+              subPath: config
+            - name: app-data
+              mountPath: /mattermost/plugins
+              subPath: plugins
+            - name: app-data
+              mountPath: /mattermost/client/plugins
+              subPath: client-plugins
+            - name: app-data
+              mountPath: /mattermost/logs
+              subPath: logs
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          livenessProbe:
+            httpGet:
+              path: /api/v4/system/ping
+              port: 8065
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v4/system/ping
+              port: 8065
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+      volumes:
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: mattermost-data
+        - name: db-data
+          persistentVolumeClaim:
+            claimName: mattermost-db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mattermost
+  namespace: house
+spec:
+  selector:
+    app: mattermost
+  ports:
+    - name: http
+      port: 8065
+      targetPort: 8065
+  type: ClusterIP
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mattermost
+  namespace: house
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`mattermost.barleta.local`)
+      kind: Rule
+      services:
+        - name: mattermost
+          port: 8065
