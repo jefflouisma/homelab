@@ -30,6 +30,7 @@ spec:
       containers:
         - name: agent-zero
           image: agent0ai/agent-zero:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
           volumeMounts:
