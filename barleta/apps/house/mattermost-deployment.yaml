@@ -1,4 +1,4 @@
-# Mattermost Team Edition 11.3.1
+# Mattermost Team Edition 11.4.0
 # Open-source team messaging with bundled PostgreSQL
 ---
 apiVersion: v1
@@ -97,7 +97,7 @@ spec:
         # Container 2: Mattermost Team Edition
         # -----------------------------------
         - name: mattermost
-          image: mattermost/mattermost-team-edition:11.3.1
+          image: mattermost/mattermost-team-edition:11.4.0
           ports:
             - containerPort: 8065
               name: http
@@ -112,6 +112,11 @@ spec:
               value: ":8065"
             - name: TZ
               value: America/Los_Angeles
+            # Push Notifications (free TPNS)
+            - name: MM_EMAILSETTINGS_SENDPUSHNOTIFICATIONS
+              value: "true"
+            - name: MM_EMAILSETTINGS_PUSHNOTIFICATIONSERVER
+              value: "https://push-test.mattermost.com"
           volumeMounts:
             - name: app-data
               mountPath: /mattermost/data
