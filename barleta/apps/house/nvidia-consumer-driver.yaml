@@ -91,6 +91,9 @@ spec:
       labels:
         app: nvidia-consumer-driver
     spec:
+      # Ubuntu hosts manage drivers through apt. Opt in only Harvester nodes.
+      nodeSelector:
+        barleta.local/nvidia-driver-managed-by: harvester
       hostPID: true
       hostNetwork: true
       containers:
