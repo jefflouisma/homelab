@@ -64,6 +64,12 @@ The `fenrir-bios` PVC supplies system files. Put a PS3 firmware PUP in `ps3/PS3U
 
 Profiles, configuration, and emulator caches persist on each user's application PVC; shared saves persist on `fenrir-saves`.
 
+Console launchers request fullscreen and initialize RPCS3/shadPS4 presentation windows at 1920x1080 to match ES-DE's stream. Wolf can retain the initial window size despite a fullscreen request. This changes window dimensions, preserving internal rendering resolution and other emulator settings.
+
+## Verified Games (2026-10-17)
+
+Real Moonlight sessions on g913 reached gameplay in PS3 Super Street Fighter IV Arcade Edition (RPCS3 0.0.43-20331-73854171), PS4 Dead or Alive 5 Last Round (shadPS4 0.20.0), PSP God of War: Chains of Olympus, and Wii Spider-Man: Edge of Time (upstream RetroArch nightly 1.22.2, b35eb19). PS3 attacks and pause, PS4 menus and pause, PSP attacks and pause, and Wii Nunchuk setup were exercised. PS3 firmware 4.92 and dumped PS4 system modules are installed. Physical controllers and compatibility with other PS3/PS4 games were not verified.
+
 ## Host GPU
 
 g913 runs Ubuntu with apt-managed NVIDIA drivers and NVIDIA Container Toolkit. The legacy Harvester installer DaemonSet only schedules on nodes labeled `barleta.local/nvidia-driver-managed-by=harvester`; do not apply that label to g913. Keep the kernel module and userspace NVIDIA package versions aligned.

@@ -175,6 +175,9 @@ spec:
               if command -v prepare-ps3-firmware >/dev/null 2>&1; then
                   prepare-ps3-firmware
               fi
+              if command -v prepare-console-display >/dev/null 2>&1; then
+                  prepare-console-display
+              fi
 
               # PS4 game name resolution — generate named symlinks from param.sfo
               if [ -d "/Emulation/roms/ps4" ]; then

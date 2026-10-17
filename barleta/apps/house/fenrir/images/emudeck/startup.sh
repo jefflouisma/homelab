@@ -94,6 +94,7 @@ RPCS3_INI
 fi
 
 prepare-ps3-firmware
+prepare-console-display
 
 # Set up RetroArch config directory
 RETROARCH_CONFIG_DIR="$HOME_DIR/.config/retroarch"
