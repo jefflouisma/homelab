@@ -281,7 +281,13 @@ ENV LD_LIBRARY_PATH=/nvidia-libs:/usr/local/cuda/lib64
 ENV HOME=/home/retro
 
 # Create non-root user matching Wolf expectations
-RUN useradd -m -d /home/retro -s /bin/bash -u 1000 retro 2>/dev/null || true
+RUN if ! id retro >/dev/null 2>&1; then \
+      if getent passwd 1000 >/dev/null; then \
+        usermod --login retro --home /home/retro "$(getent passwd 1000 | cut -d: -f1)"; \
+      else \
+        useradd -m -d /home/retro -s /bin/bash -u 1000 retro; \
+      fi; \
+    fi && mkdir -p /home/retro && chown 1000:1000 /home/retro
 
 USER retro
 RUN retroarch --version
