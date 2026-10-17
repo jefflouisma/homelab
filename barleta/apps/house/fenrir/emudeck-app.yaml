@@ -24,7 +24,7 @@ spec:
       initContainers:
         # Fix permissions on all PVC mounts for UID 1000
         - name: fix-permissions
-          image: ghcr.io/jefflouisma/fenrir-emudeck:0179348
+          image: ghcr.io/jefflouisma/fenrir-emudeck:3470766
           command:
             - sh
             - -c
@@ -46,7 +46,7 @@ spec:
             runAsUser: 0
       containers:
         - name: emudeck
-          image: ghcr.io/jefflouisma/fenrir-emudeck:0179348
+          image: ghcr.io/jefflouisma/fenrir-emudeck:3470766
           command:
             - /bin/bash
             - -c
