@@ -72,6 +72,12 @@ echo "Copied custom ES-DE system definitions"
 RPCS3_CONFIG_DIR="$HOME_DIR/.config/rpcs3"
 mkdir -p "$RPCS3_CONFIG_DIR/GuiConfigs"
 
+SHADPS4_DATA_DIR="$HOME_DIR/.local/share/shadPS4"
+mkdir -p "$SHADPS4_DATA_DIR"
+if [ ! -e "$SHADPS4_DATA_DIR/sys_modules" ] && [ -d /Emulation/bios/ps4/sys_modules ]; then
+    ln -s /Emulation/bios/ps4/sys_modules "$SHADPS4_DATA_DIR/sys_modules"
+fi
+
 # Pre-create RPCS3 Qt settings to suppress welcome dialog when launching games
 # Keys sourced from rpcs3/rpcs3qt/gui_settings.h (gui_save definitions)
 RPCS3_GUI_INI="$RPCS3_CONFIG_DIR/GuiConfigs/CurrentSettings.ini"

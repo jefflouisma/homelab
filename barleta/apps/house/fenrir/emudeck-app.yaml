@@ -166,6 +166,12 @@ spec:
               RPCS3_CONFIG_DIR="$HOME_DIR/.config/rpcs3"
               mkdir -p "$RPCS3_CONFIG_DIR/dev_flash/sys"
 
+              SHADPS4_DATA_DIR="$HOME_DIR/.local/share/shadPS4"
+              mkdir -p "$SHADPS4_DATA_DIR"
+              if [ ! -e "$SHADPS4_DATA_DIR/sys_modules" ] && [ -d /Emulation/bios/ps4/sys_modules ]; then
+                  ln -s /Emulation/bios/ps4/sys_modules "$SHADPS4_DATA_DIR/sys_modules"
+              fi
+
               # NOTE: PS3 firmware is NOT installed at startup. rpcs3 --installfw
               # opens a Qt GUI that hijacks the Wayland display, then crashes,
               # destroying the socket before ES-DE can launch.
