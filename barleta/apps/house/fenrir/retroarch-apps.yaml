@@ -21,6 +21,8 @@ spec:
   appAssetWebP: "UklGRlAAAABXRUJQVlA4IEQAAADwAQCdASoBAAEAAkA4JZQCdAEO/hOMAAD+9f/e/fn3/vf+7/3v/e/94AAAAAAA"
   template:
     spec:
+      securityContext:
+        supplementalGroups: [996]
       # Fix permissions on saves volume for UID 1000 (Dolphin needs to create User dirs)
       initContainers:
         - name: fix-saves-permissions
@@ -48,6 +50,9 @@ spec:
         - name: retroarch
           # RetroArch with Wolf X-Box autoconfig profile for controller support
           image: ghcr.io/jefflouisma/fenrir-retroarch:0179348
+          env:
+            - name: SDL_JOYSTICK_DISABLE_UDEV
+              value: "1"
           command:
             - /bin/bash
             - -c

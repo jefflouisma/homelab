@@ -70,6 +70,12 @@ Console launchers request fullscreen and initialize RPCS3/shadPS4 presentation w
 
 Real Moonlight sessions on g913 reached gameplay in PS3 Super Street Fighter IV Arcade Edition (RPCS3 0.0.43-20331-73854171), PS4 Dead or Alive 5 Last Round (shadPS4 0.20.0), PSP God of War: Chains of Olympus, and Wii Spider-Man: Edge of Time (upstream RetroArch nightly 1.22.2, b35eb19). PS3 attacks and pause, PS4 menus and pause, PSP attacks and pause, and Wii Nunchuk setup were exercised. PS3 firmware 4.92 and dumped PS4 system modules are installed. Physical controllers and compatibility with other PS3/PS4 games were not verified.
 
+## Controllers
+
+Both app templates include g913's host `input` group (GID 996) so the non-root emulator can read Wolf controllers created after the init containers finish. If moving to another host, check `getent group input` and update the supplemental group. Init-time device chmod alone does not cover newly connected controllers.
+
+The apps set `SDL_JOYSTICK_DISABLE_UDEV=1` to watch the shared `/dev/input` devices directly. Host udev notifications do not cross the pod network namespace. No in-container udev daemon or synthetic hotplug relay is required. Existing controller mappings remain on the user profile PVC.
+
 ## Host GPU
 
 g913 runs Ubuntu with apt-managed NVIDIA drivers and NVIDIA Container Toolkit. The legacy Harvester installer DaemonSet only schedules on nodes labeled `barleta.local/nvidia-driver-managed-by=harvester`; do not apply that label to g913. Keep the kernel module and userspace NVIDIA package versions aligned.
