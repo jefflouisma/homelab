@@ -33,7 +33,7 @@ pub struct TestDefinition {
     #[serde(default = "default_delay")]
     pub delay_ms: u64,
 
-    /// Directory to save screenshots (defaults to /tmp)
+    /// Directory to save screenshots under the required temporary-file root.
     #[serde(default = "default_screenshot_dir")]
     pub screenshot_dir: String,
 
@@ -48,8 +48,8 @@ fn default_timeout() -> u64 {
 fn default_delay() -> u64 {
     5000
 }
-fn default_screenshot_dir() -> String {
-    "/tmp".to_string()
+pub(crate) fn default_screenshot_dir() -> String {
+    "/Volumes/4TB_Drive/tmp/fenrir/screenshots".to_string()
 }
 
 static LAST_SESSION_URL: OnceLock<Mutex<Option<String>>> = OnceLock::new();

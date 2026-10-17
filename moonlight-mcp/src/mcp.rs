@@ -415,7 +415,7 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
                 app: Some(app.into()),
                 timeout_ms: 120000,
                 delay_ms: 5000,
-                screenshot_dir: "/tmp".into(),
+                screenshot_dir: tests::default_screenshot_dir(),
                 validation: ValidationConfig::default(),
             };
 

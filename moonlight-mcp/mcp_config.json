@@ -1,11 +1,12 @@
 {
     "moonlight-mcp": {
-        "command": "/Volumes/4TB_Drive/Documents/homelab/moonlight-mcp/target/release/moonlight-mcp",
+        "command": "/Volumes/4TB_Drive/tmp/homelab-rosefish/target/debug/moonlight-mcp",
         "args": [
             "--mcp"
         ],
         "env": {
-            "HOME": "/Users/jefflouisma"
+            "HOME": "/Users/jefflouisma",
+            "TMPDIR": "/Volumes/4TB_Drive/tmp/"
         }
     }
 }

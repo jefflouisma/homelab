@@ -1,7 +1,7 @@
 {
   "host": "192.168.1.221",
   "action": "sequence",
-  "screenshot_dir": "/Volumes/4TB_Drive/Documents/homelab/barleta/screenshots",
+  "screenshot_dir": "/Volumes/4TB_Drive/tmp/fenrir/screenshots",
   "timeout_ms": 120000,
   "steps": [
     {

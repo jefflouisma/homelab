@@ -1,0 +1,5 @@
+[build]
+target-dir = "/Volumes/4TB_Drive/tmp/homelab-rosefish/target"
+
+[env]
+TMPDIR = { value = "/Volumes/4TB_Drive/tmp/", force = true }
