@@ -89,9 +89,11 @@ RUN wget -q "https://gitlab.com/es-de/emulationstation-de/-/package_files/357718
 
 COPY --chmod=755 es-de.sh /usr/local/bin/es-de
 
+ARG UPSTREAM_REFRESH=manual
 RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/RetroArch_update.7z -O /tmp/retroarch.7z && \
     7z x -y /tmp/retroarch.7z -o/tmp/retroarch-download >/dev/null && \
     extract-appimage /tmp/retroarch-download/RetroArch-Linux-x86_64/RetroArch-Linux-x86_64.AppImage /opt/retroarch && \
+    chmod -R a+rX /opt/retroarch && \
     printf '#!/bin/sh\ncd /opt/retroarch && exec ./AppRun "$@"\n' > /usr/local/bin/retroarch && \
     chmod +x /usr/local/bin/retroarch && \
     rm -rf /tmp/retroarch.7z /tmp/retroarch-download
@@ -282,5 +284,6 @@ ENV HOME=/home/retro
 RUN useradd -m -d /home/retro -s /bin/bash -u 1000 retro 2>/dev/null || true
 
 USER retro
+RUN retroarch --version
 
 CMD ["/usr/local/bin/startup.sh"]

@@ -45,7 +45,8 @@ jobs:
           file: barleta/apps/house/fenrir/images/emudeck/Dockerfile
           tags: ghcr.io/jefflouisma/fenrir-emudeck:${{ steps.vars.outputs.tag }}
           push: true
-          no-cache: true
+          pull: true
+          build-args: UPSTREAM_REFRESH=${{ github.run_id }}
           cache-from: type=gha,scope=fenrir-emudeck
           cache-to: type=gha,mode=max,scope=fenrir-emudeck
 

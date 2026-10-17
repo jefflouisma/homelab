@@ -36,11 +36,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-6 \
     && rm -rf /var/lib/apt/lists/*
 
+ARG UPSTREAM_REFRESH=manual
 RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/RetroArch_update.7z -O /tmp/retroarch.7z && \
     7z x -y /tmp/retroarch.7z -o/tmp/retroarch-download >/dev/null && \
     chmod +x /tmp/retroarch-download/RetroArch-Linux-x86_64/RetroArch-Linux-x86_64.AppImage && \
     cd /opt && /tmp/retroarch-download/RetroArch-Linux-x86_64/RetroArch-Linux-x86_64.AppImage --appimage-extract >/dev/null && \
     mv squashfs-root retroarch && \
+    chmod -R a+rX /opt/retroarch && \
     printf '#!/bin/sh\ncd /opt/retroarch && exec ./AppRun "$@"\n' > /usr/local/bin/retroarch && \
     chmod +x /usr/local/bin/retroarch && \
     rm -rf /tmp/retroarch.7z /tmp/retroarch-download
@@ -160,6 +162,7 @@ ENV LD_LIBRARY_PATH=/nvidia-libs:/usr/local/cuda/lib64
 
 # Run as non-root user for security (matches Wolf expectations)
 USER ubuntu
+RUN retroarch --version
 
 # Default command - use startup script that waits for display
 CMD ["/usr/local/bin/startup.sh"]
