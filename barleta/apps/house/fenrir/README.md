@@ -60,7 +60,9 @@ export TMPDIR=/Volumes/4TB_Drive/tmp/
 
 The `fenrir-games` PVC appears at `/Emulation/roms` in EmuDeck and `/roms` in RetroArch. Use the system directories (`ps3`, `ps4`, `psp`, `wii`, and so on). PS3 disc directories should end in `.ps3dir` and contain `PS3_GAME`. PS4 directories must contain `eboot.bin` and `sce_sys/param.sfo`; startup generates named shortcuts that resolve to the actual executable.
 
-The `fenrir-bios` PVC supplies system files. Put a PS3 firmware PUP in `ps3/PS3UPDAT.PUP` and dumped PS4 firmware libraries in `ps4/sys_modules`. Profiles, configuration, and emulator caches persist on each user's application PVC; shared saves persist on `fenrir-saves`.
+The `fenrir-bios` PVC supplies system files. Put a PS3 firmware PUP in `ps3/PS3UPDAT.PUP` and dumped PS4 firmware libraries in `ps4/sys_modules`. Startup installs missing PS3 firmware into the user's persistent profile without opening a GUI. RPCS3 0.0.43 can abort during installer teardown after writing the firmware; the preparation script checks the installed version and required libraries before allowing startup to continue. First PS3 game launches compile shaders and PPU modules, which can take several minutes.
+
+Profiles, configuration, and emulator caches persist on each user's application PVC; shared saves persist on `fenrir-saves`.
 
 ## Host GPU
 

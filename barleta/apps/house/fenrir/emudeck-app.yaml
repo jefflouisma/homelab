@@ -172,10 +172,9 @@ spec:
                   ln -s /Emulation/bios/ps4/sys_modules "$SHADPS4_DATA_DIR/sys_modules"
               fi
 
-              # NOTE: PS3 firmware is NOT installed at startup. rpcs3 --installfw
-              # opens a Qt GUI that hijacks the Wayland display, then crashes,
-              # destroying the socket before ES-DE can launch.
-              # Firmware installs on first PS3 game launch via RPCS3's own prompt.
+              if command -v prepare-ps3-firmware >/dev/null 2>&1; then
+                  prepare-ps3-firmware
+              fi
 
               # PS4 game name resolution — generate named symlinks from param.sfo
               if [ -d "/Emulation/roms/ps4" ]; then

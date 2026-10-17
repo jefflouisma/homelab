@@ -8,8 +8,8 @@
         <path>%ROMPATH%/ps3</path>
         <extension>.ps3 .PS3 .ps3dir .PS3DIR .desktop</extension>
         <!-- Directory mode first = default for headless container -->
-        <command label="RPCS3 Directory (Standalone)">/usr/local/bin/rpcs3 --no-gui %ROM%</command>
-        <command label="RPCS3 Game Serial (Standalone)">%EMULATOR_RPCS3% --no-gui %RPCS3_GAMEID%:%INJECT%=%BASENAME%.ps3</command>
+        <command label="RPCS3 Directory (Standalone)">/usr/local/bin/rpcs3 --no-gui --fullscreen %ROM%</command>
+        <command label="RPCS3 Game Serial (Standalone)">%EMULATOR_RPCS3% --no-gui --fullscreen %RPCS3_GAMEID%:%INJECT%=%BASENAME%.ps3</command>
         <command label="RPCS3 Shortcut (Standalone)">%ENABLESHORTCUTS% %EMULATOR_OS-SHELL% %ROM%</command>
         <platform>ps3</platform>
         <theme>ps3</theme>
@@ -21,7 +21,7 @@
         <path>/Emulation/storage/ps4-games</path>
         <extension>.ps4 .PS4</extension>
         <!-- %ROM% is a file symlink to eboot.bin, pass directly to shadps4 -->
-        <command label="shadPS4 (Standalone)">/usr/local/bin/shadps4 -g "$(readlink -f %ROM%)"</command>
+        <command label="shadPS4 (Standalone)">/usr/local/bin/shadps4 -f true -g "$(readlink -f %ROM%)"</command>
         <platform>ps4</platform>
         <theme>ps4</theme>
     </system>

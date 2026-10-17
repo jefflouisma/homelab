@@ -255,6 +255,7 @@ RUN mkdir -p \
 # Copy startup script
 COPY startup.sh /usr/local/bin/startup.sh
 RUN chmod +x /usr/local/bin/startup.sh
+COPY --chmod=755 prepare-ps3-firmware.sh /usr/local/bin/prepare-ps3-firmware
 
 # Copy PS4 game name resolution script
 COPY generate-ps4-shortcuts.sh /usr/local/bin/generate-ps4-shortcuts.sh
