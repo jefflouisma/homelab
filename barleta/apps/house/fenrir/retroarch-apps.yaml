@@ -24,7 +24,7 @@ spec:
       # Fix permissions on saves volume for UID 1000 (Dolphin needs to create User dirs)
       initContainers:
         - name: fix-saves-permissions
-          image: ghcr.io/jefflouisma/fenrir-emudeck:11144ad
+          image: ghcr.io/jefflouisma/fenrir-emudeck:0179348
           command:
             - sh
             - -c
