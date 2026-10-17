@@ -11,10 +11,10 @@ LABEL org.opencontainers.image.description="EmuDeck for Fenrir game streaming (E
 # =============================================================================
 # Version pinning — bump these ARGs for easy updates
 # =============================================================================
-ARG ESDE_VERSION=3.4.0
-ARG PCSX2_VERSION=2.6.3
-ARG PPSSPP_VERSION=1.19.3
-ARG SHADPS4_VERSION=0.14.0
+ARG ESDE_VERSION=3.5.0
+ARG PCSX2_VERSION=2.8.2
+ARG PPSSPP_VERSION=1.20.4
+ARG SHADPS4_VERSION=0.20.0
 # DuckStation and RPCS3 use rolling/latest releases
 
 # =============================================================================
@@ -23,6 +23,7 @@ ARG SHADPS4_VERSION=0.14.0
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # RetroArch
     retroarch \
+    p7zip-full \
     # Vulkan/GPU support
     vulkan-tools \
     mesa-vulkan-drivers \
@@ -80,14 +81,20 @@ RUN wget -q "https://github.com/mhx/dwarfs/releases/download/v${DWARFS_VERSION}/
 # =============================================================================
 # Stage 2: ES-DE Frontend (AppImage extract)
 # =============================================================================
-# ES-DE AppImage URL from GitLab package registry (confirmed via releases API)
-# v3.4.0: package_files/246875981, v3.3.0: package_files/210210324
-RUN wget -q "https://gitlab.com/es-de/emulationstation-de/-/package_files/246875981/download" \
+# ES-DE 3.5.0 x64 asset from the official GitLab release.
+RUN wget -q "https://gitlab.com/es-de/emulationstation-de/-/package_files/357718352/download" \
       -O /tmp/esde.AppImage && \
     extract-appimage /tmp/esde.AppImage /opt/es-de && \
-    printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/es-de/usr/lib:$LD_LIBRARY_PATH\ncd /opt/es-de && exec ./AppRun "$@"\n' > /usr/local/bin/es-de && \
-    chmod +x /usr/local/bin/es-de && \
     rm -f /tmp/esde.AppImage
+
+COPY --chmod=755 es-de.sh /usr/local/bin/es-de
+
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/RetroArch_update.7z -O /tmp/retroarch.7z && \
+    7z x -y /tmp/retroarch.7z -o/tmp/retroarch-download >/dev/null && \
+    extract-appimage /tmp/retroarch-download/RetroArch-Linux-x86_64/RetroArch-Linux-x86_64.AppImage /opt/retroarch && \
+    printf '#!/bin/sh\ncd /opt/retroarch && exec ./AppRun "$@"\n' > /usr/local/bin/retroarch && \
+    chmod +x /usr/local/bin/retroarch && \
+    rm -rf /tmp/retroarch.7z /tmp/retroarch-download
 
 # =============================================================================
 # Stage 3: RetroArch cores from libretro buildbot

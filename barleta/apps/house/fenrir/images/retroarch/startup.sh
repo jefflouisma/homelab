@@ -34,13 +34,13 @@ fi
 echo "Waiting for Wayland display at ${WAYLAND_SOCKET}..."
 TIMEOUT=30
 WAITED=0
-while [ ! -S "${WAYLAND_SOCKET}" ] && [ $WAITED -lt $TIMEOUT ]; do
+while { [ ! -S "${WAYLAND_SOCKET}" ] || [ ! -w "${WAYLAND_SOCKET}" ]; } && [ $WAITED -lt $TIMEOUT ]; do
     sleep 1
     WAITED=$((WAITED + 1))
     echo "Waiting for wayland socket... ($WAITED/$TIMEOUT)"
 done
 
-if [ ! -S "${WAYLAND_SOCKET}" ]; then
+if [ ! -S "${WAYLAND_SOCKET}" ] || [ ! -w "${WAYLAND_SOCKET}" ]; then
     echo "ERROR: Wayland display not available after ${TIMEOUT}s"
     exit 1
 fi

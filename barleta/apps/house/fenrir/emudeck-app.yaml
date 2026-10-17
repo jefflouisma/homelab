@@ -24,11 +24,16 @@ spec:
       initContainers:
         # Fix permissions on all PVC mounts for UID 1000
         - name: fix-permissions
-          image: busybox
+          image: ghcr.io/jefflouisma/fenrir-emudeck:11144ad
           command:
             - sh
             - -c
             - |
+              set -e
+              mkdir -p /Emulation/bios/dolphin-emu
+              cp -rn /usr/share/retroarch/system/dolphin-emu/Sys /Emulation/bios/dolphin-emu/
+              mkdir -p /Emulation/bios/PPSSPP
+              cp -rn /opt/ppsspp/bin/assets/. /Emulation/bios/PPSSPP/
               chown -R 1000:1000 /Emulation/saves && chmod -R 755 /Emulation/saves
               chown -R 1000:1000 /Emulation/bios && chmod -R 755 /Emulation/bios
               # Don't chown roms — large volume, and read-only is fine
@@ -76,13 +81,13 @@ spec:
               echo "Waiting for Wayland display at ${WAYLAND_SOCKET}..."
               TIMEOUT=30
               WAITED=0
-              while [ ! -S "${WAYLAND_SOCKET}" ] && [ $WAITED -lt $TIMEOUT ]; do
+              while { [ ! -S "${WAYLAND_SOCKET}" ] || [ ! -w "${WAYLAND_SOCKET}" ]; } && [ $WAITED -lt $TIMEOUT ]; do
                   sleep 1
                   WAITED=$((WAITED + 1))
                   echo "Waiting for wayland socket... ($WAITED/$TIMEOUT)"
               done
 
-              if [ ! -S "${WAYLAND_SOCKET}" ]; then
+              if [ ! -S "${WAYLAND_SOCKET}" ] || [ ! -w "${WAYLAND_SOCKET}" ]; then
                   echo "ERROR: Wayland display not available after ${TIMEOUT}s"
                   exit 1
               fi
@@ -118,7 +123,8 @@ spec:
               ln -sfn /Emulation/roms "$HOME_DIR/ROMs"
 
               # ES-DE config
-              ESDE_CONFIG_DIR="$HOME_DIR/.config/es-de"
+              export ESDE_APPDATA_DIR="$HOME_DIR/ES-DE"
+              ESDE_CONFIG_DIR="$ESDE_APPDATA_DIR/settings"
               mkdir -p "$ESDE_CONFIG_DIR"
               if [ ! -f "$ESDE_CONFIG_DIR/es_settings.xml" ]; then
                   cp /etc/es-de/es_settings.xml "$ESDE_CONFIG_DIR/es_settings.xml"
@@ -129,6 +135,14 @@ spec:
               mkdir -p "$RETROARCH_CONFIG_DIR"
               if [ ! -f "$RETROARCH_CONFIG_DIR/retroarch.cfg" ]; then
                   cp /etc/retroarch.cfg "$RETROARCH_CONFIG_DIR/retroarch.cfg"
+              fi
+              sed -i 's/^input_driver = "sdl2"$/input_driver = "wayland"/' "$RETROARCH_CONFIG_DIR/retroarch.cfg"
+
+              # Dolphin device 769 supplies the Nunchuk required by Spider-Man: Edge of Time.
+              SPIDER_MAN_REMAP="$RETROARCH_CONFIG_DIR/config/remaps/dolphin-emu/Spider-Man - Edge of Time (USA).rmp"
+              if [ ! -f "$SPIDER_MAN_REMAP" ]; then
+                  mkdir -p "$(dirname "$SPIDER_MAN_REMAP")"
+                  printf 'input_libretro_device_p1 = "769"\n' > "$SPIDER_MAN_REMAP"
               fi
 
               # Ensure save subdirectories exist
@@ -141,7 +155,7 @@ spec:
 
               # RPCS3 / PS3 configuration
               # Copy custom ES-DE system definitions (RPCS3 Directory as default PS3 command + PS4 shadPS4)
-              ESDE_CUSTOM_DIR="$HOME_DIR/.config/es-de/custom_systems"
+              ESDE_CUSTOM_DIR="$ESDE_APPDATA_DIR/custom_systems"
               mkdir -p "$ESDE_CUSTOM_DIR"
               if [ -d /etc/es-de/custom_systems ]; then
                   cp -r /etc/es-de/custom_systems/* "$ESDE_CUSTOM_DIR/" 2>/dev/null || true
@@ -248,7 +262,17 @@ spec:
               # Brief settle time for compositor, then launch
               sleep 5
               echo "Launching ES-DE frontend..."
-              exec es-de --resolution 1920 1080
+              if [ ! -e "$ESDE_APPDATA_DIR/resources" ]; then
+                  ln -s /opt/es-de/usr/bin/resources "$ESDE_APPDATA_DIR/resources"
+              fi
+              mkdir -p "$ESDE_APPDATA_DIR/themes"
+              for theme in /opt/es-de/usr/bin/themes/*; do
+                  if [ ! -e "$ESDE_APPDATA_DIR/themes/${theme##*/}" ]; then
+                      ln -s "$theme" "$ESDE_APPDATA_DIR/themes/${theme##*/}"
+                  fi
+              done
+              cd /opt/es-de
+              exec /lib64/ld-linux-x86-64.so.2 --library-path "/opt/es-de/usr/lib:${LD_LIBRARY_PATH:-}" /opt/es-de/AppRun --resolution 1920 1080
           resources:
             requests:
               cpu: "2"

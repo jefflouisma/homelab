@@ -45,26 +45,28 @@ jobs:
           file: barleta/apps/house/fenrir/images/emudeck/Dockerfile
           tags: ghcr.io/jefflouisma/fenrir-emudeck:${{ steps.vars.outputs.tag }}
           push: true
+          no-cache: true
           cache-from: type=gha,scope=fenrir-emudeck
           cache-to: type=gha,mode=max,scope=fenrir-emudeck
 
       - name: Update GitOps manifests
         run: |
           TAG="${{ steps.vars.outputs.tag }}"
-          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-emudeck:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/emudeck-app.yaml
+          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-emudeck:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/{emudeck-app,retroarch-apps}.yaml
 
       - name: Commit manifest updates
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add barleta/apps/house/fenrir/emudeck-app.yaml
+          git add barleta/apps/house/fenrir/{emudeck-app,retroarch-apps}.yaml
           if git diff --cached --quiet; then
             echo "No manifest changes to commit."
             exit 0
           fi
           git commit -m "chore(fenrir): bump emudeck to ${{ steps.vars.outputs.tag }}"
           for i in 1 2 3; do
-            git pull --rebase origin main && git push && break
+            if git pull --rebase origin main && git push; then exit 0; fi
             echo "Push attempt $i failed, retrying in 5s..."
             sleep 5
           done
+          exit 1

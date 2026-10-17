@@ -24,11 +24,23 @@ spec:
       # Fix permissions on saves volume for UID 1000 (Dolphin needs to create User dirs)
       initContainers:
         - name: fix-saves-permissions
-          image: busybox
-          command: ['sh', '-c', 'chown -R 1000:1000 /saves && chmod -R 755 /saves']
+          image: ghcr.io/jefflouisma/fenrir-emudeck:11144ad
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              mkdir -p /bios/dolphin-emu /bios/PPSSPP
+              cp -rn /usr/share/retroarch/system/dolphin-emu/Sys /bios/dolphin-emu/
+              cp -rn /opt/ppsspp/bin/assets/. /bios/PPSSPP/
+              mkdir -p /saves/states
+              chown -R 1000:1000 /saves /bios
+              chmod -R 755 /saves /bios
           volumeMounts:
             - name: saves
               mountPath: /saves
+            - name: bios
+              mountPath: /bios
           securityContext:
             runAsUser: 0
       containers:
@@ -48,7 +60,7 @@ spec:
 
               PULSE_COOKIE_PATH="${RUNTIME_DIR}/.config/pulse/cookie"
               export PULSE_COOKIE="$PULSE_COOKIE_PATH"
-              HOME_DIR="/tmp"
+              HOME_DIR="/home/retro"
               mkdir -p "$HOME_DIR"
               export HOME="$HOME_DIR"
               if [ -r "$PULSE_COOKIE_PATH" ]; then
@@ -68,13 +80,13 @@ spec:
               echo "Waiting for Wayland display at ${WAYLAND_SOCKET}..."
               TIMEOUT=30
               WAITED=0
-              while [ ! -S "${WAYLAND_SOCKET}" ] && [ $WAITED -lt $TIMEOUT ]; do
+              while { [ ! -S "${WAYLAND_SOCKET}" ] || [ ! -w "${WAYLAND_SOCKET}" ]; } && [ $WAITED -lt $TIMEOUT ]; do
                   sleep 1
                   WAITED=$((WAITED + 1))
                   echo "Waiting for wayland socket... ($WAITED/$TIMEOUT)"
               done
 
-              if [ ! -S "${WAYLAND_SOCKET}" ]; then
+              if [ ! -S "${WAYLAND_SOCKET}" ] || [ ! -w "${WAYLAND_SOCKET}" ]; then
                   echo "ERROR: Wayland display not available after ${TIMEOUT}s"
                   exit 1
               fi
@@ -111,6 +123,13 @@ spec:
                   cp /config-template/retroarch.cfg /config/retroarch.cfg
               fi
               chmod u+rw /config/retroarch.cfg
+              sed -i 's/^input_driver = "sdl2"$/input_driver = "wayland"/' /config/retroarch.cfg
+              # Dolphin device 769 supplies the Nunchuk required by Spider-Man: Edge of Time.
+              SPIDER_MAN_REMAP="$HOME_DIR/.config/retroarch/config/remaps/dolphin-emu/Spider-Man - Edge of Time (USA).rmp"
+              if [ ! -f "$SPIDER_MAN_REMAP" ]; then
+                  mkdir -p "$(dirname "$SPIDER_MAN_REMAP")"
+                  printf 'input_libretro_device_p1 = "769"\n' > "$SPIDER_MAN_REMAP"
+              fi
               exec retroarch --config /config/retroarch.cfg
           resources:
             requests:
@@ -130,6 +149,9 @@ spec:
               readOnly: true
             - name: saves
               mountPath: /saves
+            - name: bios
+              mountPath: /usr/share/retroarch/system
+              readOnly: true
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000
@@ -148,6 +170,9 @@ spec:
         - name: saves
           persistentVolumeClaim:
             claimName: fenrir-saves
+        - name: bios
+          persistentVolumeClaim:
+            claimName: fenrir-bios
 
       restartPolicy: Always
 ---
@@ -199,10 +224,8 @@ data:
     audio_latency = "64"
     audio_sync = "true"
 
-    # Input settings - SDL2 for reliable controller input
-    # linuxraw has KNOWN BUG where devices detected but input doesn't register (libretro/RetroArch#16767)
-    # SDL2 properly handles input events and works with virtual controllers
-    input_driver = "sdl2"
+    # Wayland handles keyboard/mouse events; SDL2 handles virtual gamepads.
+    input_driver = "wayland"
     input_autodetect_enable = "true"
     input_joypad_driver = "sdl2"
     # Point to autoconfig dir containing Wolf Xbox controller profile
@@ -214,7 +237,7 @@ data:
     savestate_directory = "/saves/states"
     screenshot_directory = "/screenshots"
 
-    # System/BIOS directory (Dolphin Sys folder baked into image here)
+    # Shared BIOS directory, seeded with Dolphin and PPSSPP assets by the init container.
     system_directory = "/usr/share/retroarch/system"
 
     # Content directories

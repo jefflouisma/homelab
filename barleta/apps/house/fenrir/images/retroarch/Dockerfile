@@ -10,6 +10,7 @@ LABEL org.opencontainers.image.description="RetroArch for Fenrir game streaming"
 # Install RetroArch and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     retroarch \
+    p7zip-full \
     # Vulkan/GPU support
     vulkan-tools \
     mesa-vulkan-drivers \
@@ -34,6 +35,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxi6 \
     libx11-6 \
     && rm -rf /var/lib/apt/lists/*
+
+RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/RetroArch_update.7z -O /tmp/retroarch.7z && \
+    7z x -y /tmp/retroarch.7z -o/tmp/retroarch-download >/dev/null && \
+    chmod +x /tmp/retroarch-download/RetroArch-Linux-x86_64/RetroArch-Linux-x86_64.AppImage && \
+    cd /opt && /tmp/retroarch-download/RetroArch-Linux-x86_64/RetroArch-Linux-x86_64.AppImage --appimage-extract >/dev/null && \
+    mv squashfs-root retroarch && \
+    printf '#!/bin/sh\ncd /opt/retroarch && exec ./AppRun "$@"\n' > /usr/local/bin/retroarch && \
+    chmod +x /usr/local/bin/retroarch && \
+    rm -rf /tmp/retroarch.7z /tmp/retroarch-download
 
 # Download RetroArch assets from libretro-assets GitHub repo
 # These contain the menu icons for Ozone/XMB themes

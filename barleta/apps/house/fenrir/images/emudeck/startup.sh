@@ -34,13 +34,13 @@ fi
 echo "Waiting for Wayland display at ${WAYLAND_SOCKET}..."
 TIMEOUT=30
 WAITED=0
-while [ ! -S "${WAYLAND_SOCKET}" ] && [ $WAITED -lt $TIMEOUT ]; do
+while { [ ! -S "${WAYLAND_SOCKET}" ] || [ ! -w "${WAYLAND_SOCKET}" ]; } && [ $WAITED -lt $TIMEOUT ]; do
     sleep 1
     WAITED=$((WAITED + 1))
     echo "Waiting for wayland socket... ($WAITED/$TIMEOUT)"
 done
 
-if [ ! -S "${WAYLAND_SOCKET}" ]; then
+if [ ! -S "${WAYLAND_SOCKET}" ] || [ ! -w "${WAYLAND_SOCKET}" ]; then
     echo "ERROR: Wayland display not available after ${TIMEOUT}s"
     exit 1
 fi
@@ -52,7 +52,8 @@ mkdir -p "$HOME_DIR"
 ln -sfn /Emulation/roms "$HOME_DIR/ROMs"
 
 # Set up ES-DE config directory
-ESDE_CONFIG_DIR="$HOME_DIR/.config/es-de"
+export ESDE_APPDATA_DIR="$HOME_DIR/ES-DE"
+ESDE_CONFIG_DIR="$ESDE_APPDATA_DIR/settings"
 mkdir -p "$ESDE_CONFIG_DIR"
 
 # Copy default ES-DE settings if not already customized (PVC persistence)
@@ -62,7 +63,7 @@ if [ ! -f "$ESDE_CONFIG_DIR/es_settings.xml" ]; then
 fi
 
 # Copy custom ES-DE system definitions (always update from image — config may change)
-ESDE_CUSTOM_SYSTEMS="$ESDE_CONFIG_DIR/custom_systems"
+ESDE_CUSTOM_SYSTEMS="$ESDE_APPDATA_DIR/custom_systems"
 mkdir -p "$ESDE_CUSTOM_SYSTEMS"
 cp /etc/es-de/custom_systems/es_systems.xml "$ESDE_CUSTOM_SYSTEMS/es_systems.xml"
 echo "Copied custom ES-DE system definitions"
@@ -102,6 +103,14 @@ mkdir -p "$RETROARCH_CONFIG_DIR"
 if [ ! -f "$RETROARCH_CONFIG_DIR/retroarch.cfg" ]; then
     cp /etc/retroarch.cfg "$RETROARCH_CONFIG_DIR/retroarch.cfg"
     echo "Copied default RetroArch config."
+fi
+sed -i 's/^input_driver = "sdl2"$/input_driver = "wayland"/' "$RETROARCH_CONFIG_DIR/retroarch.cfg"
+
+# Dolphin device 769 supplies the Nunchuk required by Spider-Man: Edge of Time.
+SPIDER_MAN_REMAP="$RETROARCH_CONFIG_DIR/config/remaps/dolphin-emu/Spider-Man - Edge of Time (USA).rmp"
+if [ ! -f "$SPIDER_MAN_REMAP" ]; then
+    mkdir -p "$(dirname "$SPIDER_MAN_REMAP")"
+    printf 'input_libretro_device_p1 = "769"\n' > "$SPIDER_MAN_REMAP"
 fi
 
 # Ensure saves directory exists

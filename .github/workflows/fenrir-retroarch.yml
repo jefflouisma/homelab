@@ -45,6 +45,7 @@ jobs:
           file: barleta/apps/house/fenrir/images/retroarch/Dockerfile
           tags: ghcr.io/jefflouisma/fenrir-retroarch:${{ steps.vars.outputs.tag }}
           push: true
+          no-cache: true
           cache-from: type=gha,scope=fenrir-retroarch
           cache-to: type=gha,mode=max,scope=fenrir-retroarch
 
@@ -64,7 +65,8 @@ jobs:
           fi
           git commit -m "chore(fenrir): bump retroarch to ${{ steps.vars.outputs.tag }}"
           for i in 1 2 3; do
-            git pull --rebase origin main && git push && break
+            if git pull --rebase origin main && git push; then exit 0; fi
             echo "Push attempt $i failed, retrying in 5s..."
             sleep 5
           done
+          exit 1
