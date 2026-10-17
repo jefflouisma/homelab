@@ -1573,11 +1573,24 @@ mod tests {
     #[test]
     fn test_aes_roundtrip() {
         let key = vec![0u8; 16];
-        let plaintext = b"Hello, World!!!"; // 16 bytes
+        let plaintext = b"Hello, World!!!!";
+        assert_eq!(plaintext.len(), 16);
 
         let encrypted = PairingSession::aes_encrypt_ecb(plaintext, &key).unwrap();
         let decrypted = PairingSession::aes_decrypt_ecb(&encrypted, &key).unwrap();
 
-        assert_eq!(&decrypted[..16], plaintext);
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_aes_roundtrip_zero_padding() {
+        let key = vec![0u8; 16];
+        let plaintext = b"Hello, World!!!";
+        let encrypted = PairingSession::aes_encrypt_ecb(plaintext, &key).unwrap();
+        let decrypted = PairingSession::aes_decrypt_ecb(&encrypted, &key).unwrap();
+
+        assert_eq!(encrypted.len(), 16);
+        assert_eq!(&decrypted[..plaintext.len()], plaintext);
+        assert_eq!(&decrypted[plaintext.len()..], &[0]);
     }
 }
