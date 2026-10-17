@@ -3,10 +3,10 @@ name: Deploy Barleta to Harvester
 on:
   push:
     branches: [main]
-    paths: ['barleta/**']
+    paths: ['barleta/infrastructure/**', 'barleta/platform/**', 'barleta/apps/identity/**']
   pull_request:
     branches: [main]
-    paths: ['barleta/**']
+    paths: ['barleta/infrastructure/**', 'barleta/platform/**', 'barleta/apps/identity/**']
   workflow_dispatch:
 
 env:
