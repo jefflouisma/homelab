@@ -1407,7 +1407,6 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn input_driver_requires_success_exit_and_acknowledgement() {
-        use std::os::unix::fs::PermissionsExt;
         let dir =
             std::env::temp_dir().join(format!("moonlight-driver-fixture-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1422,13 +1421,24 @@ mod tests {
         .enumerate()
         {
             let executable = dir.join(format!("driver-{case}"));
-            {
-                use std::io::Write;
-                let mut file = std::fs::File::create_new(&executable).unwrap();
-                write!(file, "#!/bin/sh\nread -r payload\n[ \"$payload\" = '{{\"type\":\"keyboard\",\"host\":\"localhost\",\"key\":\"enter\",\"action\":\"tap\"}}' ] || exit 2\nprintf '%s' '{output}'\nexit {exit}\n").unwrap();
-                file.sync_all().unwrap();
-            }
-            std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+            let script = format!("#!/bin/sh\nread -r payload\n[ \"$payload\" = '{{\"type\":\"keyboard\",\"host\":\"localhost\",\"key\":\"enter\",\"action\":\"tap\"}}' ] || exit 2\nprintf '%s' '{output}'\nexit {exit}\n");
+            let created = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                tokio::process::Command::new("/bin/sh")
+                    .args([
+                        "-c",
+                        "set -C; umask 077; printf '%s' \"$2\" > \"$1\" && chmod 700 \"$1\"",
+                        "fixture-writer",
+                    ])
+                    .arg(&executable)
+                    .arg(&script)
+                    .kill_on_drop(true)
+                    .status(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert!(created.success(), "fixture creation failed: {created}");
             let input = NativeInput::Keyboard {
                 host: "localhost",
                 key: "enter",
