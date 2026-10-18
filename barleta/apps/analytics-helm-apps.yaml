@@ -14,6 +14,12 @@ spec:
       valuesObject:
         createUserJob:
           useHelmHooks: false
+          applyCustomEnv: false
+          ttlSecondsAfterFinished: null
+          jobAnnotations:
+            argocd.argoproj.io/hook: Sync
+            argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+            argocd.argoproj.io/sync-wave: '1'
         dags:
           gitSync:
             enabled: false
@@ -28,6 +34,12 @@ spec:
           enabled: false
         migrateDatabaseJob:
           useHelmHooks: false
+          applyCustomEnv: false
+          ttlSecondsAfterFinished: null
+          jobAnnotations:
+            argocd.argoproj.io/hook: Sync
+            argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+            argocd.argoproj.io/sync-wave: '0'
         postgresql:
           enabled: false
         redis:
@@ -60,6 +72,14 @@ spec:
         webserverSecretKeySecretName: airflow-webserver-secret
     repoURL: https://airflow.apache.org
     targetRevision: 1.15.0
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      name: airflow-triggerer
+      namespace: analytics
+      jsonPointers:
+        - /spec/volumeClaimTemplates/0/apiVersion
+        - /spec/volumeClaimTemplates/0/kind
   syncPolicy:
     automated:
       prune: true

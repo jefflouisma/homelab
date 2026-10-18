@@ -71,7 +71,9 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 10
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
