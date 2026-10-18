@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	api "games-on-whales.github.io/direwolf/pkg/api/v1alpha1"
 	fake "games-on-whales.github.io/direwolf/pkg/generated/clientset/versioned/fake"
@@ -96,7 +97,7 @@ func TestLaunchDoesNotCreateSessionBeforePodCleanup(t *testing.T) {
 	}
 }
 
-func TestCancelWaitsForPodsAfterSessionAlreadyDeleted(t *testing.T) {
+func TestLaunchCleanupWaitsForPodsAfterSessionAlreadyDeleted(t *testing.T) {
 	s, _, ctx := resolutionRESTFixture(t)
 	empty := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	s.SessionLister = generic.NewLister[*api.Session](empty).Namespaced("house")
@@ -109,9 +110,7 @@ func TestCancelWaitsForPodsAfterSessionAlreadyDeleted(t *testing.T) {
 		}
 		return nil, nil
 	}}
-	response := httptest.NewRecorder()
-	s.cancelHandler(response, httptest.NewRequest("GET", "/cancel", nil).WithContext(ctx))
-	require.Equal(t, 200, response.Code)
+	require.NoError(t, s.stopSessionsForUser(ctx, ctx.Value(userContextKey{}).(*api.User)))
 	require.GreaterOrEqual(t, calls, 2)
 }
 
@@ -127,4 +126,39 @@ func TestCleanupStopsWhenRequestIsCancelled(t *testing.T) {
 	}}
 	err := s.stopSessionsForUser(ctx, ctx.Value(userContextKey{}).(*api.User))
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestCancelAcknowledgesDeletionWithoutWaitingForPods(t *testing.T) {
+	s, client, ctx := resolutionRESTFixture(t)
+	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	calls := 0
+	s.PodLister = resolutionPodLister{list: func(labels.Selector) ([]*v1.Pod, error) {
+		calls++
+		return []*v1.Pod{{ObjectMeta: metav1.ObjectMeta{Name: "terminating"}}}, nil
+	}}
+	response := httptest.NewRecorder()
+	s.cancelHandler(response, httptest.NewRequest("GET", "/cancel", nil).WithContext(ctx))
+	require.Equal(t, 200, response.Code)
+	var result Response
+	require.NoError(t, xml.Unmarshal(response.Body.Bytes(), &result))
+	require.Equal(t, 200, result.StatusCode)
+	require.Zero(t, calls, "cancel must not poll terminating pods")
+	require.Len(t, client.Actions(), 1)
+	deletion := client.Actions()[0].(clienttesting.DeleteAction)
+	require.Equal(t, "active", deletion.GetName())
+	require.Equal(t, metav1.DeletePropagationForeground, *deletion.GetDeleteOptions().PropagationPolicy)
+}
+
+func TestCancelReportsSessionDeletionFailure(t *testing.T) {
+	s, client, ctx := resolutionRESTFixture(t)
+	client.PrependReactor("delete", "sessions", func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("API deletion unavailable")
+	})
+	response := httptest.NewRecorder()
+	s.cancelHandler(response, httptest.NewRequest("GET", "/cancel", nil).WithContext(ctx))
+	require.Equal(t, 500, response.Code)
+	require.Contains(t, response.Body.String(), "API deletion unavailable")
+	_, err := client.DirewolfV1alpha1().Sessions("house").Get(ctx, "active", metav1.GetOptions{})
+	require.NoError(t, err)
 }

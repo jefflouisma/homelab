@@ -707,7 +707,7 @@ func sendResumeError(w http.ResponseWriter, status int, message string) {
 func (s *RESTServer) cancelHandler(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value(userContextKey{}).(*v1alpha1types.User)
 
-	err := s.stopSessionsForUser(r.Context(), user)
+	_, err := s.beginStopSessionsForUser(r.Context(), user)
 	if err != nil {
 		writeErrorResponse(w, 500, fmt.Errorf("failed to cancel session: %s", err))
 		return
@@ -715,19 +715,28 @@ func (s *RESTServer) cancelHandler(w http.ResponseWriter, r *http.Request) {
 	sendXML(w, Response{StatusCode: 200})
 }
 
-func (s *RESTServer) stopSessionsForUser(ctx context.Context, user *v1alpha1types.User) error {
+func (s *RESTServer) beginStopSessionsForUser(ctx context.Context, user *v1alpha1types.User) ([]*v1alpha1types.Session, error) {
 	sessions, err := s.SessionLister.List(labels.SelectorFromSet(labels.Set{
 		"direwolf/user": user.Name,
 	}))
 	if err != nil {
-		return fmt.Errorf("failed to list sessions: %w", err)
+		return nil, fmt.Errorf("failed to list sessions: %w", err)
 	}
 
 	propagation := metav1.DeletePropagationForeground
 	for _, session := range sessions {
 		if err := s.SessionClient.Delete(ctx, session.Name, metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil && !k8serrors.IsNotFound(err) {
-			return fmt.Errorf("failed to delete session: %w", err)
+			return nil, fmt.Errorf("failed to delete session: %w", err)
 		}
+	}
+
+	return sessions, nil
+}
+
+func (s *RESTServer) stopSessionsForUser(ctx context.Context, user *v1alpha1types.User) error {
+	sessions, err := s.beginStopSessionsForUser(ctx, user)
+	if err != nil {
+		return err
 	}
 
 	err = wait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 90*time.Second, true, func(ctx context.Context) (bool, error) {
