@@ -108,7 +108,7 @@ spec:
                   fieldPath: metadata.name
             - name: WOLF_IMAGE
               # Wolf with EGL fence error handling fix (cd4d8e7 in gst-wayland-display)
-              value: ghcr.io/jefflouisma/fenrir-wolf:546a17d
+              value: ghcr.io/jefflouisma/fenrir-wolf:8306c4d
           resources:
             requests:
               cpu: 100m
