@@ -48,4 +48,5 @@ fi
 echo "Wayland display ready, launching RetroArch..."
 
 # Launch RetroArch
+python3 /usr/local/bin/stream_scaling.py
 exec retroarch "$@"

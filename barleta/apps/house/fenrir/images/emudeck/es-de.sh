@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 
+resolution="$(prepare-console-display)"
+set -- $resolution "$@"
+
 export ESDE_APPDATA_DIR="${ESDE_APPDATA_DIR:-$HOME/ES-DE}"
 mkdir -p "$ESDE_APPDATA_DIR"
 if [ ! -e "$ESDE_APPDATA_DIR/resources" ]; then
@@ -14,4 +17,4 @@ for theme in /opt/es-de/usr/bin/themes/*; do
 done
 
 cd /opt/es-de
-exec /lib64/ld-linux-x86-64.so.2 --library-path "/opt/es-de/usr/lib:${LD_LIBRARY_PATH:-}" /opt/es-de/AppRun "$@"
+exec /lib64/ld-linux-x86-64.so.2 --library-path "/opt/es-de/usr/lib:${LD_LIBRARY_PATH:-}" /opt/es-de/AppRun --resolution "$@"

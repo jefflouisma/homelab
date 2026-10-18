@@ -44,6 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # AppImage extraction (unsquashfs for cross-build compat)
     squashfs-tools \
     python3-minimal \
+    python3-yaml \
     file \
     # Dolphin core dependencies
     libhidapi-hidraw0 \
@@ -167,6 +168,9 @@ RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/fbneo_libr
 
 RUN chmod +x /usr/lib/libretro/*.so
 
+COPY probe-core-options.py /usr/local/bin/probe-core-options.py
+RUN python3 /usr/local/bin/probe-core-options.py /usr/lib/libretro /etc/stream-core-options.json
+
 # RetroArch assets, core info, and databases
 RUN mkdir -p /usr/share/retroarch/assets && \
     cd /tmp && \
@@ -257,6 +261,7 @@ COPY startup.sh /usr/local/bin/startup.sh
 RUN chmod +x /usr/local/bin/startup.sh
 COPY --chmod=755 prepare-ps3-firmware.sh /usr/local/bin/prepare-ps3-firmware
 COPY --chmod=755 prepare-console-display.py /usr/local/bin/prepare-console-display
+COPY stream_scaling.py /usr/local/bin/stream_scaling.py
 
 # Copy PS4 game name resolution script
 COPY generate-ps4-shortcuts.sh /usr/local/bin/generate-ps4-shortcuts.sh

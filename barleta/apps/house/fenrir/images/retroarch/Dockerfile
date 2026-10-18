@@ -10,6 +10,7 @@ LABEL org.opencontainers.image.description="RetroArch for Fenrir game streaming"
 # Install RetroArch and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     retroarch \
+    python3-yaml \
     p7zip-full \
     # Vulkan/GPU support
     vulkan-tools \
@@ -127,6 +128,9 @@ RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/fbneo_libr
 # Set permissions on cores
 RUN chmod +x /usr/lib/libretro/*.so
 
+COPY emudeck/stream_scaling.py emudeck/probe-core-options.py /usr/local/bin/
+RUN python3 /usr/local/bin/probe-core-options.py /usr/lib/libretro /etc/stream-core-options.json
+
 # Download core info files (.info) for proper core detection
 RUN git clone --depth 1 https://github.com/libretro/libretro-core-info.git /tmp/info && \
     mkdir -p /usr/share/retroarch/info && \
@@ -143,16 +147,16 @@ RUN git clone --depth 1 https://github.com/libretro/libretro-database.git /tmp/d
 RUN mkdir -p /roms /saves /config /screenshots /config/playlists
 
 # Copy startup script that waits for Wayland display
-COPY startup.sh /usr/local/bin/startup.sh
+COPY retroarch/startup.sh /usr/local/bin/startup.sh
 RUN chmod +x /usr/local/bin/startup.sh
 
 # Copy default configuration
-COPY config/retroarch.cfg /root/.config/retroarch/retroarch.cfg
+COPY retroarch/config/retroarch.cfg /root/.config/retroarch/retroarch.cfg
 
 # Copy Wolf virtual Xbox controller autoconfig profiles
 # Supports both linuxraw and sdl2 drivers for backwards compatibility
-COPY autoconfig/linuxraw/ /usr/share/retroarch/autoconfig/linuxraw/
-COPY autoconfig/sdl2/ /usr/share/retroarch/autoconfig/sdl2/
+COPY retroarch/autoconfig/linuxraw/ /usr/share/retroarch/autoconfig/linuxraw/
+COPY retroarch/autoconfig/sdl2/ /usr/share/retroarch/autoconfig/sdl2/
 
 # Environment for Wolf/Wayland streaming
 ENV XDG_RUNTIME_DIR=/tmp/runtime-root

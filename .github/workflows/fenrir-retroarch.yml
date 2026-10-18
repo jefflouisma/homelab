@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "barleta/apps/house/fenrir/images/retroarch/**"
+      - "barleta/apps/house/fenrir/images/emudeck/stream_scaling.py"
+      - "barleta/apps/house/fenrir/images/emudeck/probe-core-options.py"
       - ".github/workflows/fenrir-retroarch.yml"
   workflow_dispatch: {}
 
@@ -41,7 +43,7 @@ jobs:
       - name: Build/push fenrir-retroarch
         uses: docker/build-push-action@v6
         with:
-          context: barleta/apps/house/fenrir/images/retroarch
+          context: barleta/apps/house/fenrir/images
           file: barleta/apps/house/fenrir/images/retroarch/Dockerfile
           tags: ghcr.io/jefflouisma/fenrir-retroarch:${{ steps.vars.outputs.tag }}
           push: true

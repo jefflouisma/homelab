@@ -87,7 +87,6 @@ if [ ! -e "$SHADPS4_DATA_DIR/sys_modules" ] && [ -d /Emulation/bios/ps4/sys_modu
 fi
 
 prepare-ps3-firmware
-prepare-console-display
 
 # Set up RetroArch config directory
 RETROARCH_CONFIG_DIR="$HOME_DIR/.config/retroarch"
@@ -143,4 +142,4 @@ fi
 
 # ─── Launch ES-DE ─────────────────────────────────────────────────────────────
 echo "Launching ES-DE frontend..."
-exec es-de --resolution 1920 1080 "$@"
+exec es-de "$@"
