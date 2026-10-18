@@ -49,7 +49,7 @@ spec:
         # Only app container - operator adds wolf, pulseaudio, wolf-agent
         - name: retroarch
           # RetroArch with Wolf X-Box autoconfig profile for controller support
-          image: ghcr.io/jefflouisma/fenrir-retroarch:9fda028
+          image: ghcr.io/jefflouisma/fenrir-retroarch:8cfe7a2
           env:
             - name: SDL_JOYSTICK_DISABLE_UDEV
               value: "1"
