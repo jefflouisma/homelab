@@ -43,58 +43,50 @@ func main() {
 		klog.Fatal("Failed to load certificates:", err)
 	}
 
-	// Start a thread to watch for the wolf.sock to appear
-	var ready atomic.Bool
+	agentController := controllers.NewAgent(wolfapi.NewClient(
+		fmt.Sprintf("https://localhost:%d", *serverPort),
+		&http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+				ResponseHeaderTimeout: 10 * time.Second,
+			},
+		},
+	))
+	var socketReady atomic.Bool
 	go func() {
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
 		for {
-			// Check socket exists
-			if info, err := os.Stat(*wolfSocketPath); err == nil && info != nil && info.Mode()&os.ModeSocket != 0 {
-				conn, err := net.Dial("unix", *wolfSocketPath)
+			if info, err := os.Stat(*wolfSocketPath); err == nil && info.Mode()&os.ModeSocket != 0 {
+				dialer := net.Dialer{Timeout: time.Second}
+				conn, err := dialer.DialContext(appContext, "unix", *wolfSocketPath)
 				if err == nil {
-					defer conn.Close()
-					klog.Info("wolf.sock is ready")
-
-					// Call out to the proxy which handles chunked encoding
-					// properly. There may be a way to use the SSE client without
-					// it, but found this easier.
-					wolfClient := wolfapi.NewClient(
-						fmt.Sprintf("https://localhost:%d", *serverPort),
-						&http.Client{
-							Transport: &http.Transport{
-								TLSClientConfig: &tls.Config{
-									InsecureSkipVerify: true,
-								},
-							},
-						},
-					)
-
-					agentController := controllers.NewAgent(
-						wolfClient,
-					)
-
-					go agentController.Run(appContext)
-
-					// Set ready to true
-					// This will allow the /readyz endpoint to return 200 OK
-					// and the server to start accepting connections
-					ready.Store(true)
-					return
+					if err := conn.Close(); err != nil {
+						klog.ErrorS(err, "Closing socket readiness connection")
+					}
+					socketReady.Store(true)
+					if err := agentController.Run(appContext); err != nil && appContext.Err() == nil {
+						klog.ErrorS(err, "Agent stopped; retrying event subscription")
+					}
+					socketReady.Store(false)
+				} else {
+					klog.Warningf("Waiting for wolf.sock to accept connections: %v", err)
 				}
-				klog.Warningf("Waiting for wolf.sock to accept connections: %v\n", err)
-			} else if err == nil && info.Mode()&os.ModeSocket == 0 {
+			} else if err == nil {
 				klog.Fatal("wolf.sock is not a socket", info.Mode())
-
-			} else {
-				klog.Info("Waiting for wolf.sock to appear...", err)
 			}
-			<-time.After(200 * time.Millisecond)
+			select {
+			case <-appContext.Done():
+				return
+			case <-ticker.C:
+			}
 		}
 	}()
 
 	// Spin up HTTPS server with self-signed certificate to service the wolf.sock
 	mux := http.NewServeMux()
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		if ready.Load() {
+		if agentController.Ready() {
 			w.WriteHeader(http.StatusOK)
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -105,7 +97,7 @@ func main() {
 	})
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
 		klog.Info("Received request:", r.Method, r.URL.Path)
-		if !ready.Load() {
+		if !socketReady.Load() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
@@ -119,22 +111,22 @@ func main() {
 			http.Error(w, fmt.Sprintf("Failed to join URL: %v", err), http.StatusInternalServerError)
 			return
 		}
-		request, err := http.NewRequest(r.Method, url, r.Body)
-		request.Proto = r.Proto
-		request.ProtoMajor = r.ProtoMajor
-		request.ProtoMinor = r.ProtoMinor
-		request.TransferEncoding = r.TransferEncoding
-		request.ContentLength = r.ContentLength
+		request, err := http.NewRequestWithContext(r.Context(), r.Method, url, r.Body)
 		if err != nil {
 			klog.ErrorS(err, "Failed to create proxy request")
 			http.Error(w, fmt.Sprintf("Failed to create proxy request: %v", err), http.StatusInternalServerError)
 			return
 		}
+		request.Proto = r.Proto
+		request.ProtoMajor = r.ProtoMajor
+		request.ProtoMinor = r.ProtoMinor
+		request.TransferEncoding = r.TransferEncoding
+		request.ContentLength = r.ContentLength
 		request.Header = r.Header.Clone()
 
 		// Send the request to the wolf.sock
 		klog.Info("Sending request to wolf.sock:", request.Method, request.URL.Path)
-		response, err := client.Do(request.WithContext(r.Context()))
+		response, err := client.Do(request)
 		if err != nil {
 			klog.ErrorS(err, "Failed to send request to wolf.sock")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -154,6 +146,8 @@ func main() {
 			klog.Error("Flushing not supported! Aborting writing response")
 			return
 		}
+
+		flusher.Flush()
 
 		// Stream response body manually. io.Copy doesn't eagerly flush
 		// which breaks SSE stream.
@@ -199,7 +193,7 @@ func UnixHTTPClient(sockAddr string) http.Client {
 	return http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.Dial("unix", sockAddr)
+				return (&net.Dialer{}).DialContext(ctx, "unix", sockAddr)
 			},
 		},
 	}

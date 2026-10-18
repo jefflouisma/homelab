@@ -12,8 +12,8 @@ import (
 )
 
 type ClientInfo struct {
-	ID        string `json:"client_id"`
-	AppState  string `json:"app_state_folder,omitempty"`
+	ID       string `json:"client_id"`
+	AppState string `json:"app_state_folder,omitempty"`
 }
 
 type ClientsResponse struct {
@@ -93,7 +93,7 @@ func (c *client) AddSession(
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", u, bytes.NewBuffer(encodedSession))
+	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewBuffer(encodedSession))
 	if err != nil {
 		return "", err
 	}
@@ -105,7 +105,7 @@ func (c *client) AddSession(
 	req.TransferEncoding = []string{"identity"}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return "", err
 	}
@@ -130,12 +130,12 @@ func (c *client) ListSessions(ctx context.Context) ([]Session, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("GET", u, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -160,12 +160,12 @@ func (c *client) ListApps(ctx context.Context) ([]App, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("GET", u, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -190,12 +190,12 @@ func (c *client) ListClients(ctx context.Context) ([]ClientInfo, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("GET", u, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -230,12 +230,13 @@ func (c *client) StopSession(ctx context.Context, sessionID string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", u, bytes.NewBuffer(encodedStopSessionReq))
+	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewBuffer(encodedStopSessionReq))
 	if err != nil {
 		return err
 	}
 
-	resp, err := c.httpClient.Do(req)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -251,18 +252,82 @@ func (c *client) StopSession(ctx context.Context, sessionID string) error {
 	return nil
 }
 
-func (c *client) SubscribeToEvents(ctx context.Context) (<-chan *sse.Event, error) {
-	events := make(chan *sse.Event)
-	sseClient := sse.NewClient(c.apiURL+"/api/v1/events", func(cl *sse.Client) {
-		cl.Connection = c.httpClient
-	})
+type HTTPStatusError struct {
+	Method     string
+	URL        string
+	StatusCode int
+}
 
-	err := sseClient.SubscribeChanRawWithContext(ctx, events)
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("%s %s: HTTP %d", e.Method, e.URL, e.StatusCode)
+}
+
+func (c *client) do(req *http.Request) (*http.Response, error) {
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		close(events)
+		return nil, fmt.Errorf("wolf request: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		resp.Body.Close()
+		return nil, &HTTPStatusError{Method: req.Method, URL: req.URL.String(), StatusCode: resp.StatusCode}
+	}
+	return resp, nil
+}
+
+func (c *client) SubscribeToEvents(ctx context.Context) (<-chan *sse.Event, error) {
+	u, err := url.JoinPath(c.apiURL, "/api/v1/events")
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	resp, err := c.do(req)
+	if err != nil {
 		return nil, err
 	}
 
+	events := make(chan *sse.Event)
+	go func() {
+		defer close(events)
+		defer resp.Body.Close()
+		reader := sse.NewEventStreamReader(resp.Body, 1<<16)
+		var lastID []byte
+		for {
+			data, err := reader.ReadEvent()
+			if err != nil {
+				return
+			}
+			event := &sse.Event{ID: lastID}
+			for _, line := range bytes.FieldsFunc(data, func(r rune) bool { return r == '\r' || r == '\n' }) {
+				field, value, _ := bytes.Cut(line, []byte(":"))
+				value = bytes.TrimPrefix(value, []byte(" "))
+				switch string(field) {
+				case "id":
+					event.ID = bytes.Clone(value)
+					lastID = event.ID
+				case "event":
+					event.Event = bytes.Clone(value)
+				case "data":
+					event.Data = append(event.Data, value...)
+					event.Data = append(event.Data, '\n')
+				case "retry":
+					event.Retry = bytes.Clone(value)
+				}
+			}
+			if len(event.Data) == 0 {
+				continue
+			}
+			event.Data = bytes.TrimSuffix(event.Data, []byte("\n"))
+			select {
+			case events <- event:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 	return events, nil
 }
 
@@ -302,8 +367,8 @@ type PauseStreamEvent struct {
 // Wolf broadcasts this via SSE when a virtual input device (joypad, mouse, keyboard)
 // is created via uinput. Each udev_events entry contains DEVNAME, MAJOR, MINOR, etc.
 type PlugDeviceEvent struct {
-	SessionID       string              `json:"session_id"`
-	UdevEvents      []map[string]string `json:"udev_events"`
+	SessionID  string              `json:"session_id"`
+	UdevEvents []map[string]string `json:"udev_events"`
 	// udev_hw_db_entries is a C++ vector<pair<string, vector<string>>> which
 	// serializes as [[key, [values...]], ...]. We don't need it for mknod,
 	// so we skip parsing it.
