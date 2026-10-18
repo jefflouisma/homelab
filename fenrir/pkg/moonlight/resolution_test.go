@@ -10,6 +10,7 @@ import (
 	api "games-on-whales.github.io/direwolf/pkg/api/v1alpha1"
 	fake "games-on-whales.github.io/direwolf/pkg/generated/clientset/versioned/fake"
 	"games-on-whales.github.io/direwolf/pkg/generic"
+	"games-on-whales.github.io/direwolf/pkg/wolfapi"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,7 +32,7 @@ func (l resolutionPodLister) List(selector labels.Selector) ([]*v1.Pod, error) {
 func resolutionRESTFixture(t *testing.T) (*RESTServer, *fake.Clientset, context.Context) {
 	t.Helper()
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
-	session := &api.Session{ObjectMeta: metav1.ObjectMeta{Name: "active", Namespace: "house", Labels: map[string]string{"direwolf/user": "jeff"}}, Spec: api.SessionSpec{Config: api.SessionInfo{VideoWidth: 1920, VideoHeight: 1080, VideoRefreshRate: 60}}, Status: api.SessionStatus{StreamURL: "rtsp://192.168.1.221:48010"}}
+	session := &api.Session{ObjectMeta: metav1.ObjectMeta{Name: "active", Namespace: "house", Labels: map[string]string{"direwolf/user": "jeff"}}, Spec: api.SessionSpec{Config: api.SessionInfo{VideoWidth: 1920, VideoHeight: 1080, VideoRefreshRate: 60}}, Status: api.SessionStatus{ServiceName: "stream", WolfSessionID: "wolf-1", StreamURL: "rtsp://192.168.1.221:48010"}}
 	require.NoError(t, indexer.Add(session))
 	apps := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	require.NoError(t, apps.Add(&api.App{ObjectMeta: metav1.ObjectMeta{Name: "emudeck", Namespace: "house"}, Spec: api.AppSpec{ID: 1}}))
@@ -65,6 +66,7 @@ func TestResumePreservesSessionAndChecksRequestedMode(t *testing.T) {
 	}{{"1280x720x60", 409}, {"1920x1080x30", 409}, {"-1x720x60", 400}, {"1920x1080x60", 200}, {"", 200}} {
 		t.Run(tc.mode, func(t *testing.T) {
 			s, client, ctx := resolutionRESTFixture(t)
+			attachResumeAgent(t, s, 200, []wolfapi.Session{{ClientID: "wolf-1"}})
 			response := httptest.NewRecorder()
 			s.resumeHandler(response, httptest.NewRequest("GET", "/resume?mode="+tc.mode, nil).WithContext(ctx))
 			require.Equal(t, tc.code, response.Code)

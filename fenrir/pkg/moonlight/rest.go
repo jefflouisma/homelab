@@ -23,6 +23,7 @@ import (
 	v1alpha1client "games-on-whales.github.io/direwolf/pkg/generated/clientset/versioned/typed/api/v1alpha1"
 	"games-on-whales.github.io/direwolf/pkg/generic"
 	"games-on-whales.github.io/direwolf/pkg/util"
+	"games-on-whales.github.io/direwolf/pkg/wolfapi"
 	"golang.org/x/image/webp"
 
 	v1 "k8s.io/api/core/v1"
@@ -51,7 +52,8 @@ type RESTServer struct {
 	router       *http.ServeMux
 	secureRouter *http.ServeMux
 
-	manager *PairingManager
+	manager        *PairingManager
+	wolfHTTPClient *http.Client
 
 	PairingsLister generic.NamespacedLister[*v1alpha1types.Pairing]
 	UserLister     generic.NamespacedLister[*v1alpha1types.User]
@@ -78,6 +80,7 @@ func NewRESTServer(
 		router:            http.NewServeMux(),
 		secureRouter:      http.NewServeMux(),
 		manager:           manager,
+		wolfHTTPClient:    &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}},
 		PairingsLister:    pairingsLister,
 		UserLister:        userLister,
 		AppLister:         appLister,
@@ -629,6 +632,32 @@ func (s *RESTServer) resumeHandler(w http.ResponseWriter, r *http.Request) {
 			config := session.Spec.Config
 			if mode != "" && (width != config.VideoWidth || height != config.VideoHeight || refreshRate != config.VideoRefreshRate) {
 				writeErrorResponse(w, 409, fmt.Errorf("running session uses %dx%dx%d; quit the running app in Moonlight and launch again to use %s", config.VideoWidth, config.VideoHeight, config.VideoRefreshRate, mode))
+				return
+			}
+			if session.DeletionTimestamp != nil || session.Status.WolfSessionID == "" || session.Status.ServiceName == "" {
+				writeErrorResponse(w, 409, fmt.Errorf("stream is no longer available; quit the running app in Moonlight and launch again"))
+				return
+			}
+			key, iv := r.URL.Query().Get("rikey"), r.URL.Query().Get("rikeyid")
+			if (key != "" && key != config.AESKey) || (iv != "" && iv != config.AESIV) {
+				writeErrorResponse(w, 409, fmt.Errorf("this connection needs new stream keys; quit the running app in Moonlight and launch again"))
+				return
+			}
+			client := wolfapi.NewClient(fmt.Sprintf("https://%s.%s.svc:8443", session.Status.ServiceName, session.Namespace), s.wolfHTTPClient)
+			liveSessions, err := client.ListSessions(r.Context())
+			if err != nil {
+				writeErrorResponse(w, 503, fmt.Errorf("cannot confirm the running stream; try again or quit the app in Moonlight and launch again: %w", err))
+				return
+			}
+			confirmed := false
+			for _, live := range liveSessions {
+				if live.ClientID == session.Status.WolfSessionID && live.AESKey == config.AESKey && live.AESIV == config.AESIV {
+					confirmed = true
+					break
+				}
+			}
+			if !confirmed {
+				writeErrorResponse(w, 409, fmt.Errorf("stream has stopped; quit the running app in Moonlight and launch again"))
 				return
 			}
 			klog.Infof("Resuming existing session %s for user %s (streamURL: %s)",
