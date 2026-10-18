@@ -23,24 +23,12 @@ metadata:
   name: homeassistant-config
   namespace: house
 data:
-  configuration.yaml: |
-    homeassistant:
-      name: Home
-      unit_system: imperial
-      time_zone: America/Los_Angeles
-      
+  proxy.yaml: |
     http:
       use_x_forwarded_for: true
       trusted_proxies:
         - 10.0.0.0/8
         - 192.168.0.0/16
-    
-    frontend:
-      themes: !include_dir_merge_named themes
-    
-    automation: !include automations.yaml
-    script: !include scripts.yaml
-    scene: !include scenes.yaml
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -57,6 +45,25 @@ spec:
       labels:
         app: homeassistant
     spec:
+      initContainers:
+        - name: configure-proxy
+          image: ghcr.io/home-assistant/home-assistant:stable
+          command:
+            - python3
+            - -c
+            - |
+              from pathlib import Path
+              import re
+              config = Path('/config/configuration.yaml')
+              content = config.read_text() if config.exists() else 'default_config:\n'
+              if not re.search(r'^http\s*:', content, re.MULTILINE):
+                  config.write_text(content.rstrip() + '\n\n' + Path('/proxy/proxy.yaml').read_text())
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: proxy
+              mountPath: /proxy
+              readOnly: true
       containers:
         - name: homeassistant
           image: ghcr.io/home-assistant/home-assistant:stable
@@ -88,6 +95,9 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 10
       volumes:
+        - name: proxy
+          configMap:
+            name: homeassistant-config
         - name: config
           persistentVolumeClaim:
             claimName: homeassistant-config
