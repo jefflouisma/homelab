@@ -45,6 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     squashfs-tools \
     python3-minimal \
     python3-yaml \
+    patchelf \
     file \
     # Dolphin core dependencies
     libhidapi-hidraw0 \
@@ -167,6 +168,9 @@ RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/fbneo_libr
     && unzip -q /tmp/core.zip -d /usr/lib/libretro && rm /tmp/core.zip
 
 RUN chmod +x /usr/lib/libretro/*.so
+
+# melonDS omits GNU-stack metadata in x64 assembly; glibc 2.41 rejects its executable-stack flag.
+RUN patchelf --clear-execstack /usr/lib/libretro/melonds_libretro.so
 
 COPY probe-core-options.py /usr/local/bin/probe-core-options.py
 RUN TMPDIR=/Volumes/4TB_Drive/tmp python3 /usr/local/bin/probe-core-options.py /usr/lib/libretro /etc/stream-core-options.json

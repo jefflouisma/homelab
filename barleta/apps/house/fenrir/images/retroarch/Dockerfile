@@ -11,6 +11,7 @@ LABEL org.opencontainers.image.description="RetroArch for Fenrir game streaming"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     retroarch \
     python3-yaml \
+    patchelf \
     p7zip-full \
     # Vulkan/GPU support
     vulkan-tools \
@@ -127,6 +128,9 @@ RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/fbneo_libr
 
 # Set permissions on cores
 RUN chmod +x /usr/lib/libretro/*.so
+
+# melonDS omits GNU-stack metadata in x64 assembly; glibc 2.41 rejects its executable-stack flag.
+RUN patchelf --clear-execstack /usr/lib/libretro/melonds_libretro.so
 
 COPY emudeck/stream_scaling.py emudeck/probe-core-options.py /usr/local/bin/
 RUN TMPDIR=/Volumes/4TB_Drive/tmp python3 /usr/local/bin/probe-core-options.py /usr/lib/libretro /etc/stream-core-options.json
