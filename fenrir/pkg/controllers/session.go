@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"reflect"
@@ -1989,6 +1990,52 @@ func isTransientStreamError(err error) bool {
 		strings.Contains(msg, "connection refused")
 }
 
+func (c *SessionController) readyWolfAgentIP(ctx context.Context, deployment *appsv1.Deployment) (string, error) {
+	if deployment.DeletionTimestamp != nil || deployment.Spec.Replicas == nil || *deployment.Spec.Replicas == 0 || deployment.Spec.Selector == nil {
+		return "", fmt.Errorf("deployment %s/%s not ready for Wolf startup", deployment.Namespace, deployment.Name)
+	}
+	selector, err := metav1.LabelSelectorAsSelector(deployment.Spec.Selector)
+	if err != nil {
+		return "", fmt.Errorf("invalid deployment selector: %w", err)
+	}
+	pods, err := c.K8sClient.CoreV1().Pods(deployment.Namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
+	if err != nil {
+		return "", fmt.Errorf("failed to list Wolf pods: %w", err)
+	}
+	for _, pod := range pods.Items {
+		if pod.DeletionTimestamp != nil || pod.Status.PodIP == "" || pod.Status.Phase != corev1.PodRunning {
+			continue
+		}
+		owner := metav1.GetControllerOf(&pod)
+		if owner == nil || owner.Kind != "ReplicaSet" {
+			continue
+		}
+		rs, err := c.K8sClient.AppsV1().ReplicaSets(deployment.Namespace).Get(ctx, owner.Name, metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("failed to get Wolf ReplicaSet: %w", err)
+		}
+		deploymentOwner := metav1.GetControllerOf(rs)
+		if rs.UID != owner.UID || rs.DeletionTimestamp != nil || deploymentOwner == nil || deploymentOwner.Kind != "Deployment" || deploymentOwner.Name != deployment.Name || deploymentOwner.UID != deployment.UID {
+			continue
+		}
+		actual, desired := rs.Spec.Template.DeepCopy(), deployment.Spec.Template.DeepCopy()
+		delete(actual.Labels, appsv1.DefaultDeploymentUniqueLabelKey)
+		delete(desired.Labels, appsv1.DefaultDeploymentUniqueLabelKey)
+		if !reflect.DeepEqual(actual, desired) {
+			continue
+		}
+		for _, status := range pod.Status.ContainerStatuses {
+			if status.Name == "wolf-agent" && status.Ready && status.State.Running != nil {
+				return pod.Status.PodIP, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("deployment %s/%s wolf-agent not ready", deployment.Namespace, deployment.Name)
+}
+
 // reconcileActiveStreams calls out to wolf-agent on the running pod to ensure
 // that wolf is configured in the correct state and listening for streams on the
 // correct ports for each session trying to connect to the Pod.
@@ -2004,8 +2051,7 @@ func (c *SessionController) reconcileActiveStreams(
 		return fmt.Errorf("failed to get deployment: %s", err)
 	}
 
-	if deployment.Status.ObservedGeneration != deployment.Generation ||
-		deployment.Status.ReadyReplicas != deployment.Status.Replicas {
+	if deployment.Status.ObservedGeneration != deployment.Generation {
 		return fmt.Errorf("deployment %s/%s not ready (Observed %d, Latest %d) (%d/%d)", session.Namespace, deploymentName, deployment.Status.ObservedGeneration, deployment.Generation, deployment.Status.ReadyReplicas, deployment.Status.Replicas)
 	}
 
@@ -2037,12 +2083,18 @@ func (c *SessionController) reconcileActiveStreams(
 	if clientIP == "" {
 		return fmt.Errorf("missing direwolf/client-ip annotation on session %s/%s", session.Namespace, session.Name)
 	}
+	// Apps need Wolf's compositor to start; their readiness cannot gate its API.
+	agentIP, err := c.readyWolfAgentIP(ctx, deployment)
+	if err != nil {
+		return err
+	}
 
 	// List all the "sessions".
 	// Ensure they match each of our k8s sessions. Hash on AESKey/IV
 	// In the future it might make sense to just match on ClientID/ClientCertFingerprint
 	// but that is hardcoded for now :)
-	wolfclient := wolfapi.NewClient(fmt.Sprintf("https://%s:8443", service.Spec.ClusterIP), &http.Client{
+	wolfclient := wolfapi.NewClient("https://"+net.JoinHostPort(agentIP, "8443"), &http.Client{
+		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},

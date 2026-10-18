@@ -35,7 +35,7 @@ func recoveryController(t *testing.T, session *v1alpha1.Session) (*SessionContro
 			Ingress: []corev1.LoadBalancerIngress{{IP: "192.168.1.221"}},
 		}},
 	}
-	deployment := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "jeff-retroarch", Namespace: "house"}}
+	deployment, replicaSet, pod := startupObjects()
 	sessions := direwolffake.NewSimpleClientset(session)
 	sessionInformer := cache.NewSharedIndexInformer(&cache.ListWatch{}, &v1alpha1.Session{}, 0, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	require.NoError(t, sessionInformer.GetStore().Add(session))
@@ -44,7 +44,7 @@ func recoveryController(t *testing.T, session *v1alpha1.Session) (*SessionContro
 	deploymentInformer := cache.NewSharedIndexInformer(&cache.ListWatch{}, &appsv1.Deployment{}, 0, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	require.NoError(t, deploymentInformer.GetStore().Add(deployment))
 	return &SessionController{
-		K8sClient: fake.NewClientset(proxy, deployment), SessionClient: sessions.DirewolfV1alpha1().Sessions("house"),
+		K8sClient: fake.NewClientset(proxy, deployment, replicaSet, pod), SessionClient: sessions.DirewolfV1alpha1().Sessions("house"),
 		SessionInformer:      generic.NewInformer[*v1alpha1.Session](sessionInformer),
 		AppInformer:          generic.NewInformer[*v1alpha1.App](appInformer),
 		UserInformer:         generic.NewInformer[*v1alpha1.User](userInformer),
