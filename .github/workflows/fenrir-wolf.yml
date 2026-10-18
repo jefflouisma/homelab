@@ -50,4 +50,3 @@ jobs:
           push: true
           cache-from: type=gha,scope=fenrir-wolf
           cache-to: type=gha,mode=max,scope=fenrir-wolf
-
