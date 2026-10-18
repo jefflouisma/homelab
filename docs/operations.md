@@ -27,7 +27,7 @@ On g913, use `sudo k3s kubectl` where the examples below say `kubectl`. From a c
 
 ```sh
 make status
-kubectl get applications -n argocd
+kubectl get applications.argoproj.io -n argocd
 kubectl get pods -A
 kubectl get pvc -A
 kubectl get svc -A --field-selector spec.type=LoadBalancer
@@ -47,7 +47,7 @@ Application sync health does not replace an HTTP or game test. Argo and Keycloak
 For a failing application, inspect its sync operation and resource diff before forcing a sync:
 
 ```sh
-kubectl describe application APPLICATION -n argocd
+kubectl describe application.argoproj.io APPLICATION -n argocd
 kubectl get events -n NAMESPACE --sort-by=.lastTimestamp
 kubectl logs -n NAMESPACE POD -c CONTAINER --since=10m
 kubectl logs -n NAMESPACE POD -c CONTAINER --previous

@@ -45,7 +45,7 @@ build: prepare
 	cargo build --locked --manifest-path moonlight-mcp/Cargo.toml
 
 status: prepare
-	kubectl get applications -n argocd
+	kubectl get applications.argoproj.io -n argocd
 	kubectl get pods -A
 	kubectl get pvc -A
 
