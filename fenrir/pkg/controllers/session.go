@@ -329,7 +329,8 @@ func (c *SessionController) Reconcile(namespace, name string, newObj *v1alpha1ty
 		})
 	}
 
-	if serviceError := c.reconcileService(context.TODO(), newObj); serviceError != nil {
+	serviceError := c.reconcileService(context.TODO(), newObj)
+	if serviceError != nil {
 		klog.Errorf("Failed to reconcile service: %s", serviceError)
 		meta.SetStatusCondition(&newObj.Status.Conditions, metav1.Condition{
 			Type:    "ServiceCreated",
@@ -362,7 +363,8 @@ func (c *SessionController) Reconcile(namespace, name string, newObj *v1alpha1ty
 	// 	})
 	// }
 
-	if streamError := c.reconcileActiveStreams(context.TODO(), newObj); streamError != nil {
+	streamError := c.reconcileActiveStreams(context.TODO(), newObj)
+	if streamError != nil {
 		if isTransientStreamError(streamError) {
 			klog.Infof("Active streams not ready yet")
 			klog.V(2).Infof("Active streams not ready: %s", streamError)
@@ -411,8 +413,10 @@ func (c *SessionController) Reconcile(namespace, name string, newObj *v1alpha1ty
 		}
 	}
 
-	//!TODO: figure our retry logic. Some of these errors surely are retriable
-	return nil
+	if serviceError != nil {
+		return serviceError
+	}
+	return streamError
 }
 
 // // !TODO: Unused. Part of testing gateway implementation. The final idea is for
@@ -528,6 +532,14 @@ func (c *SessionController) reconcileService(ctx context.Context, session *v1alp
 	if !meta.IsStatusConditionPresentAndEqual(session.Status.Conditions, "PortsAllocated", metav1.ConditionTrue) {
 		return fmt.Errorf("waiting for PortsAllocated")
 	}
+	proxy, err := c.K8sClient.CoreV1().Services(session.Namespace).Get(ctx, "moonlight-proxy", metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get moonlight proxy service: %w", err)
+	}
+	if len(proxy.Status.LoadBalancer.Ingress) == 0 || proxy.Status.LoadBalancer.Ingress[0].IP == "" {
+		return fmt.Errorf("waiting for LoadBalancer ingress on moonlight proxy %s/%s", proxy.Namespace, proxy.Name)
+	}
+	proxyIP := proxy.Status.LoadBalancer.Ingress[0].IP
 
 	clampString := func(s string, max int) string {
 		if len(s) > max {
@@ -563,13 +575,14 @@ func (c *SessionController) reconcileService(ctx context.Context, session *v1alp
 	_, err = c.K8sClient.CoreV1().
 		Services(session.Namespace).
 		Apply(
-			context.Background(),
+			ctx,
 			v1ac.Service(session.Status.ServiceName, session.Namespace).
 				WithAnnotations(map[string]string{
 					// Try to support popular service LoadBalancer implementation
 					// sharing key annotations.
 					"lbipam.cilium.io/sharing-key":        c.LBSharingKey,
 					"metallb.universe.tf/allow-shared-ip": c.LBSharingKey,
+					"metallb.io/loadBalancerIPs":          proxyIP,
 				}).
 				WithLabels(
 					map[string]string{
@@ -1989,6 +2002,9 @@ func (c *SessionController) reconcileActiveStreams(
 	}
 	if streamHost == "" {
 		return fmt.Errorf("waiting for LoadBalancer ingress on service %s/%s", service.Namespace, service.Name)
+	}
+	if requestedIP := service.Annotations["metallb.io/loadBalancerIPs"]; requestedIP == "" || streamHost != requestedIP {
+		return fmt.Errorf("waiting for LoadBalancer ingress on service %s/%s to match moonlight proxy IP %q (got %q)", service.Namespace, service.Name, requestedIP, streamHost)
 	}
 
 	clientIP := ""
