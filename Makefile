@@ -24,6 +24,7 @@ prepare:
 
 validate: prepare
 	python3 scripts/validate-project.py
+	python3 -m unittest discover -s barleta/apps/house/fenrir/images/emudeck -v
 
 test: test-go test-rust
 

@@ -59,6 +59,8 @@ When migrating from k3s ServiceLB to MetalLB, disabling ServiceLB does not clear
 
 Home Assistant uses `Recreate` because two instances cannot share its configuration database/lock. Its init container seeds the declared proxy stanza only when no `http` section exists. It preserves existing configuration and leaves a user-defined HTTP section under user control.
 
+EmuDeck fills missing RPCS3 dialog settings after firmware preparation. A partial INI containing only display settings must not block a controller-only game launch at the welcome dialog. Existing explicit dialog preferences remain unchanged. `make validate` includes regression tests for fresh, partial, and customized profiles.
+
 ## Emulator regression test
 
 Use an isolated test pairing/profile when possible. Record the original pairing and PVC inventory before runtime changes. After updating a streaming component:

@@ -11,6 +11,16 @@ def prepare(home: Path) -> None:
     settings.optionxform = str
     if rpcs3.exists():
         settings.read(rpcs3)
+    if not settings.has_section("main_window"):
+        settings.add_section("main_window")
+    for key in (
+        "infoBoxEnabledWelcome",
+        "infoBoxEnabledInstallPUP",
+        "infoBoxEnabledInstallPKG",
+        "confirmationBoxExitGame",
+        "confirmationBoxBootGame",
+    ):
+        settings["main_window"].setdefault(key, "false")
     if not settings.has_section("GSFrame"):
         settings.add_section("GSFrame")
     settings["GSFrame"].update(

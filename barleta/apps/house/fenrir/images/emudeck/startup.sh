@@ -86,21 +86,6 @@ if [ ! -e "$SHADPS4_DATA_DIR/sys_modules" ] && [ -d /Emulation/bios/ps4/sys_modu
     ln -s /Emulation/bios/ps4/sys_modules "$SHADPS4_DATA_DIR/sys_modules"
 fi
 
-# Pre-create RPCS3 Qt settings to suppress welcome dialog when launching games
-# Keys sourced from rpcs3/rpcs3qt/gui_settings.h (gui_save definitions)
-RPCS3_GUI_INI="$RPCS3_CONFIG_DIR/GuiConfigs/CurrentSettings.ini"
-if [ ! -f "$RPCS3_GUI_INI" ]; then
-    cat > "$RPCS3_GUI_INI" << 'RPCS3_INI'
-[main_window]
-infoBoxEnabledWelcome=false
-infoBoxEnabledInstallPUP=false
-infoBoxEnabledInstallPKG=false
-confirmationBoxExitGame=false
-confirmationBoxBootGame=false
-RPCS3_INI
-    echo "Created RPCS3 GUI settings (welcome dialog suppressed)"
-fi
-
 prepare-ps3-firmware
 prepare-console-display
 
