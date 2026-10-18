@@ -30,6 +30,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Prepare temporary drive path
+        run: |
+          sudo mkdir -p /Volumes/4TB_Drive/tmp/homelab-rosefish
+          sudo chown -R "$(id -u):$(id -g)" /Volumes/4TB_Drive/tmp
       - run: cargo fmt --check
         working-directory: moonlight-mcp
       - run: cargo clippy --all-targets -- -D warnings

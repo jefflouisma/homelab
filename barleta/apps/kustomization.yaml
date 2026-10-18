@@ -10,5 +10,4 @@ resources:
   - gateway-api-app.yaml
   - sealed-secrets-app.yaml
   - platform/cert-manager.yaml
-  - platform/cluster-issuer.yaml
   - analytics-helm-apps.yaml
