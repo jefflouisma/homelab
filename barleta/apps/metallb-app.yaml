@@ -25,6 +25,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - ServerSideApply=true
 ---
 # MetalLB Configuration (applied after MetalLB is ready)
 apiVersion: argoproj.io/v1alpha1

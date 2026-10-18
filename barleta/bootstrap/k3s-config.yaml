@@ -1,0 +1,8 @@
+node-ip: 192.168.1.10
+advertise-address: 192.168.1.10
+flannel-iface: enx4cea416e3264
+tls-san:
+  - 192.168.1.10
+  - g913
+disable:
+  - servicelb

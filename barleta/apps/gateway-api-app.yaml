@@ -22,6 +22,8 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -40,6 +42,7 @@ spec:
     targetRevision: v1.2.6
     helm:
       releaseName: envoy-gateway
+      skipCrds: true
   destination:
     server: https://kubernetes.default.svc
     namespace: envoy-gateway-system
