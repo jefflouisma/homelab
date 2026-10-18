@@ -188,9 +188,6 @@ spec:
               if command -v prepare-ps3-firmware >/dev/null 2>&1; then
                   prepare-ps3-firmware
               fi
-              if command -v prepare-console-display >/dev/null 2>&1; then
-                  prepare-console-display
-              fi
 
               # PS4 game name resolution — generate named symlinks from param.sfo
               if [ -d "/Emulation/roms/ps4" ]; then
@@ -201,17 +198,7 @@ spec:
               # Brief settle time for compositor, then launch
               sleep 5
               echo "Launching ES-DE frontend..."
-              if [ ! -e "$ESDE_APPDATA_DIR/resources" ]; then
-                  ln -s /opt/es-de/usr/bin/resources "$ESDE_APPDATA_DIR/resources"
-              fi
-              mkdir -p "$ESDE_APPDATA_DIR/themes"
-              for theme in /opt/es-de/usr/bin/themes/*; do
-                  if [ ! -e "$ESDE_APPDATA_DIR/themes/${theme##*/}" ]; then
-                      ln -s "$theme" "$ESDE_APPDATA_DIR/themes/${theme##*/}"
-                  fi
-              done
-              cd /opt/es-de
-              exec /lib64/ld-linux-x86-64.so.2 --library-path "/opt/es-de/usr/lib:${LD_LIBRARY_PATH:-}" /opt/es-de/AppRun --resolution 1920 1080
+              exec es-de
           resources:
             requests:
               cpu: "2"

@@ -63,7 +63,23 @@ The `fenrir-bios` PVC supplies system files. Put a PS3 firmware PUP in `ps3/PS3U
 
 Profiles, configuration, and emulator caches persist on each user's application PVC; shared saves persist on `fenrir-saves`.
 
-Console launchers request fullscreen and initialize RPCS3/shadPS4 presentation windows at 1920x1080 to match ES-DE's stream. Wolf can retain the initial window size despite a fullscreen request. This changes window dimensions, preserving internal rendering resolution and other emulator settings.
+## Stream resolution and scaling
+
+Moonlight's requested stream resolution controls the display, ES-DE menu, emulator windows, and game scaling. A Google TV device's 4K display mode does not set Moonlight's stream resolution: select **3840x2160** in Moonlight's video settings for a 4K stream. The server also accepts 1280x720 and 1920x1080 and configures applications for the requested size.
+
+Quit the running application from Moonlight before changing stream resolution, then launch it again. A resume request with a different resolution, changed encryption keys, or a stopped Wolf stream returns a conflict and leaves the application untouched. The pinned Wolf integration cannot rotate stream keys or restore a stream after disconnect; quit and relaunch in Moonlight instead of retrying a stale resume. Only a matching, confirmed live stream returns a successful resume response.
+
+Games retain their aspect ratio. Emulators with internal resolution controls render at the supported scale nearest the stream size; fixed-resolution games scale their output to fit. RetroArch core choices come from option schemas queried from the installed binaries during image builds. Startup updates the resolution options in existing global and game profiles while preserving controls and unrelated preferences. Higher rendering resolutions increase GPU load; game compatibility and frame rate still depend on the emulator and title.
+
+| Emulator | Automatic scaling |
+|----------|-------------------|
+| RPCS3 | Internal resolution percentage relative to 720p; 300% for 4K |
+| shadPS4 | Stream-sized presentation window and FSR upscale; preserves the guest's display mode |
+| PCSX2 | Internal rendering multiplier |
+| PPSSPP | Internal rendering multiplier |
+| DuckStation | Automatic internal resolution based on the output window |
+| RetroArch 3D cores | Supported internal resolution or rendering multiplier from the installed core |
+| RetroArch fixed-resolution cores | Fullscreen output scaled to fit the stream |
 
 ## Verified Games
 

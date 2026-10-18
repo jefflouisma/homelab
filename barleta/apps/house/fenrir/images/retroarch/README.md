@@ -2,6 +2,8 @@
 
 Custom RetroArch container image for the Fenrir game streaming platform.
 
+Build from the parent `images` directory with `-f retroarch/Dockerfile`. The image shares the stream scaling scripts in `emudeck/`; the RetroArch workflow rebuilds when those scripts change. At startup, fullscreen output follows Moonlight's negotiated width and height, and supported 3D cores select an internal resolution from the values advertised by their installed binaries. Fixed-resolution content scales to fit while keeping its aspect ratio.
+
 ## Features
 
 - **Base Image**: `gameonwhales/gst-wayland-display` (Wolf-compatible Wayland display)
