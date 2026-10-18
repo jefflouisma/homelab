@@ -59,7 +59,7 @@ func TestResumeRequiresLiveWolfSessionAndMatchingKeys(t *testing.T) {
 			attachResumeAgent(t, s, tc.status, tc.live)
 			response := httptest.NewRecorder()
 			s.resumeHandler(response, httptest.NewRequest("GET", "/resume?mode=1920x1080x60&rikey="+tc.key+"&rikeyid="+tc.iv, nil).WithContext(ctx))
-			require.Equal(t, tc.expected, response.Code)
+			require.Equal(t, http.StatusOK, response.Code)
 			var result ResumeResponse
 			require.NoError(t, xml.Unmarshal(response.Body.Bytes(), &result))
 			require.Equal(t, tc.expected, result.StatusCode)
@@ -67,6 +67,7 @@ func TestResumeRequiresLiveWolfSessionAndMatchingKeys(t *testing.T) {
 				require.Equal(t, 1, result.Resume)
 				require.Equal(t, session.Status.StreamURL, result.RTSPSessionURL)
 			} else {
+				require.NotEmpty(t, result.StatusMessage)
 				require.Zero(t, result.Resume)
 				require.Empty(t, result.RTSPSessionURL)
 			}

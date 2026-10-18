@@ -69,7 +69,11 @@ func TestResumePreservesSessionAndChecksRequestedMode(t *testing.T) {
 			attachResumeAgent(t, s, 200, []wolfapi.Session{{ClientID: "wolf-1"}})
 			response := httptest.NewRecorder()
 			s.resumeHandler(response, httptest.NewRequest("GET", "/resume?mode="+tc.mode, nil).WithContext(ctx))
-			require.Equal(t, tc.code, response.Code)
+			transportStatus := tc.code
+			if tc.code == 409 {
+				transportStatus = 200
+			}
+			require.Equal(t, transportStatus, response.Code)
 			var result ResumeResponse
 			require.NoError(t, xml.Unmarshal(response.Body.Bytes(), &result))
 			require.Equal(t, tc.code, result.StatusCode)

@@ -631,22 +631,23 @@ func (s *RESTServer) resumeHandler(w http.ResponseWriter, r *http.Request) {
 		if session.Status.StreamURL != "" {
 			config := session.Spec.Config
 			if mode != "" && (width != config.VideoWidth || height != config.VideoHeight || refreshRate != config.VideoRefreshRate) {
-				writeErrorResponse(w, 409, fmt.Errorf("running session uses %dx%dx%d; quit the running app in Moonlight and launch again to use %s", config.VideoWidth, config.VideoHeight, config.VideoRefreshRate, mode))
+				sendResumeError(w, 409, fmt.Sprintf("running session uses %dx%dx%d; quit the running app in Moonlight and launch again to use %s", config.VideoWidth, config.VideoHeight, config.VideoRefreshRate, mode))
 				return
 			}
 			if session.DeletionTimestamp != nil || session.Status.WolfSessionID == "" || session.Status.ServiceName == "" {
-				writeErrorResponse(w, 409, fmt.Errorf("stream is no longer available; quit the running app in Moonlight and launch again"))
+				sendResumeError(w, 409, "stream is no longer available; quit the running app in Moonlight and launch again")
 				return
 			}
 			key, iv := r.URL.Query().Get("rikey"), r.URL.Query().Get("rikeyid")
 			if (key != "" && key != config.AESKey) || (iv != "" && iv != config.AESIV) {
-				writeErrorResponse(w, 409, fmt.Errorf("this connection needs new stream keys; quit the running app in Moonlight and launch again"))
+				sendResumeError(w, 409, "this connection needs new stream keys; quit the running app in Moonlight and launch again")
 				return
 			}
 			client := wolfapi.NewClient(fmt.Sprintf("https://%s.%s.svc:8443", session.Status.ServiceName, session.Namespace), s.wolfHTTPClient)
 			liveSessions, err := client.ListSessions(r.Context())
 			if err != nil {
-				writeErrorResponse(w, 503, fmt.Errorf("cannot confirm the running stream; try again or quit the app in Moonlight and launch again: %w", err))
+				klog.ErrorS(err, "Failed to confirm resume stream")
+				sendResumeError(w, 503, "cannot confirm the running stream; try again or quit the app in Moonlight and launch again")
 				return
 			}
 			confirmed := false
@@ -657,7 +658,7 @@ func (s *RESTServer) resumeHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if !confirmed {
-				writeErrorResponse(w, 409, fmt.Errorf("stream has stopped; quit the running app in Moonlight and launch again"))
+				sendResumeError(w, 409, "stream has stopped; quit the running app in Moonlight and launch again")
 				return
 			}
 			klog.Infof("Resuming existing session %s for user %s (streamURL: %s)",
@@ -688,6 +689,19 @@ func (s *RESTServer) resumeHandler(w http.ResponseWriter, r *http.Request) {
 		RTSPSessionURL: streamURL,
 		Resume:         1,
 	})
+}
+
+func sendResumeError(w http.ResponseWriter, status int, message string) {
+	body, err := xml.Marshal(Response{StatusCode: status, StatusMessage: message})
+	if err != nil {
+		writeErrorResponse(w, 500, fmt.Errorf("failed to marshal resume response: %w", err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/xml")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(append([]byte(xml.Header), body...)); err != nil {
+		klog.ErrorS(err, "Failed to write resume response")
+	}
 }
 
 func (s *RESTServer) cancelHandler(w http.ResponseWriter, r *http.Request) {
