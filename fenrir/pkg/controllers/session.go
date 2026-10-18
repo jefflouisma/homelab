@@ -241,7 +241,7 @@ func (c *SessionController) Reconcile(namespace, name string, newObj *v1alpha1ty
 			delete(c.trackedGames, name)
 		}
 		return nil
-	} else if newObj.Status.WolfSessionID == "" && newObj.CreationTimestamp.Add(5*time.Minute).Before(time.Now()) {
+	} else if newObj.Status.WolfSessionID == "" && newObj.Status.StreamURL == "" && newObj.CreationTimestamp.Add(5*time.Minute).Before(time.Now()) {
 		klog.Infof("Session %s/%s is older than 5 minutes and has no wolf session ID, deleting", newObj.Namespace, newObj.Name)
 		err := c.SessionClient.Delete(context.TODO(), newObj.Name, metav1.DeleteOptions{})
 		if err != nil && !errors.IsNotFound(err) {
@@ -407,7 +407,6 @@ func (c *SessionController) Reconcile(namespace, name string, newObj *v1alpha1ty
 		if err != nil && !errors.IsNotFound(err) {
 			if errors.IsConflict(err) {
 				klog.V(2).Infof("Status update conflict for session %s/%s; will retry on next reconcile", newObj.Namespace, newObj.Name)
-				return nil
 			}
 			return err
 		}
@@ -2056,16 +2055,22 @@ func (c *SessionController) reconcileActiveStreams(
 
 	keyIVHash := util.Hash([]byte(session.Spec.Config.AESKey), []byte(session.Spec.Config.AESIV))
 	var found bool
+	var recoveredSessionID string
 	for _, s := range sessions {
 		sHash := util.Hash([]byte(s.AESKey), []byte(s.AESIV))
 		if bytes.Equal(sHash, keyIVHash) {
 			found = true
+			recoveredSessionID = s.ClientID
 			break
 		}
 	}
 
 	if found && session.Status.WolfSessionID == "" {
-		klog.Warningf("Session %s/%s exists in Wolf but status is empty; skipping delete to allow status reconciliation", session.Namespace, session.Name)
+		if recoveredSessionID == "" {
+			return fmt.Errorf("matching Wolf session for %s/%s is missing session ID", session.Namespace, session.Name)
+		}
+		session.Status.WolfSessionID = recoveredSessionID
+		klog.Infof("Recovered Wolf session ID %s for session %s/%s", recoveredSessionID, session.Namespace, session.Name)
 	} else if !found && session.Status.WolfSessionID != "" {
 		klog.Infof("Session %s/%s found: %v, status: %v", session.Namespace, session.Name, found, session.Status.WolfSessionID)
 		// Either the session was already added but not in the list, or
@@ -2131,10 +2136,6 @@ func (c *SessionController) reconcileActiveStreams(
 		}
 
 		session.Status.WolfSessionID = sessionID
-	} else {
-		//!TODO: Update wolf API to include session ID in list so we can update
-		// these details/validate discrepencies
-		// assert wolf session ID non-empty and matches what we expect
 	}
 
 	session.Status.StreamURL = fmt.Sprintf("rtsp://%s:%d", streamHost, session.Status.Ports.RTSP)
