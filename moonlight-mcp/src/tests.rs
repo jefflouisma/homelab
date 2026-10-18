@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-use crate::control_stream::ControlStream;
+use crate::control_stream;
 use crate::pairing;
 
 /// JSON test definition - the source of truth for test configuration
@@ -92,8 +92,7 @@ pub enum TestAction {
         /// Milliseconds to wait for app startup before verification
         #[serde(default = "default_delay")]
         capture_after_ms: u64,
-        /// Whether to use the encrypted control stream (like real Moonlight)
-        /// When true, connects ENet control channel with AES-128 GCM encryption
+        /// Request native control verification (currently reports unsupported).
         #[serde(default)]
         use_control_stream: bool,
     },
@@ -310,58 +309,17 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
                                         ),
                                     });
 
-                                    // Step 2.5: Connect control stream if enabled (like real Moonlight)
-                                    let mut control_stream_handle: Option<ControlStream> = None;
                                     if *use_control_stream {
-                                        // ENet control port is always 47999 (fixed port in Wolf/Moonlight protocol)
-                                        // The RTSP port calculation was incorrect - Wolf uses a fixed ENet port
-                                        let control_port = 47999u16;
-                                        
-                                        eprintln!(
-                                            "[DEBUG] Connecting control stream to {}:{} with rikey={}",
-                                            test.host, control_port, launch_info.rikey
-                                        );
-                                        
-                                        match ControlStream::connect(
-                                            &test.host,
-                                            control_port,
-                                            &launch_info.rikey,
-                                            launch_info.rikeyid,
-                                        ).await {
-                                            Ok(mut cs) => {
-                                                // Test the control stream with pings
-                                                match cs.test_connection().await {
-                                                    Ok(()) => {
-                                                        steps.push(StepResult {
-                                                            name: "control_stream".into(),
-                                                            passed: true,
-                                                            message: format!(
-                                                                "Control stream connected and pings sent (port: {})",
-                                                                control_port
-                                                            ),
-                                                        });
-                                                        control_stream_handle = Some(cs);
-                                                    }
-                                                    Err(e) => {
-                                                        steps.push(StepResult {
-                                                            name: "control_stream".into(),
-                                                            passed: false,
-                                                            message: format!(
-                                                                "Control stream ping failed: {} (this may indicate AES-GCM encryption issues)",
-                                                                e
-                                                            ),
-                                                        });
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                steps.push(StepResult {
-                                                    name: "control_stream".into(),
-                                                    passed: false,
-                                                    message: format!("Failed to connect control stream: {}", e),
-                                                });
-                                            }
-                                        }
+                                        let result =
+                                            control_stream::verify_connection(&test.host, 47999);
+                                        steps.push(StepResult {
+                                            name: "control_stream".into(),
+                                            passed: result.is_ok(),
+                                            message: match result {
+                                                Ok(()) => "Control stream verified".into(),
+                                                Err(error) => error.to_string(),
+                                            },
+                                        });
                                     }
 
                                     // Wait for app to start
@@ -380,7 +338,7 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
 
                                     // Step 3: Verify stream via API (optional, just for diagnostics)
                                     if *verify_video {
-                                        let verify_host = extract_rtsp_host(&session_url)
+                                        let verify_host = extract_rtsp_host(session_url)
                                             .unwrap_or_else(|| test.host.clone());
                                         match pairing::native_verify_stream(&verify_host).await {
                                             Ok(status) => {
@@ -425,7 +383,7 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
                                     // Use RTSP capture if we have a session URL, otherwise fallback to desktop screenshot
                                     let capture_result = if has_rtsp {
                                         pairing::capture_rtsp_frame(
-                                            &session_url,
+                                            session_url,
                                             &screenshot_path,
                                             10,
                                         )
@@ -651,91 +609,26 @@ pub async fn run_test(test: &TestDefinition) -> Result<TestResult> {
             left_trigger,
             right_trigger,
         } => {
-            // Map button name to Xbox-style button flags (same as Moonlight protocol)
-            let button_flags: u16 = button.as_ref().map(|b| match b.to_lowercase().as_str() {
-                "a" => 0x1000,
-                "b" => 0x2000,
-                "x" => 0x4000,
-                "y" => 0x8000,
-                "lb" | "left_bumper" => 0x0100,
-                "rb" | "right_bumper" => 0x0200,
-                "start" => 0x0010,
-                "select" | "back" => 0x0020,
-                "left_stick" | "ls" => 0x0040,
-                "right_stick" | "rs" => 0x0080,
-                "dpad_up" => 0x0001,
-                "dpad_down" => 0x0002,
-                "dpad_left" => 0x0004,
-                "dpad_right" => 0x0008,
-                _ => 0,
-            }).unwrap_or(0);
-
-            // Get session crypto from Wolf API to establish control stream
-            match pairing::get_session_crypto(&test.host).await {
-                Ok(crypto) => {
-                    // Connect to control stream using session's AES key
-                    match ControlStream::connect(&test.host, 47999, &crypto.rikey, crypto.rikeyid).await {
-                        Ok(mut cs) => {
-                            let action = button_action.as_deref().unwrap_or("tap");
-                            let result = match action {
-                                "tap" => cs.send_gamepad_tap(button_flags).await,
-                                "press" | "down" => {
-                                    cs.send_gamepad(
-                                        button_flags,
-                                        left_trigger.unwrap_or(0),
-                                        right_trigger.unwrap_or(0),
-                                        left_stick_x.unwrap_or(0),
-                                        left_stick_y.unwrap_or(0),
-                                        right_stick_x.unwrap_or(0),
-                                        right_stick_y.unwrap_or(0),
-                                    ).await
-                                }
-                                "release" | "up" => {
-                                    // Send zero state (all released)
-                                    cs.send_gamepad(0, 0, 0, 0, 0, 0, 0).await
-                                }
-                                _ => cs.send_gamepad_tap(button_flags).await,
-                            };
-
-                            match result {
-                                Ok(()) => {
-                                    let msg = if let Some(b) = button {
-                                        format!("Sent gamepad button '{}' ({}) via control stream", b, action)
-                                    } else {
-                                        "Sent gamepad analog input via control stream".into()
-                                    };
-                                    steps.push(StepResult {
-                                        name: "send_gamepad".into(),
-                                        passed: true,
-                                        message: msg,
-                                    });
-                                }
-                                Err(e) => {
-                                    steps.push(StepResult {
-                                        name: "send_gamepad".into(),
-                                        passed: false,
-                                        message: format!("Failed to send gamepad via control stream: {}", e),
-                                    });
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            steps.push(StepResult {
-                                name: "send_gamepad".into(),
-                                passed: false,
-                                message: format!("Failed to connect control stream: {}", e),
-                            });
-                        }
-                    }
-                }
-                Err(e) => {
-                    steps.push(StepResult {
-                        name: "send_gamepad".into(),
-                        passed: false,
-                        message: format!("Failed to get session crypto: {}", e),
-                    });
-                }
-            }
+            let result = pairing::send_native_input(pairing::NativeInput::Gamepad {
+                host: &test.host,
+                button: button.as_deref(),
+                button_action: button_action.as_deref(),
+                left_stick_x: *left_stick_x,
+                left_stick_y: *left_stick_y,
+                right_stick_x: *right_stick_x,
+                right_stick_y: *right_stick_y,
+                left_trigger: *left_trigger,
+                right_trigger: *right_trigger,
+            })
+            .await;
+            steps.push(StepResult {
+                name: "send_gamepad".into(),
+                passed: result.is_ok(),
+                message: match result {
+                    Ok(()) => "Native driver acknowledged gamepad input delivery".into(),
+                    Err(error) => format!("Failed to send gamepad: {}", error),
+                },
+            });
         }
 
         TestAction::Wait { ms } => {

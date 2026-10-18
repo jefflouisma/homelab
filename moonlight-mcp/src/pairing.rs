@@ -27,7 +27,6 @@ pub struct ClientIdentity {
     pub cert_pem: String,
     pub key_pem: String,
     pub fingerprint: String,
-    key_pair: KeyPair,
 }
 
 impl ClientIdentity {
@@ -86,7 +85,6 @@ impl ClientIdentity {
             cert_pem,
             key_pem: key_pem.to_string(),
             fingerprint,
-            key_pair,
         })
     }
 
@@ -95,7 +93,7 @@ impl ClientIdentity {
         let key_pem = fs::read_to_string(key_path)?;
 
         // Parse the key pair
-        let key_pair = KeyPair::from_pem(&key_pem)?;
+        KeyPair::from_pem(&key_pem)?;
 
         // Calculate fingerprint from cert
         let cert_der = pem::parse(&cert_pem)?.into_contents();
@@ -105,7 +103,6 @@ impl ClientIdentity {
             cert_pem,
             key_pem,
             fingerprint,
-            key_pair,
         })
     }
 
@@ -203,7 +200,7 @@ impl PairingSession {
                 .timeout(std::time::Duration::from_secs(60))
                 .build()?;
 
-            let response = client.get(&url).send().await?;
+            let response = client.get(&url).send().await?.error_for_status()?;
             let body = response.text().await?;
 
             // Parse XML response for plaincert
@@ -246,7 +243,7 @@ impl PairingSession {
 
         // Poll for up to 10 seconds
         for _ in 0..20 {
-            let response = client.get(&url).send().await?;
+            let response = client.get(&url).send().await?.error_for_status()?;
             let body: serde_json::Value = response.json().await?;
 
             if let Some(secrets) = body.get("secrets").and_then(|s| s.as_array()) {
@@ -311,7 +308,7 @@ impl PairingSession {
             .danger_accept_invalid_certs(true)
             .build()?;
 
-        let response = client.get(&url).send().await?;
+        let response = client.get(&url).send().await?.error_for_status()?;
         let body = response.text().await?;
 
         // Parse challengeresponse
@@ -364,7 +361,7 @@ impl PairingSession {
             .danger_accept_invalid_certs(true)
             .build()?;
 
-        let response = client.get(&url).send().await?;
+        let response = client.get(&url).send().await?.error_for_status()?;
         let body = response.text().await?;
 
         if body.contains("<paired>1</paired>") {
@@ -397,7 +394,7 @@ impl PairingSession {
             .danger_accept_invalid_certs(true)
             .build()?;
 
-        let response = client.get(&url).send().await?;
+        let response = client.get(&url).send().await?.error_for_status()?;
         let body = response.text().await?;
 
         if body.contains("<paired>1</paired>") {
@@ -414,7 +411,7 @@ impl PairingSession {
         // Pad to block size
         let block_size = 16;
         let mut padded = plaintext.to_vec();
-        while padded.len() % block_size != 0 {
+        while !padded.len().is_multiple_of(block_size) {
             padded.push(0);
         }
 
@@ -446,11 +443,6 @@ impl PairingSession {
 pub async fn native_pair(host: &str, pin: &str) -> Result<()> {
     let mut session = PairingSession::new(host)?;
     session.pair(pin).await
-}
-
-/// Check if we have a valid client identity
-pub fn has_identity() -> bool {
-    ClientIdentity::load_or_create().is_ok()
 }
 
 /// Create an mTLS client using our client certificate
@@ -498,7 +490,7 @@ pub async fn native_list_apps(host: &str) -> Result<Vec<AppInfo>> {
         uuid::Uuid::new_v4()
     );
 
-    let response = client.get(&url).send().await?;
+    let response = client.get(&url).send().await?.error_for_status()?;
     let body = response.text().await?;
 
     // Parse XML response for apps
@@ -547,15 +539,11 @@ pub async fn native_list_apps(host: &str) -> Result<Vec<AppInfo>> {
 }
 
 /// Launch information returned from native_launch
-/// Contains the session URL and encryption keys for control stream
+/// Contains the RTSP session URL.
 #[derive(Debug, Clone)]
 pub struct LaunchInfo {
     /// RTSP session URL (e.g., "rtsp://192.168.1.223:48010")
     pub session_url: String,
-    /// Hex-encoded AES key for control stream encryption (32 chars)
-    pub rikey: String,
-    /// Key ID for IV generation
-    pub rikeyid: u32,
 }
 
 /// Launch an app on the host using native HTTPS API
@@ -567,7 +555,7 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<LaunchInfo> {
     // Test: Make a simple request to applist first to check connection
     let test_url = format!("https://{}:47984/applist?uniqueid=test&uuid=test123", host);
     eprintln!("[DEBUG] native_launch: testing connection with applist...");
-    let test_response = client.get(&test_url).send().await?;
+    let test_response = client.get(&test_url).send().await?.error_for_status()?;
     let test_status = test_response.status();
     eprintln!(
         "[DEBUG] native_launch: applist test response status: {}",
@@ -577,7 +565,7 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<LaunchInfo> {
     // Generate rikey (AES key for stream encryption) - 16 bytes hex encoded
     let mut rikey = [0u8; 16];
     rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut rikey);
-    let rikey_hex = hex::encode(&rikey).to_uppercase();
+    let rikey_hex = hex::encode(rikey).to_uppercase();
 
     // Generate rikey ID
     let rikeyid: u32 = rand::random();
@@ -608,19 +596,33 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<LaunchInfo> {
     );
     eprintln!("[DEBUG] native_launch: URL: {}", url);
 
+    let body = request_launch(&url, &cert_path, &key_path).await?;
+    let session_url = parse_launch_response(&body)?;
+    Ok(LaunchInfo { session_url })
+}
+
+async fn request_launch(
+    url: &str,
+    cert_path: &std::path::Path,
+    key_path: &std::path::Path,
+) -> Result<String> {
     // Use curl with long timeout - server can take 45+ seconds to process launch
     let output = tokio::process::Command::new("curl")
-        .args(&[
-            "-sk",
+        .args([
+            "-skf",
             "--cert",
-            cert_path.to_str().unwrap(),
+            cert_path
+                .to_str()
+                .ok_or_else(|| anyhow!("Non-UTF8 certificate path"))?,
             "--key",
-            key_path.to_str().unwrap(),
+            key_path
+                .to_str()
+                .ok_or_else(|| anyhow!("Non-UTF8 key path"))?,
             "--connect-timeout",
             "30",
             "--max-time",
             "90",
-            &url,
+            url,
         ])
         .output()
         .await?;
@@ -635,41 +637,43 @@ pub async fn native_launch(host: &str, app_id: u32) -> Result<LaunchInfo> {
 
     let body = String::from_utf8_lossy(&output.stdout).to_string();
     eprintln!("[DEBUG] native_launch: curl response: {}", body);
-    if body.trim().is_empty() {
-        return Err(anyhow!("Launch failed: empty response from /launch"));
-    }
+    Ok(body)
+}
 
-    // Extract session URL from response
-    let session_url = if let Some(start) = body.find("<sessionUrl0>") {
-        if let Some(end) = body.find("</sessionUrl0>") {
-            Some(body[start + 13..end].to_string())
-        } else {
-            None
-        }
+fn parse_launch_response(body: &str) -> Result<String> {
+    let document = body.trim();
+    let document = if document.starts_with("<?xml ") {
+        document
+            .split_once("?>")
+            .map(|(_, rest)| rest.trim())
+            .unwrap_or("")
     } else {
-        None
+        document
     };
-
-    // Check for success
-    if body.contains("<gamesession>1</gamesession>") || body.contains("status_code=\"200\"") {
-        return Ok(LaunchInfo {
-            session_url: session_url.unwrap_or_default(),
-            rikey: rikey_hex,
-            rikeyid,
-        });
+    let root_header = document
+        .strip_prefix("<root ")
+        .and_then(|rest| rest.split_once('>'))
+        .map(|(header, _)| header);
+    if !document.ends_with("</root>")
+        || !root_header.is_some_and(|header| {
+            header
+                .split_whitespace()
+                .any(|attribute| attribute == "status_code=\"200\"")
+        })
+        || !document.contains("<gamesession>1</gamesession>")
+    {
+        return Err(anyhow!(
+            "Launch did not confirm a successful game session: {}",
+            body
+        ));
     }
-
-    // Check for errors
-    if body.contains("status_code=\"4") || body.contains("status_code=\"5") {
-        return Err(anyhow!("Launch failed: {}", body));
-    }
-
-    // Assume success if no obvious error
-    Ok(LaunchInfo {
-        session_url: session_url.unwrap_or_default(),
-        rikey: rikey_hex,
-        rikeyid,
-    })
+    let session_url = body
+        .split_once("<sessionUrl0>")
+        .and_then(|(_, rest)| rest.split_once("</sessionUrl0>"))
+        .map(|(url, _)| url.trim())
+        .filter(|url| url.starts_with("rtsp://") && url.len() > 7 && !url.contains(['<', '>']))
+        .ok_or_else(|| anyhow!("Launch response missing a valid RTSP session URL"))?;
+    Ok(session_url.to_owned())
 }
 
 /// Verify stream is actually running by checking Wolf's session status
@@ -759,61 +763,6 @@ pub struct StreamStatus {
     pub error: Option<String>,
 }
 
-/// Session crypto info needed for control stream
-#[derive(Debug, Clone)]
-pub struct SessionCrypto {
-    /// AES key (hex encoded, 32 chars)
-    pub rikey: String,
-    /// Key ID (used as IV base)
-    pub rikeyid: u32,
-}
-
-/// Get the active session's crypto info from Wolf's sessions API
-/// This is needed to establish a control stream for sending gamepad input
-pub async fn get_session_crypto(host: &str) -> Result<SessionCrypto> {
-    let client = create_mtls_client()?;
-
-    let urls = [
-        format!("https://{}:8443/api/v1/sessions", host),
-        format!("https://{}:47984/api/v1/sessions", host),
-    ];
-
-    for url in urls {
-        let response = match client.get(&url).send().await {
-            Ok(resp) => resp,
-            Err(_) => continue,
-        };
-
-        if !response.status().is_success() {
-            continue;
-        }
-
-        let body = response.text().await?;
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
-            if let Some(sessions) = json.get("sessions").and_then(|s| s.as_array()) {
-                if let Some(session) = sessions.first() {
-                    let rikey = session
-                        .get("aes_key")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| anyhow!("Session missing aes_key"))?
-                        .to_string();
-                    let rikeyid_str = session
-                        .get("aes_iv")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| anyhow!("Session missing aes_iv"))?;
-                    let rikeyid: u32 = rikeyid_str
-                        .parse()
-                        .map_err(|_| anyhow!("Invalid aes_iv: {}", rikeyid_str))?;
-
-                    return Ok(SessionCrypto { rikey, rikeyid });
-                }
-            }
-        }
-    }
-
-    Err(anyhow!("No active sessions found to get crypto info from"))
-}
-
 /// Quit/stop the current streaming session
 pub async fn native_quit(host: &str) -> Result<()> {
     let client = create_mtls_client()?;
@@ -826,7 +775,7 @@ pub async fn native_quit(host: &str) -> Result<()> {
         uuid::Uuid::new_v4()
     );
 
-    let response = client.get(&url).send().await?;
+    let response = client.get(&url).send().await?.error_for_status()?;
     let body = response.text().await?;
 
     if body.contains("cancel=\"1\"") || body.contains("status_code=\"200\"") {
@@ -836,128 +785,83 @@ pub async fn native_quit(host: &str) -> Result<()> {
     }
 }
 
-/// Send keyboard input to the stream
-/// Uses the Wolf/Sunshine input API
-pub async fn send_keyboard_input(host: &str, key: &str, action: &str) -> Result<()> {
-    let client = create_mtls_client()?;
-
-    // Map key names to virtual key codes (subset for common keys)
-    let vk_code = match key.to_lowercase().as_str() {
-        "enter" | "return" => 0x0D,
-        "escape" | "esc" => 0x1B,
-        "space" => 0x20,
-        "backspace" => 0x08,
-        "tab" => 0x09,
-        "up" => 0x26,
-        "down" => 0x28,
-        "left" => 0x25,
-        "right" => 0x27,
-        "a" => 0x41,
-        "b" => 0x42,
-        "c" => 0x43,
-        "d" => 0x44,
-        "e" => 0x45,
-        "f" => 0x46,
-        "g" => 0x47,
-        "h" => 0x48,
-        "i" => 0x49,
-        "j" => 0x4A,
-        "k" => 0x4B,
-        "l" => 0x4C,
-        "m" => 0x4D,
-        "n" => 0x4E,
-        "o" => 0x4F,
-        "p" => 0x50,
-        "q" => 0x51,
-        "r" => 0x52,
-        "s" => 0x53,
-        "t" => 0x54,
-        "u" => 0x55,
-        "v" => 0x56,
-        "w" => 0x57,
-        "x" => 0x58,
-        "y" => 0x59,
-        "z" => 0x5A,
-        "0" => 0x30,
-        "1" => 0x31,
-        "2" => 0x32,
-        "3" => 0x33,
-        "4" => 0x34,
-        "5" => 0x35,
-        "6" => 0x36,
-        "7" => 0x37,
-        "8" => 0x38,
-        "9" => 0x39,
-        "f1" => 0x70,
-        "f2" => 0x71,
-        "f3" => 0x72,
-        "f4" => 0x73,
-        "f5" => 0x74,
-        "f6" => 0x75,
-        "f7" => 0x76,
-        "f8" => 0x77,
-        "f9" => 0x78,
-        "f10" => 0x79,
-        "f11" => 0x7A,
-        "f12" => 0x7B,
-        "ctrl" | "control" => 0x11,
-        "alt" => 0x12,
-        "shift" => 0x10,
-        _ => return Err(anyhow!("Unknown key: {}", key)),
-    };
-
-    // Wolf input API endpoint
-    let url = format!("https://{}:47984/input", host);
-
-    #[derive(serde::Serialize)]
-    struct KeyboardInput {
-        #[serde(rename = "type")]
-        input_type: String,
-        key_code: u32,
-        action: String, // "down", "up"
-    }
-
-    match action {
-        "tap" => {
-            // Send key down then key up
-            let down = KeyboardInput {
-                input_type: "keyboard".into(),
-                key_code: vk_code,
-                action: "down".into(),
-            };
-            let up = KeyboardInput {
-                input_type: "keyboard".into(),
-                key_code: vk_code,
-                action: "up".into(),
-            };
-
-            client.post(&url).json(&down).send().await?;
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            client.post(&url).json(&up).send().await?;
-        }
-        "press" | "down" => {
-            let input = KeyboardInput {
-                input_type: "keyboard".into(),
-                key_code: vk_code,
-                action: "down".into(),
-            };
-            client.post(&url).json(&input).send().await?;
-        }
-        "release" | "up" => {
-            let input = KeyboardInput {
-                input_type: "keyboard".into(),
-                key_code: vk_code,
-                action: "up".into(),
-            };
-            client.post(&url).json(&input).send().await?;
-        }
-        _ => return Err(anyhow!("Unknown key action: {}", action)),
-    }
-
-    Ok(())
+#[derive(serde::Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum NativeInput<'a> {
+    Keyboard {
+        host: &'a str,
+        key: &'a str,
+        action: &'a str,
+    },
+    Mouse {
+        host: &'a str,
+        action: &'a str,
+        x: Option<i32>,
+        y: Option<i32>,
+        button: Option<&'a str>,
+        scroll_delta: Option<i32>,
+    },
+    Gamepad {
+        host: &'a str,
+        button: Option<&'a str>,
+        button_action: Option<&'a str>,
+        left_stick_x: Option<i16>,
+        left_stick_y: Option<i16>,
+        right_stick_x: Option<i16>,
+        right_stick_y: Option<i16>,
+        left_trigger: Option<u8>,
+        right_trigger: Option<u8>,
+    },
 }
 
-/// Send mouse input to the stream
+pub async fn send_native_input(input: NativeInput<'_>) -> Result<()> {
+    let executable = std::env::var_os("MOONLIGHT_INPUT_COMMAND")
+        .ok_or_else(|| anyhow!("Native input requires MOONLIGHT_INPUT_COMMAND pointing to a Moonlight input driver; HTTP /input and raw UDP are unsupported"))?;
+    run_input_driver(&executable, &input).await
+}
+
+async fn run_input_driver(executable: &std::ffi::OsStr, input: &NativeInput<'_>) -> Result<()> {
+    let mut payload = serde_json::to_vec(input)?;
+    payload.push(b'\n');
+    tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        let mut child = tokio::process::Command::new(executable)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("Input driver stdin unavailable"))?;
+        stdin.write_all(&payload).await?;
+        drop(stdin);
+        let output = child.wait_with_output().await?;
+        if !output.status.success() {
+            return Err(anyhow!(
+                "Native input driver failed ({}): {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        #[derive(serde::Deserialize)]
+        struct Acknowledgement {
+            acknowledged: bool,
+        }
+        let ack: Acknowledgement = serde_json::from_slice(&output.stdout)?;
+        if !ack.acknowledged {
+            return Err(anyhow!("Native input driver did not acknowledge delivery"));
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| anyhow!("Native input driver timed out after 15 seconds"))?
+}
+
+pub async fn send_keyboard_input(host: &str, key: &str, action: &str) -> Result<()> {
+    send_native_input(NativeInput::Keyboard { host, key, action }).await
+}
+
 pub async fn send_mouse_input(
     host: &str,
     action: &str,
@@ -966,114 +870,15 @@ pub async fn send_mouse_input(
     button: Option<&str>,
     scroll_delta: Option<i32>,
 ) -> Result<()> {
-    let client = create_mtls_client()?;
-    let url = format!("https://{}:47984/input", host);
-
-    #[derive(serde::Serialize)]
-    struct MouseInput {
-        #[serde(rename = "type")]
-        input_type: String,
-        action: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        x: Option<i32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        y: Option<i32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        button: Option<u8>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        delta: Option<i32>,
-    }
-
-    let button_code = button.map(|b| match b.to_lowercase().as_str() {
-        "left" => 1,
-        "right" => 2,
-        "middle" => 3,
-        _ => 1,
-    });
-
-    let input = MouseInput {
-        input_type: "mouse".into(),
-        action: action.to_string(),
+    send_native_input(NativeInput::Mouse {
+        host,
+        action,
         x,
         y,
-        button: button_code,
-        delta: scroll_delta,
-    };
-
-    client.post(&url).json(&input).send().await?;
-    Ok(())
-}
-
-/// Send gamepad/controller input to the stream
-pub async fn send_gamepad_input(
-    host: &str,
-    button: Option<&str>,
-    button_action: Option<&str>,
-    left_stick_x: Option<i16>,
-    left_stick_y: Option<i16>,
-    right_stick_x: Option<i16>,
-    right_stick_y: Option<i16>,
-    left_trigger: Option<u8>,
-    right_trigger: Option<u8>,
-) -> Result<()> {
-    let client = create_mtls_client()?;
-    let url = format!("https://{}:47984/input", host);
-
-    // Map button names to Xbox-style button flags
-    let button_flag = button.map(|b| match b.to_lowercase().as_str() {
-        "a" => 0x1000,
-        "b" => 0x2000,
-        "x" => 0x4000,
-        "y" => 0x8000,
-        "lb" | "left_bumper" => 0x0100,
-        "rb" | "right_bumper" => 0x0200,
-        "start" => 0x0010,
-        "select" | "back" => 0x0020,
-        "left_stick" | "ls" => 0x0040,
-        "right_stick" | "rs" => 0x0080,
-        "dpad_up" => 0x0001,
-        "dpad_down" => 0x0002,
-        "dpad_left" => 0x0004,
-        "dpad_right" => 0x0008,
-        _ => 0,
-    });
-
-    #[derive(serde::Serialize)]
-    struct GamepadInput {
-        #[serde(rename = "type")]
-        input_type: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        button_flags: Option<u16>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        button_action: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        left_stick_x: Option<i16>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        left_stick_y: Option<i16>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        right_stick_x: Option<i16>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        right_stick_y: Option<i16>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        left_trigger: Option<u8>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        right_trigger: Option<u8>,
-    }
-
-    let input = GamepadInput {
-        input_type: "gamepad".into(),
-        button_flags: button_flag,
-        button_action: button_action.map(|s| s.to_string()),
-        left_stick_x,
-        left_stick_y,
-        right_stick_x,
-        right_stick_y,
-        left_trigger,
-        right_trigger,
-    };
-
-    client.post(&url).json(&input).send().await?;
-    Ok(())
+        button,
+        scroll_delta,
+    })
+    .await
 }
 
 struct RtspResponse {
@@ -1082,7 +887,6 @@ struct RtspResponse {
 }
 
 struct RtspSessionInfo {
-    session_id: Option<String>,
     video_port: u16,
     audio_port: u16,
     ping_payload: Vec<u8>,
@@ -1146,7 +950,7 @@ fn parse_transport_port(value: &str) -> Option<u16> {
     value
         .split("server_port=")
         .nth(1)
-        .and_then(|rest| rest.split(|c| c == ';' || c == ' ').next())
+        .and_then(|rest| rest.split([';', ' ']).next())
         .and_then(|port| port.parse().ok())
 }
 
@@ -1226,7 +1030,6 @@ async fn rtsp_handshake(
     timeout_secs: u32,
 ) -> Result<RtspSessionInfo> {
     let mut cseq = 1;
-    let mut session_id: Option<String> = None;
 
     let options = format!(
         "OPTIONS rtsp://{host}:{port} RTSP/1.0\r\n\
@@ -1265,7 +1068,7 @@ If-Modified-Since: Thu, 01 Jan 1970 00:00:00 GMT\r\n\r\n"
     if resp.status != 200 {
         return Err(anyhow!("RTSP SETUP audio failed with {}", resp.status));
     }
-    session_id = header_value(&resp.headers, "session")
+    let session_id = header_value(&resp.headers, "session")
         .map(|val| val.split(';').next().unwrap_or(&val).trim().to_string());
     let mut ping_payload = header_value(&resp.headers, "x-ss-ping-payload")
         .map(|value| value.into_bytes())
@@ -1316,7 +1119,7 @@ If-Modified-Since: Thu, 01 Jan 1970 00:00:00 GMT\r\n\r\n"
     cseq += 1;
 
     let payload = build_announce_payload(width, height, fps);
-    let content_length = payload.as_bytes().len();
+    let content_length = payload.len();
     let announce = format!(
         "ANNOUNCE streamid=control/13/0 RTSP/1.0\r\n\
 CSeq: {cseq}\r\n\
@@ -1356,7 +1159,6 @@ Session: {session_header}\r\n\r\n"
     );
 
     Ok(RtspSessionInfo {
-        session_id,
         video_port,
         audio_port,
         ping_payload,
@@ -1367,7 +1169,7 @@ async fn decode_h264_frame(frame_data: &[u8], output_path: &str) -> Result<()> {
     let h264_path = format!("{output_path}.h264");
     fs::write(&h264_path, frame_data)?;
     let output = tokio::process::Command::new("ffmpeg")
-        .args(&[
+        .args([
             "-f",
             "h264",
             "-i",
@@ -1543,7 +1345,7 @@ pub async fn capture_rtsp_frame(
 /// Capture a screenshot using macOS screencapture (fallback for non-streaming tests)
 pub async fn capture_screenshot(output_path: &str) -> Result<()> {
     let output = tokio::process::Command::new("screencapture")
-        .args(&["-x", output_path])
+        .args(["-x", output_path])
         .output()
         .await?;
 
@@ -1561,6 +1363,78 @@ pub async fn capture_screenshot(output_path: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launch_rejects_unconfirmed_or_unknown_responses() {
+        for body in ["", "<root/>", "<root status_code=\"200\"></root>",
+            "<root status_code=\"500\"><gamesession>1</gamesession><sessionUrl0>rtsp://host:48010</sessionUrl0></root>",
+            "<root status_code=\"200\"><gamesession>0</gamesession><sessionUrl0>rtsp://host:48010</sessionUrl0></root>",
+            "<root status_code=\"200\"><gamesession>1</gamesession></root>"] {
+            assert!(parse_launch_response(body).is_err(), "Accepted: {body}");
+        }
+    }
+
+    #[test]
+    fn launch_accepts_confirmed_session() {
+        let body = "<?xml version=\"1.0\"?><root status_code=\"200\"><gamesession>1</gamesession><sessionUrl0>rtsp://host:48010</sessionUrl0></root>";
+        assert_eq!(parse_launch_response(body).unwrap(), "rtsp://host:48010");
+    }
+
+    #[tokio::test]
+    async fn launch_http_errors_fail_even_with_success_body() {
+        for status in [200, 404, 500] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}/launch", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = [0; 2048];
+                let bytes_read = socket.read(&mut request).await.unwrap();
+                assert!(bytes_read > 0);
+                let body = "<root status_code=\"200\"><gamesession>1</gamesession><sessionUrl0>rtsp://host:48010</sessionUrl0></root>";
+                socket.write_all(format!("HTTP/1.1 {status} Test\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            });
+            let result = request_launch(
+                &url,
+                std::path::Path::new("unused.crt"),
+                std::path::Path::new("unused.key"),
+            )
+            .await;
+            server.await.unwrap();
+            assert_eq!(result.is_ok(), status == 200, "HTTP {status}: {result:?}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn input_driver_requires_success_exit_and_acknowledgement() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir =
+            std::env::temp_dir().join(format!("moonlight-driver-fixture-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let executable = dir.join("driver");
+        for (output, exit, accepted) in [
+            (r#"{"acknowledged":true}"#, 0, true),
+            (r#"{"acknowledged":false}"#, 0, false),
+            (r#"{"acknowledged":true}"#, 1, false),
+            (r#"{}"#, 0, false),
+            ("not json", 0, false),
+        ] {
+            std::fs::write(&executable, format!("#!/bin/sh\nread -r payload\n[ \"$payload\" = '{{\"type\":\"keyboard\",\"host\":\"localhost\",\"key\":\"enter\",\"action\":\"tap\"}}' ] || exit 2\nprintf '%s' '{output}'\nexit {exit}\n")).unwrap();
+            std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+            let input = NativeInput::Keyboard {
+                host: "localhost",
+                key: "enter",
+                action: "tap",
+            };
+            let result = run_input_driver(executable.as_os_str(), &input).await;
+            assert_eq!(
+                result.is_ok(),
+                accepted,
+                "Output {output}, exit {exit}: {result:?}"
+            );
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn test_aes_key_derivation() {

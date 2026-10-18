@@ -5,10 +5,9 @@
 use anyhow::{anyhow, Result};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 /// Validation result from Gemini
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ValidationResult {
     pub passed: bool,
     pub moonlight_visible: bool,
@@ -17,20 +16,6 @@ pub struct ValidationResult {
     pub error_messages: Option<String>,
     pub description: String,
     pub raw_response: String,
-}
-
-impl Default for ValidationResult {
-    fn default() -> Self {
-        Self {
-            passed: false,
-            moonlight_visible: false,
-            app_visible: false,
-            streaming_active: false,
-            error_messages: None,
-            description: String::new(),
-            raw_response: String::new(),
-        }
-    }
 }
 
 /// OpenRouter chat completion response

@@ -12,7 +12,8 @@ use crate::tests::{self, TestAction, TestDefinition, ValidationConfig};
 /// JSON-RPC 2.0 Request
 #[derive(Debug, Deserialize)]
 struct JsonRpcRequest {
-    jsonrpc: String,
+    #[serde(rename = "jsonrpc")]
+    _jsonrpc: String,
     id: serde_json::Value,
     method: String,
     #[serde(default)]
@@ -568,7 +569,7 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
             let left_trigger = arguments["left_trigger"].as_u64().map(|v| v as u8);
             let right_trigger = arguments["right_trigger"].as_u64().map(|v| v as u8);
 
-            match crate::pairing::send_gamepad_input(
+            match crate::pairing::send_native_input(crate::pairing::NativeInput::Gamepad {
                 host,
                 button,
                 button_action,
@@ -578,7 +579,7 @@ async fn handle_tools_call(params: &serde_json::Value) -> Result<serde_json::Val
                 right_stick_y,
                 left_trigger,
                 right_trigger,
-            )
+            })
             .await
             {
                 Ok(()) => {
