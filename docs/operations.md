@@ -77,6 +77,8 @@ Keep screenshots and logs under the required temporary root. The [native helper 
 
 The tested Wolf compositor logs a GBM allocation fallback and uses default DMA formats without zero-copy. Streaming and controller input passed with this fallback. Treat zero-copy optimization as separate GPU compatibility work; changing container privileges is not a demonstrated fix for this warning.
 
+Wolf is pinned to `546a17d` and digest `86159679457592b8fd2d10d4af34e5df961f9bbd87c2ae45f838c50f45e19d03`. Candidate `8306c4d` built successfully and passed RetroArch/PPSSPP video and input, but RPCS3 ignored game buttons. The same updated RPCS3/profile accepted input with the deployed Wolf image. Direct SDL polling in the candidate container received Start/A correctly, so the precise compositor/RPCS3 interaction remains unresolved. Do not promote that candidate. Wolf CI publishes candidates without changing `WOLF_IMAGE`; promote a tested digest in Git after the full native regression list passes.
+
 ## Rollback and retirement
 
 Revert the manifest/image change in Git and let Argo reconcile. Preserve `moonlight-server-identity`, Pairing resources, and PVCs. Reverting a container image cannot restore a certificate that existed only in a deleted container.

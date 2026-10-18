@@ -40,7 +40,9 @@ Go, Rust, kubectl, Python 3.11+, and PyYAML are required for the complete local 
 
 ## Releases
 
-GitHub Actions builds images and commits their source SHA tags into the manifests. Argo CD deploys those manifest changes. Go components, Wolf, and the UCI loader require the reusable project checks before publication. Publication retries reapply their own tag updates to the current `main` and fail if all pushes fail.
+GitHub Actions builds images and commits source SHA tags into the manifests for Go components, EmuDeck, RetroArch and the UCI loader. Argo CD deploys those manifest changes. Go components, Wolf, EmuDeck and the UCI loader require the reusable project checks before publication. Publication retries reapply their own tag updates to the current `main` and fail if all pushes fail.
+
+Wolf builds publish candidate images without changing the deployed pin. Promote a candidate by changing `WOLF_IMAGE` to its tested tag and digest only after the real emulator checks in the operations guide pass. The deployed Wolf digest preserves the working PS3 controller path.
 
 EmuDeck and RetroArch builds fetch upstream emulator releases and cores when their image workflows run. Their `UPSTREAM_REFRESH` build argument prevents an old download layer from silently supplying stale upstream builds. Wolf's platform/toolchain inputs remain pinned because its GPU compositor has compatibility requirements.
 
