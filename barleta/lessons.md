@@ -1,5 +1,7 @@
 # Analytics Engineering Lesson Plan
 
+Historical learning material: the deployment commands, ports, architecture and example credentials below describe an older environment. Use the [current analytics guide](analytics.md) and [operations guide](../docs/operations.md) for the running Ubuntu/k3s cluster.
+
 A comprehensive curriculum for practicing analytics engineering skills using the Barleta platform.
 
 ---

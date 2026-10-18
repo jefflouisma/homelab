@@ -1,41 +1,17 @@
-# Barleta Applications
+# Argo CD applications
 
-ArgoCD-managed applications for the Barleta environment on Harvester native RKE2.
+The deployed cluster is Ubuntu/k3s on g913. Start with the root [README](../../README.md) and [operations guide](../../docs/operations.md).
 
-## Structure
+The single root application is `../bootstrap/argocd-root.yaml`. This directory's `kustomization.yaml` explicitly includes child Applications and namespace definitions. Bootstrap manifests stay outside this source directory to avoid self-management and duplicate ownership.
 
-```
-apps/
-├── argocd-root.yaml       # Root application (app-of-apps)
-├── namespaces.yaml        # Namespace definitions
-├── platform/              # Core platform services
-│   ├── argocd/
-│   ├── cert-manager/
-│   └── traefik/
-└── identity/              # Identity stack (fresh deployments)
-    ├── postgresql/
-    ├── keycloak/
-    └── midpoint/
-```
+| Source | Contents |
+| --- | --- |
+| `house/` | Fenrir, media, Home Assistant, and active GPU device initialization |
+| `identity/` | PostgreSQL/Keycloak and ingress resources |
+| `analytics/` | Explicit Kustomization for analytics services and manual ingestion CronJobs |
+| `analytics-helm-apps.yaml` | Airflow and DataHub Helm Applications, including their existing settings |
+| `platform/` | cert-manager, issuers, and MetalLB pool configuration |
 
-## Deployment Order
+Traefik belongs to the k3s packaged installation. Gateway API CRDs belong to `gateway-api-crds`; Envoy's Helm source skips duplicate CRD installation. Server-side apply handles large CRD schemas. Narrow Argo differences for PVC template type fields and the injected MetalLB CA bundle are declared in their application definitions.
 
-1. **Platform Services**
-   - cert-manager (certificates)
-   - Traefik (ingress)
-   - ArgoCD (self-managed after bootstrap)
-
-2. **Identity Stack**
-   - PostgreSQL (database)
-   - FreeIPA VM (deployed via Terraform, not ArgoCD)
-   - Keycloak (SSO)
-   - MidPoint (IGA)
-
-## Fresh Deployment Notes
-
-All identity components are **fresh deployments** - no data migration from HomePractice.
-
-- FreeIPA: New realm `barleta.local`
-- Keycloak: New realm, new users
-- MidPoint: Fresh connectors to FreeIPA
-- PostgreSQL: Fresh databases
+Validate with `make validate`. Commit changes to `main`; image workflows publish SHA-tagged images and update manifests. Argo reconciles them. Use the root Kustomization when applying this directory.

@@ -1,5 +1,4 @@
-# Fenrir README
-# Multi-user game streaming for Kubernetes
+# Fenrir game streaming for Kubernetes
 
 ## Overview
 
@@ -9,8 +8,8 @@ Fenrir is a Kubernetes-native adaptation of [Wolf (games-on-whales)](https://gam
 
 | Component | Description |
 |-----------|-------------|
-| `crds.yaml` | Custom Resource Definitions (App, Session, Pairing, User) |
-| `wolf-operator.yaml` | Fenrir operator + Wolf streaming server |
+| `direwolf.games-on-whales.github.io_*.yaml` | Custom Resource Definitions (App, Session, Pairing, User) |
+| `wolf-operator.yaml` | Fenrir operator and session image configuration |
 | `moonlight-proxy.yaml` | Entry point for Moonlight clients |
 | `retroarch-apps.yaml` | RetroArch game definitions |
 | `storage.yaml` | PVCs for games and saves |
@@ -20,7 +19,7 @@ Fenrir is a Kubernetes-native adaptation of [Wolf (games-on-whales)](https://gam
 Fenrir is deployed automatically via ArgoCD when manifests are committed.
 
 1. **Commit and push** all Fenrir manifests to `main` branch
-2. **ArgoCD syncs automatically** - deploys MetalLB → Gateway API → Fenrir
+2. **ArgoCD syncs automatically** from the explicit application Kustomization. MetalLB allocates the shared streaming address; session traffic does not use Gateway API routes.
 3. **Get the IP** for Apple TV:
    ```bash
    make fenrir-ip
@@ -30,7 +29,7 @@ Fenrir is deployed automatically via ArgoCD when manifests are committed.
 4. **Connect from Moonlight**:
    - Open Moonlight on Apple TV
    - Add server by **IP address** (hostname not supported on Apple TV)
-   - Pair with PIN code
+   - Open http://192.168.1.221:47989/ on another device and enter the Apple TV's PIN
    - Select "EmuDeck" for ES-DE or "RetroArch" for the standalone core browser
 
 ## ArgoCD Applications
@@ -66,7 +65,7 @@ Profiles, configuration, and emulator caches persist on each user's application 
 
 Console launchers request fullscreen and initialize RPCS3/shadPS4 presentation windows at 1920x1080 to match ES-DE's stream. Wolf can retain the initial window size despite a fullscreen request. This changes window dimensions, preserving internal rendering resolution and other emulator settings.
 
-## Verified Games (2026-10-17)
+## Verified Games
 
 Real Moonlight sessions on g913 reached gameplay in PS3 Super Street Fighter IV Arcade Edition (RPCS3 0.0.43-20331-73854171), PS4 Dead or Alive 5 Last Round (shadPS4 0.20.0), PSP God of War: Chains of Olympus, and Wii Spider-Man: Edge of Time (upstream RetroArch nightly 1.22.2, b35eb19). PS3 attacks and pause, PS4 menus and pause, PSP attacks and pause, and Wii Nunchuk setup were exercised. PS3 firmware 4.92 and dumped PS4 system modules are installed. Physical controllers and compatibility with other PS3/PS4 games were not verified.
 
@@ -80,6 +79,6 @@ EmuDeck seeds a missing RPCS3 global `Default.yml` input profile with the SDL ha
 
 ## Host GPU
 
-g913 runs Ubuntu with apt-managed NVIDIA drivers and NVIDIA Container Toolkit. The legacy Harvester installer DaemonSet only schedules on nodes labeled `barleta.local/nvidia-driver-managed-by=harvester`; do not apply that label to g913. Keep the kernel module and userspace NVIDIA package versions aligned.
+g913 runs Ubuntu with apt-managed NVIDIA drivers and NVIDIA Container Toolkit. The unused Harvester installer has been retired. Keep the kernel module and userspace NVIDIA package versions aligned. The active device initialization DaemonSet and streaming pod privileges remain required by the tested GPU setup.
 
 Install `scripts/fenrir-modules.conf` as `/etc/modules-load.d/fenrir.conf` on g913 so NVIDIA DRM, UVM, and uinput are available after boot. Verify `nvidia-smi` and `/dev/dri/renderD128` before diagnosing emulator startup failures.

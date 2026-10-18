@@ -1,59 +1,55 @@
-# Homelab V2 - IaC Orchestration
-# Usage: make <target> ENV=<barleta|homepractice|homeprod>
+TASK_TMP ?= /Volumes/4TB_Drive/tmp/homelab-rosefish
+export TMPDIR := /Volumes/4TB_Drive/tmp/
+export GOTMPDIR := $(TASK_TMP)/go-tmp
+export GOCACHE := $(TASK_TMP)/go-cache
+export GOMODCACHE := $(TASK_TMP)/go-mod
+export CARGO_TARGET_DIR := $(TASK_TMP)/target
+export KUBECACHEDIR := $(TASK_TMP)/kube-cache
+export PYTHONDONTWRITEBYTECODE := 1
 
-ENV = barleta
-ANSIBLE_DIR = $(ENV)/ansible
-TF_INFRA_DIR = $(ENV)/infrastructure
-TF_K8S_DIR = $(ENV)/kubernetes
-
-.PHONY: help init plan apply destroy clean
+.PHONY: help prepare validate test test-go test-rust test-loader build status fenrir-ip argocd-sync
 
 help:
-	@echo "Homelab V1 - Infrastructure as Code"
-	@echo ""
-	@echo "Usage: make <target>"
-	@echo ""
-	@echo "Environments: barleta (Harvester-based)"
-	@echo ""
-	@echo "Targets:"
-	@echo "  init              - Initialize Terraform"
-	@echo "  plan              - Plan infrastructure changes"
-	@echo "  apply             - Apply infrastructure (create VMs)"
-	@echo "  destroy           - Destroy infrastructure"
-	@echo "  clean             - Clean temporary files"
-	@echo ""
-	@echo "Utilities:"
-	@echo "  fenrir-ip         - Get Moonlight proxy IP for Apple TV"
-	@echo "  argocd-sync       - Trigger ArgoCD sync"
-	@echo ""
-	@echo "Note: Fenrir is deployed via GitOps (ArgoCD). Commit and push to deploy."
+	@echo "validate       Check manifests and script syntax"
+	@echo "test           Run Go race/vet and Rust format/clippy/tests"
+	@echo "test-loader    Test ingestion against a configured PostgreSQL fixture"
+	@echo "build          Build Go components and moonlight-mcp outside the checkout"
+	@echo "status         Show Argo, pod, and persistent-volume health"
+	@echo "fenrir-ip      Show the Moonlight address for Apple TV"
+	@echo "argocd-sync    Request a root Argo sync"
 
-# Terraform Infrastructure
-init:
-	cd $(TF_INFRA_DIR) && terraform init
+prepare:
+	@case "$(TASK_TMP)" in /Volumes/4TB_Drive/tmp/?*) ;; *) echo "TASK_TMP must be under /Volumes/4TB_Drive/tmp/" >&2; exit 1;; esac
+	@mkdir -p "$(GOTMPDIR)" "$(GOCACHE)" "$(GOMODCACHE)" "$(KUBECACHEDIR)" "$(TASK_TMP)/bin"
 
-plan:
-	cd $(TF_INFRA_DIR) && terraform plan
+validate: prepare
+	python3 scripts/validate-project.py
 
-apply:
-	cd $(TF_INFRA_DIR) && terraform apply -auto-approve
+test: test-go test-rust
 
-destroy:
-	cd $(TF_INFRA_DIR) && terraform destroy -auto-approve
+test-go: prepare
+	cd fenrir && go test -race ./... && go vet ./...
 
-clean:
-	find . -name "*.tfstate.backup" -delete
-	find . -name ".terraform.lock.hcl" -delete
-	rm -rf */.terraform
+test-rust: prepare
+	cargo fmt --manifest-path moonlight-mcp/Cargo.toml --check
+	cargo clippy --locked --manifest-path moonlight-mcp/Cargo.toml --all-targets -- -D warnings
+	cargo test --locked --manifest-path moonlight-mcp/Cargo.toml --all-targets
 
-# Utility Commands
-.PHONY: fenrir-ip argocd-sync
+test-loader: prepare
+	@test -n "$$PGHOST" -a -n "$$PGUSER" -a -n "$$PGPASSWORD" -a -n "$$PGDATABASE" || { echo "Set PGHOST, PGUSER, PGPASSWORD and PGDATABASE for an isolated PostgreSQL fixture" >&2; exit 1; }
+	python3 -m unittest discover -s barleta/apps/analytics/uci-loader -v
 
-fenrir-ip:
-	@echo "Moonlight Proxy IP (use this in Apple TV):"
-	@kubectl get svc moonlight-proxy -n house -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "LoadBalancer IP not yet assigned"
-	@echo ""
+build: prepare
+	cd fenrir && for component in operator moonlight-proxy wolf-agent; do go build -o "$(TASK_TMP)/bin/fenrir-$$component" "./cmd/$$component" || exit; done
+	cargo build --locked --manifest-path moonlight-mcp/Cargo.toml
 
-argocd-sync:
-	@echo "Triggering ArgoCD sync for all apps..."
-	kubectl patch application barleta-root -n argocd --type merge -p '{"operation": {"initiatedBy": {"username": "admin"}, "sync": {}}}'
+status: prepare
+	kubectl get applications -n argocd
+	kubectl get pods -A
+	kubectl get pvc -A
+
+fenrir-ip: prepare
+	@kubectl get svc moonlight-proxy -n house -o jsonpath='{.status.loadBalancer.ingress[0].ip}{"\n"}'
+
+argocd-sync: prepare
+	kubectl patch application barleta-root -n argocd --type merge -p '{"operation":{"initiatedBy":{"username":"make"},"sync":{}}}'

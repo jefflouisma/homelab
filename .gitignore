@@ -33,6 +33,15 @@ id_rsa*
 # Rust build artifacts
 moonlight-mcp/target/
 
+# Generated tools and deployment state
+fenrir/fenrir-operator
+fenrir/fenrir-operator-linux-amd64
+**/.terraform/
+*.tfstate
+*.tfstate.*
+__pycache__/
+*.pyc
+
 # NixOS / Nix Flakes
 result
 result-*
