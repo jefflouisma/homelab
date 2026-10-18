@@ -1,0 +1,147 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: airflow
+  namespace: argocd
+spec:
+  destination:
+    namespace: analytics
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: airflow
+    helm:
+      valuesObject:
+        createUserJob:
+          useHelmHooks: false
+        dags:
+          gitSync:
+            enabled: false
+          persistence:
+            enabled: true
+            size: 1Gi
+            storageClassName: local-path
+        data:
+          metadataSecretName: airflow-metadata-secret
+        executor: KubernetesExecutor
+        flower:
+          enabled: false
+        migrateDatabaseJob:
+          useHelmHooks: false
+        postgresql:
+          enabled: false
+        redis:
+          enabled: false
+        scheduler:
+          replicas: 1
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+        triggerer:
+          enabled: true
+          replicas: 1
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+        webserver:
+          replicas: 1
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+        webserverSecretKeySecretName: airflow-webserver-secret
+    repoURL: https://airflow.apache.org
+    targetRevision: 1.15.0
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: datahub
+  namespace: argocd
+spec:
+  destination:
+    namespace: analytics
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: datahub
+    helm:
+      values: "global:\n  datahub:\n    version: v1.3.0\n  elasticsearch:\n    host:\
+        \ \"elasticsearch-master.analytics.svc.cluster.local\"\n    port: \"9200\"\
+        \n  kafka:\n    bootstrap:\n      server: \"datahub-prerequisites-kafka.analytics.svc.cluster.local:9092\"\
+        \n  sql:\n    datasource:\n      host: \"datahub-prerequisites-mysql.analytics.svc.cluster.local:3306\"\
+        \n      port: \"3306\"\n      user: \"root\"\n      password:\n        secretRef:\
+        \ mysql-secrets\n        secretKey: mysql-root-password\n\ndatahub-gms:\n\
+        \  enabled: true\n  resources:\n    limits:\n      cpu: 1000m\n      memory:\
+        \ 2Gi\n    requests:\n      cpu: 500m\n      memory: 1Gi\n\ndatahub-frontend:\n\
+        \  enabled: true\n  resources:\n    limits:\n      cpu: 500m\n      memory:\
+        \ 1Gi\n    requests:\n      cpu: 200m\n      memory: 512Mi\n  ingress:\n \
+        \   enabled: false\n\ndatahub-mae-consumer:\n  enabled: true\n  resources:\n\
+        \    limits:\n      cpu: 500m\n      memory: 1Gi\n\ndatahub-mce-consumer:\n\
+        \  enabled: true\n  resources:\n    limits:\n      cpu: 500m\n      memory:\
+        \ 1Gi\n\n# Disable since using prerequisites chart\nelasticsearch:\n  enabled:\
+        \ false\nkafka:\n  enabled: false\nmysql:\n  enabled: false\nneo4j:\n  enabled:\
+        \ false\n"
+    repoURL: https://helm.datahubproject.io/
+    targetRevision: 0.8.0
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 3m
+      limit: 5
+    syncOptions:
+    - CreateNamespace=true
+    - Replace=true
+    - RespectIgnoreDifferences=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: datahub-prerequisites
+  namespace: argocd
+spec:
+  destination:
+    namespace: analytics
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: datahub-prerequisites
+    helm:
+      values: "# Use existing Elasticsearch from observability stack\nelasticsearch:\n\
+        \  enabled: false\n\n# Enable embedded Kafka\nkafka:\n  enabled: true\n  resources:\n\
+        \    limits:\n      cpu: 500m\n      memory: 1Gi\n    requests:\n      cpu:\
+        \ 200m\n      memory: 512Mi\n\n# Enable embedded MySQL for DataHub metadata\n\
+        mysql:\n  enabled: true\n  auth:\n    rootPassword: \"DataHub2024!\"\n   \
+        \ password: \"DataHub2024!\"\n  primary:\n    resources:\n      limits:\n\
+        \        cpu: 500m\n        memory: 1Gi\n      requests:\n        cpu: 200m\n\
+        \        memory: 512Mi\n\n# Enable Zookeeper for Kafka\nzookeeper:\n  enabled:\
+        \ true\n  resources:\n    limits:\n      cpu: 500m\n      memory: 512Mi\n\
+        \    requests:\n      cpu: 100m\n      memory: 256Mi\n"
+    repoURL: https://helm.datahubproject.io/
+    targetRevision: 0.2.1
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true

@@ -1,0 +1,48 @@
+name: Validate project
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: fenrir/go.mod
+          cache-dependency-path: fenrir/go.sum
+      - run: go test -race ./...
+        working-directory: fenrir
+      - run: go vet ./...
+        working-directory: fenrir
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+        working-directory: moonlight-mcp
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: moonlight-mcp
+      - run: cargo test --all-targets
+        working-directory: moonlight-mcp
+  manifests-and-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install PyYAML==6.0.3
+      - uses: azure/setup-kubectl@v4
+      - run: python scripts/validate-project.py

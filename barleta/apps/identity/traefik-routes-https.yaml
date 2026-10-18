@@ -12,5 +12,5 @@ spec:
       kind: Rule
       services:
         - name: keycloak
-          port: 80
+          port: 8080
   tls: {}

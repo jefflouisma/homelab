@@ -1,0 +1,91 @@
+name: Build UCI loader
+
+on:
+  pull_request:
+    paths:
+      - 'barleta/apps/analytics/uci-loader/**'
+      - '.github/workflows/uci-loader.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'barleta/apps/analytics/uci-loader/**'
+      - '.github/workflows/uci-loader.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: uci-loader-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: loader-test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r barleta/apps/analytics/uci-loader/requirements.txt
+      - run: python -m unittest discover -s barleta/apps/analytics/uci-loader -v
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: loader-test
+          PGDATABASE: postgres
+  build-and-update:
+    needs: [validate, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag
+        id: vars
+        run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: barleta/apps/analytics/uci-loader
+          tags: ghcr.io/jefflouisma/uci-data-loader:${{ steps.vars.outputs.tag }}
+          push: ${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha,scope=uci-loader
+          cache-to: type=gha,mode=max,scope=uci-loader
+      - name: Commit manifest updates
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          TAG="${{ steps.vars.outputs.tag }}"
+          for i in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+            perl -pi -e 's|(ghcr.io/jefflouisma/uci-data-loader:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/analytics/data-loader.yaml
+            git add barleta/apps/analytics/data-loader.yaml
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m "chore(analytics): bump UCI loader to ${TAG}"
+            if git push origin HEAD:main; then exit 0; fi
+            echo "Push attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
+          exit 1

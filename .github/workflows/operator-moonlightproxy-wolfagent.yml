@@ -4,8 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - "fenrir/**"
-      - "!fenrir/images/**"
+      - "fenrir/cmd/**"
+      - "fenrir/pkg/**"
+      - "fenrir/go.mod"
+      - "fenrir/go.sum"
+      - "fenrir/Dockerfile"
+      - "fenrir/.dockerignore"
       - ".github/workflows/operator-moonlightproxy-wolfagent.yml"
   workflow_dispatch: {}
 
@@ -18,7 +22,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
   build-and-update:
+    needs: validate
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -72,27 +79,22 @@ jobs:
           cache-from: type=gha,scope=fenrir-wolf-agent
           cache-to: type=gha,mode=max,scope=fenrir-wolf-agent
 
-      - name: Update GitOps manifests
-        run: |
-          TAG="${{ steps.vars.outputs.tag }}"
-          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-operator:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/wolf-operator.yaml
-          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-moonlight-proxy:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/moonlight-proxy.yaml
-          perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-wolf-agent:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/wolf-operator.yaml
-
       - name: Commit manifest updates
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add barleta/apps/house/fenrir/wolf-operator.yaml \
-                  barleta/apps/house/fenrir/moonlight-proxy.yaml
-          # Also commit any wolf-agent tag references
-          if git diff --cached --quiet; then
-            echo "No manifest changes to commit."
-            exit 0
-          fi
-          git commit -m "chore(fenrir): bump operator + proxy + wolf-agent to ${{ steps.vars.outputs.tag }}"
+          TAG="${{ steps.vars.outputs.tag }}"
           for i in 1 2 3; do
-            git pull --rebase origin main && git push && break
+            git fetch origin main
+            git reset --hard origin/main
+            perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-operator:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/wolf-operator.yaml
+            perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-moonlight-proxy:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/moonlight-proxy.yaml
+            perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-wolf-agent:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/wolf-operator.yaml
+            git add barleta/apps/house/fenrir/wolf-operator.yaml barleta/apps/house/fenrir/moonlight-proxy.yaml
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m "chore(fenrir): bump operator + proxy + wolf-agent to ${TAG}"
+            if git push origin HEAD:main; then exit 0; fi
             echo "Push attempt $i failed, retrying in 5s..."
             sleep 5
           done
+          exit 1

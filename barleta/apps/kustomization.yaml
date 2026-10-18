@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespaces.yaml
+  - gitops-test.yaml
+  - analytics-app.yaml
+  - house-app.yaml
+  - identity-app.yaml
+  - metallb-app.yaml
+  - gateway-api-app.yaml
+  - sealed-secrets-app.yaml
+  - platform/cert-manager.yaml
+  - platform/cluster-issuer.yaml
+  - analytics-helm-apps.yaml

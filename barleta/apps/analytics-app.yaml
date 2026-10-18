@@ -14,9 +14,6 @@ spec:
     repoURL: https://github.com/jefflouisma/homelab.git
     targetRevision: main
     path: barleta/apps/analytics
-    directory:
-      recurse: true
-      include: "*.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: analytics
