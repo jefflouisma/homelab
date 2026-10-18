@@ -36,6 +36,7 @@ ENV CARGO_BUILD_JOBS=1
 ENV CARGO_PROFILE_RELEASE_DEBUG=0
 ENV RUSTFLAGS="-C debuginfo=0 -C codegen-units=1"
 ARG RUST_VERSION=1.91.1
+ARG CARGO_C_VERSION=0.10.20
 ENV RUST_VERSION=$RUST_VERSION
 ENV PATH="${CARGO_HOME}/bin:${PATH}"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION}
@@ -64,7 +65,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     mkdir -p .cargo && \
     echo '[patch."https://github.com/games-on-whales/smithay"]' > .cargo/config.toml && \
     echo 'smithay = { path = "/tmp/smithay-patched" }' >> .cargo/config.toml && \
-    cargo install cargo-c -j 1 && \
+    cargo install cargo-c --version "$CARGO_C_VERSION" --locked -j 1 && \
     cargo cinstall --jobs 1 --features="cuda,vulkan" --prefix=/usr/local/lib/x86_64-linux-gnu/ --libdir=/usr/local/lib/x86_64-linux-gnu/gstreamer-1.0
 
 ########################################################
