@@ -672,19 +672,44 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 		}
 	}
 
-	// If deployment already exists, just skip
 	deploymentName := c.deploymentName(session)
-	if _, err := c.deploymentController.Informer().Namespaced(session.Namespace).Get(deploymentName); err == nil {
+	if deployment, err := c.deploymentController.Informer().Namespaced(session.Namespace).Get(deploymentName); err == nil {
+		if deployment.DeletionTimestamp != nil {
+			return fmt.Errorf("waiting for deployment %s/%s deletion", session.Namespace, deploymentName)
+		}
+		for _, container := range deployment.Spec.Template.Spec.Containers {
+			for _, env := range container.Env {
+				var expected string
+				switch env.Name {
+				case "GAMESCOPE_WIDTH":
+					expected = fmt.Sprint(session.Spec.Config.VideoWidth)
+				case "GAMESCOPE_HEIGHT":
+					expected = fmt.Sprint(session.Spec.Config.VideoHeight)
+				case "GAMESCOPE_REFRESH":
+					expected = fmt.Sprint(session.Spec.Config.VideoRefreshRate)
+				default:
+					continue
+				}
+				if env.Value != expected || env.ValueFrom != nil {
+					return fmt.Errorf("deployment %s/%s container %s has incompatible %s; waiting for previous session cleanup", session.Namespace, deploymentName, container.Name, env.Name)
+				}
+			}
+		}
 		klog.Infof("Deployment %s/%s already exists, just updating metadata", session.Namespace, deploymentName)
-		c.K8sClient.AppsV1().Deployments(session.Namespace).Apply(
-			context.Background(),
+		_, err = c.K8sClient.AppsV1().Deployments(session.Namespace).Apply(
+			ctx,
 			appsv1ac.Deployment(deploymentName, session.Namespace).
 				WithOwnerReferences(ownerApply...),
 			metav1.ApplyOptions{
 				FieldManager: "direwolf-session-controller-deployment-owners",
 			})
+		if err != nil {
+			return fmt.Errorf("failed to update deployment owners: %w", err)
+		}
 
 		return nil
+	} else if !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to get deployment: %w", err)
 	}
 
 	// Create pod from pod template
@@ -818,7 +843,6 @@ func (c *SessionController) reconcilePod(ctx context.Context, session *v1alpha1t
 				Name:      "host-udev",
 				MountPath: "/run/udev",
 			},
-
 		)
 
 		podToCreate.Spec.Containers[i].Env = append(podToCreate.Spec.Containers[i].Env, mapToEnvApplyList(map[string]string{
@@ -1456,13 +1480,13 @@ echo "=== Done ==="
 					SubPath:   "startup-app.sh",
 					ReadOnly:  true,
 				},
-		},
+			},
 		},
 		// Sidecar container to fix Wayland socket permissions after wolf creates it
 		// The exec in wolf's startup.sh kills background processes, so we need a separate container
 		corev1.Container{
-			Name:  "wayland-socket-fixer",
-			Image: "busybox:latest",
+			Name:    "wayland-socket-fixer",
+			Image:   "busybox:latest",
 			Command: []string{"/bin/sh", "-c"},
 			Args: []string{`
 SOCKET_PATH="/tmp/.X11-unix/wayland-1"

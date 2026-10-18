@@ -439,10 +439,25 @@ func (s *RESTServer) appListHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// createSessionForUser handles the core session creation logic shared between
-// launch and resume handlers. It parses request parameters, stops any existing
-// sessions, creates a new session, and waits for the stream URL.
-// Returns the stream URL on success, or writes an error response and returns "".
+func parseVideoMode(mode string) (width, height, refreshRate int, err error) {
+	if mode == "" {
+		mode = "1920x1080x60"
+	}
+	parts := strings.Split(mode, "x")
+	if len(parts) != 3 {
+		return 0, 0, 0, fmt.Errorf("invalid mode: %s; expected positive width x height x refresh rate", mode)
+	}
+	values := [3]int{}
+	for i, part := range parts {
+		value, parseErr := strconv.Atoi(part)
+		if parseErr != nil || value <= 0 {
+			return 0, 0, 0, fmt.Errorf("invalid mode: %s; dimensions and refresh rate must be positive integers", mode)
+		}
+		values[i] = value
+	}
+	return values[0], values[1], values[2], nil
+}
+
 func (s *RESTServer) createSessionForUser(w http.ResponseWriter, r *http.Request) string {
 	appID := r.URL.Query().Get("appid")
 	mode := r.URL.Query().Get("mode")
@@ -465,31 +480,9 @@ func (s *RESTServer) createSessionForUser(w http.ResponseWriter, r *http.Request
 		return ""
 	}
 
-	if mode == "" {
-		mode = "1920x1080x60"
-	}
-
-	splitMode := strings.Split(mode, "x")
-	if len(splitMode) != 3 {
-		writeErrorResponse(w, 400, fmt.Errorf("invalid mode: %s", mode))
-		return ""
-	}
-
-	width, err := strconv.Atoi(splitMode[0])
+	width, height, refreshRate, err := parseVideoMode(mode)
 	if err != nil {
-		writeErrorResponse(w, 400, fmt.Errorf("invalid mode: %s", mode))
-		return ""
-	}
-
-	height, err := strconv.Atoi(splitMode[1])
-	if err != nil {
-		writeErrorResponse(w, 400, fmt.Errorf("invalid mode: %s", mode))
-		return ""
-	}
-
-	refreshRate, err := strconv.Atoi(splitMode[2])
-	if err != nil {
-		writeErrorResponse(w, 400, fmt.Errorf("invalid mode: %s", mode))
+		writeErrorResponse(w, 400, err)
 		return ""
 	}
 
@@ -513,11 +506,7 @@ func (s *RESTServer) createSessionForUser(w http.ResponseWriter, r *http.Request
 	pairing := r.Context().Value(pairingContextKey{}).(*v1alpha1types.Pairing)
 	clientIP := requestClientIP(r)
 
-	//!TOOD: May want to wait here, since we need the Service to stop pointing
-	// at the old pod. It is very likely to happen before operator syncs and
-	// can create session, but perhaps should still check after operator returns
-	// the session URL.
-	if err := s.stopSessionsForUser(user, false); err != nil && !k8serrors.IsNotFound(err) {
+	if err := s.stopSessionsForUser(r.Context(), user); err != nil {
 		writeErrorResponse(w, 500, fmt.Errorf("failed to stop existing sessions: %s", err))
 		return ""
 	}
@@ -618,6 +607,12 @@ func (s *RESTServer) launchHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *RESTServer) resumeHandler(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value(userContextKey{}).(*v1alpha1types.User)
+	mode := r.URL.Query().Get("mode")
+	width, height, refreshRate, err := parseVideoMode(mode)
+	if err != nil {
+		writeErrorResponse(w, 400, err)
+		return
+	}
 
 	// Check for existing active sessions for this user
 	sessions, err := s.SessionLister.List(labels.SelectorFromSet(labels.Set{
@@ -631,6 +626,11 @@ func (s *RESTServer) resumeHandler(w http.ResponseWriter, r *http.Request) {
 	// If there's an existing session with a stream URL, resume it directly
 	for _, session := range sessions {
 		if session.Status.StreamURL != "" {
+			config := session.Spec.Config
+			if mode != "" && (width != config.VideoWidth || height != config.VideoHeight || refreshRate != config.VideoRefreshRate) {
+				writeErrorResponse(w, 409, fmt.Errorf("running session uses %dx%dx%d; quit the running app in Moonlight and launch again to use %s", config.VideoWidth, config.VideoHeight, config.VideoRefreshRate, mode))
+				return
+			}
 			klog.Infof("Resuming existing session %s for user %s (streamURL: %s)",
 				session.Name, user.Name, session.Status.StreamURL)
 			sendXML(w, ResumeResponse{
@@ -664,15 +664,15 @@ func (s *RESTServer) resumeHandler(w http.ResponseWriter, r *http.Request) {
 func (s *RESTServer) cancelHandler(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value(userContextKey{}).(*v1alpha1types.User)
 
-	err := s.stopSessionsForUser(user, true)
-	if err != nil && !k8serrors.IsNotFound(err) {
+	err := s.stopSessionsForUser(r.Context(), user)
+	if err != nil {
 		writeErrorResponse(w, 500, fmt.Errorf("failed to cancel session: %s", err))
 		return
 	}
 	sendXML(w, Response{StatusCode: 200})
 }
 
-func (s *RESTServer) stopSessionsForUser(user *v1alpha1types.User, shouldWait bool) error {
+func (s *RESTServer) stopSessionsForUser(ctx context.Context, user *v1alpha1types.User) error {
 	sessions, err := s.SessionLister.List(labels.SelectorFromSet(labels.Set{
 		"direwolf/user": user.Name,
 	}))
@@ -680,35 +680,37 @@ func (s *RESTServer) stopSessionsForUser(user *v1alpha1types.User, shouldWait bo
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
 
-	didDelete := false
+	propagation := metav1.DeletePropagationForeground
 	for _, session := range sessions {
-		if err := s.SessionClient.Delete(context.Background(), session.Name, metav1.DeleteOptions{}); err != nil {
+		if err := s.SessionClient.Delete(ctx, session.Name, metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil && !k8serrors.IsNotFound(err) {
 			return fmt.Errorf("failed to delete session: %w", err)
 		}
-		didDelete = true
 	}
 
-	if !didDelete {
-		klog.Warningf("Not stopping any sessions. No sessions found for user %s", user.Name)
-		return k8serrors.NewNotFound(v1alpha1types.Resource("session"), user.Name)
-	}
-
-	if shouldWait {
-		// Wait for pods to be cleaned up (increased timeout to 90s)
-		err = wait.PollUntilContextTimeout(context.Background(), 250*time.Millisecond, 90*time.Second, true, func(ctx context.Context) (bool, error) {
-			pods, err := s.PodLister.List(labels.SelectorFromSet(labels.Set{
-				"direwolf/user": user.Name,
-			}))
-			if err != nil {
+	err = wait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 90*time.Second, true, func(ctx context.Context) (bool, error) {
+		pods, err := s.PodLister.List(labels.SelectorFromSet(labels.Set{
+			"direwolf/user": user.Name,
+		}))
+		if err != nil {
+			return false, err
+		}
+		if len(pods) != 0 {
+			return false, nil
+		}
+		for _, session := range sessions {
+			_, err := s.SessionClient.Get(ctx, session.Name, metav1.GetOptions{})
+			if err == nil {
+				return false, nil
+			}
+			if !k8serrors.IsNotFound(err) {
 				return false, err
 			}
-			return len(pods) == 0, nil
-		})
-		if err != nil {
-			return fmt.Errorf("failed to wait for pods to be cleaned up: %w", err)
 		}
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to wait for pods to be cleaned up: %w", err)
 	}
-
 	return nil
 }
 
