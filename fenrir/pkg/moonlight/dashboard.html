@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="2">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Wolf - Pairing Dashboard</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -10,21 +10,23 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(132deg, #720082 0%, #3f00c3 50%, #0047ff 100%);
             min-height: 100vh;
+            min-height: 100svh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 2rem;
+            padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
             color: white;
         }
-        h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+        h1 { font-size: clamp(1.75rem, 7vw, 2.5rem); margin-bottom: 1rem; }
         .subtitle { opacity: 0.8; margin-bottom: 2rem; }
         .card {
             background: rgba(255,255,255,0.1);
             backdrop-filter: blur(10px);
             border-radius: 1rem;
-            padding: 2rem;
+            padding: clamp(1rem, 4vw, 2rem);
             max-width: 600px;
             width: 100%;
+            min-width: 0;
             margin-bottom: 1rem;
         }
         .card h2 { margin-bottom: 1rem; font-size: 1.5rem; }
@@ -41,6 +43,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 1rem;
         }
         .pairing-request:last-child { margin-bottom: 0; }
         .btn {
@@ -52,9 +55,13 @@
             font-size: 1rem;
             cursor: pointer;
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            min-height: 48px;
+            align-items: center;
+            justify-content: center;
         }
         .btn:hover { background: #00a844; }
+        .btn:focus-visible { outline: 3px solid white; outline-offset: 3px; }
         .status-indicator {
             width: 12px;
             height: 12px;
@@ -62,6 +69,7 @@
             border-radius: 50%;
             animation: pulse 1.5s infinite;
             margin-right: 0.5rem;
+            flex-shrink: 0;
         }
         @keyframes pulse {
             0%, 100% { opacity: 1; }
@@ -81,6 +89,14 @@
         .instructions ol { 
             margin-left: 1.5rem;
             line-height: 1.6;
+        }
+        @media (max-width: 480px) {
+            .pairing-request { flex-direction: column; align-items: stretch; }
+            .no-requests { padding: 1rem 0; }
+            .card h2 { font-size: 1.25rem; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .status-indicator { animation: none; }
         }
     </style>
 </head>
@@ -102,10 +118,58 @@
 
     <div class="card">
         <h2>🔗 Pending Pairing Requests</h2>
-        <div id="requests">
+        <div id="requests" aria-live="polite">
             {{PENDING_REQUESTS}}
         </div>
-        <p class="refresh-note">⟳ This page auto-refreshes every 2 seconds</p>
+        <p class="refresh-note" id="refresh-status">Requests update automatically while this page is open.</p>
     </div>
 </body>
+<script>
+    const requests = document.querySelector("#requests");
+    const refreshStatus = document.querySelector("#refresh-status");
+    let rendered = JSON.stringify([...requests.querySelectorAll("a")].map(link => link.hash.substring(1)).sort());
+    let refreshing = false;
+
+    async function refreshRequests() {
+        if (document.hidden || refreshing) return;
+        refreshing = true;
+        try {
+            const response = await fetch("/pairing/pending", {cache: "no-store"});
+            if (!response.ok) throw new Error("Request refresh failed");
+            const data = await response.json();
+            const secrets = data.secrets.sort();
+            const next = JSON.stringify(secrets);
+            if (next !== rendered) {
+                const rows = secrets.map(secret => {
+                    const row = document.createElement("div");
+                    row.className = "pairing-request";
+                    const label = document.createElement("span");
+                    label.textContent = "Waiting for PIN...";
+                    const link = document.createElement("a");
+                    link.className = "btn";
+                    link.href = "/pin/#" + secret;
+                    link.textContent = "Enter PIN";
+                    row.append(label, link);
+                    return row;
+                });
+                if (rows.length === 0) {
+                    const empty = document.createElement("div");
+                    empty.className = "no-requests";
+                    empty.textContent = "No pending pairing requests. Click on Direwolf in Moonlight to start pairing.";
+                    rows.push(empty);
+                }
+                requests.replaceChildren(...rows);
+                rendered = next;
+            }
+            refreshStatus.textContent = "Requests update automatically while this page is open.";
+        } catch {
+            refreshStatus.textContent = "Unable to refresh requests. Retrying automatically...";
+        } finally {
+            refreshing = false;
+        }
+    }
+    setInterval(refreshRequests, 2000);
+    document.addEventListener("visibilitychange", refreshRequests);
+    void refreshRequests();
+</script>
 </html>

@@ -5,12 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Wolf - PIN</title>
     <style>
+        * { box-sizing: border-box; }
         body {
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            min-height: 100svh;
             margin: 0;
+            padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
             font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
             background: rgb(114, 0, 130);
             background: linear-gradient(132deg, rgba(114, 0, 130, 1) 0%, rgba(63, 0, 195, 1) 50%, rgba(0, 71, 255, 1) 100%);
@@ -34,10 +37,12 @@
             font-size: 3rem;
         }
 
-        .panel { color: white; max-width: 30rem; padding: 1.5rem; text-align: center; }
+        .panel { color: white; width: 100%; max-width: 30rem; padding: 1rem 0; text-align: center; }
+        .panel h1 { font-size: clamp(1.5rem, 6vw, 2rem); line-height: 1.2; }
         .panel p { line-height: 1.5; }
-        .panel a { color: inherit; }
-        button { flex-basis: 100%; padding: 0.75rem; margin-top: 0.5rem; font: inherit; cursor: pointer; }
+        .panel a { color: inherit; display: inline-flex; align-items: center; min-height: 44px; padding: 0.5rem; }
+        button { flex-basis: 100%; min-height: 48px; padding: 0.75rem; margin-top: 0.5rem; font: inherit; cursor: pointer; }
+        :focus-visible { outline: 3px solid white; outline-offset: 3px; }
         :disabled { cursor: default; opacity: 0.65; }
 
     </style>
