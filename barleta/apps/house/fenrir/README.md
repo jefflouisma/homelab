@@ -76,6 +76,8 @@ Both app templates include g913's host `input` group (GID 996) so the non-root e
 
 The apps set `SDL_JOYSTICK_DISABLE_UDEV=1` to watch the shared `/dev/input` devices directly. Host udev notifications do not cross the pod network namespace. No in-container udev daemon or synthetic hotplug relay is required. Existing controller mappings remain on the user profile PVC.
 
+EmuDeck seeds a missing RPCS3 global `Default.yml` input profile with the SDL handler and `Xbox One S Controller 1`, matching Wolf's streamed Xbox controller. RPCS3 supplies the standard button and axis mappings. Existing global and per-game profiles are preserved. Restart the EmuDeck session to initialize a profile that has no saved RPCS3 pad configuration.
+
 ## Host GPU
 
 g913 runs Ubuntu with apt-managed NVIDIA drivers and NVIDIA Container Toolkit. The legacy Harvester installer DaemonSet only schedules on nodes labeled `barleta.local/nvidia-driver-managed-by=harvester`; do not apply that label to g913. Keep the kernel module and userspace NVIDIA package versions aligned.

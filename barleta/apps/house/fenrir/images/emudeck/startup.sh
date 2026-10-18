@@ -72,6 +72,14 @@ echo "Copied custom ES-DE system definitions"
 RPCS3_CONFIG_DIR="$HOME_DIR/.config/rpcs3"
 mkdir -p "$RPCS3_CONFIG_DIR/GuiConfigs"
 
+# RPCS3 otherwise defaults player 1 to Keyboard, ignoring the streamed gamepad.
+RPCS3_INPUT_CONFIG="$RPCS3_CONFIG_DIR/input_configs/global/Default.yml"
+if [ ! -e "$RPCS3_INPUT_CONFIG" ]; then
+    mkdir -p "$(dirname "$RPCS3_INPUT_CONFIG")"
+    printf 'Player 1 Input:\n  Handler: SDL\n  Device: Xbox One S Controller 1\n' > "$RPCS3_INPUT_CONFIG"
+    echo "Initialized RPCS3 player 1 with streamed SDL controller."
+fi
+
 SHADPS4_DATA_DIR="$HOME_DIR/.local/share/shadPS4"
 mkdir -p "$SHADPS4_DATA_DIR"
 if [ ! -e "$SHADPS4_DATA_DIR/sys_modules" ] && [ -d /Emulation/bios/ps4/sys_modules ]; then
