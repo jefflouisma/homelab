@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Wolf - PIN</title>
     <style>
         body {
@@ -9,6 +10,7 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            margin: 0;
             font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
             background: rgb(114, 0, 130);
             background: linear-gradient(132deg, rgba(114, 0, 130, 1) 0%, rgba(63, 0, 195, 1) 50%, rgba(0, 71, 255, 1) 100%);
@@ -16,84 +18,150 @@
 
         form {
             display: flex;
+            flex-wrap: wrap;
             justify-content: center;
             color: white;
+            gap: 0.5rem;
         }
 
         input {
-            margin: 0 0.5rem;
             padding: 0.5rem;
             border: 1px solid white;
-            width: 50px;
-            height: 50px;
+            box-sizing: border-box;
+            width: 3.5rem;
+            height: 4rem;
             text-align: center;
             font-size: 3rem;
         }
 
-        /* Chrome, Safari, Edge, Opera */
-        input::-webkit-outer-spin-button,
-        input::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-        }
+        .panel { color: white; max-width: 30rem; padding: 1.5rem; text-align: center; }
+        .panel p { line-height: 1.5; }
+        .panel a { color: inherit; }
+        button { flex-basis: 100%; padding: 0.75rem; margin-top: 0.5rem; font: inherit; cursor: pointer; }
+        :disabled { cursor: default; opacity: 0.65; }
 
-        /* Firefox */
-        input[type=number] {
-            -moz-appearance: textfield;
-        }
     </style>
 </head>
 <body>
 
 
-<div>
-    <form class="form">
-        <input type="number" min="0" max="9" step="1"/>
-        <input type="number" min="0" max="9" step="1"/>
-        <input type="number" min="0" max="9" step="1"/>
-        <input type="number" min="0" max="9" step="1"/>
+<main class="panel">
+    <h1>Enter your Moonlight PIN</h1>
+    <p>Use the four-digit PIN displayed on the device you are pairing.</p>
+    <form class="form" aria-label="Pair device">
+        <input type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" aria-label="PIN digit 1" autocomplete="one-time-code" disabled/>
+        <input type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" aria-label="PIN digit 2" disabled/>
+        <input type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" aria-label="PIN digit 3" disabled/>
+        <input type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" aria-label="PIN digit 4" disabled/>
+        <button type="submit" disabled>Pair device</button>
     </form>
-</div>
+    <p id="status" role="status" aria-live="polite">Checking pairing request...</p>
+    <p><a href="/">View current pairing requests</a></p>
+</main>
 
 
 </body>
 <script type="application/javascript">
-    const inputs = document.querySelectorAll("input");
+    const inputs = [...document.querySelectorAll("input")];
     const form = document.querySelector(".form");
+    const status = document.querySelector("#status");
+    const button = form.querySelector("button");
+    let ready = false;
+    let sending = false;
 
-    function send(pin) {
-        let xhr = new XMLHttpRequest();
-        xhr.open("POST", "/pin/", true);
-        xhr.setRequestHeader("Content-Type", "application/json");
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState === 4) {
-                form.textContent = xhr.responseText;
-            }
-        };
-        const data = JSON.stringify({
-            "pin": pin,
-            "secret": window.location.hash.substring(1)
-        });
-        form.textContent = "Sending " + pin + " ...";
-        xhr.send(data);
+    function setEnabled(enabled) {
+        inputs.forEach(input => { input.disabled = !enabled; });
+        button.disabled = !enabled;
     }
 
-    inputs.forEach((input, key) => {
-        input.addEventListener("keyup", function (ev) {
-            if (ev.key === "Backspace" && key > 0) {
-                inputs[key - 1].focus();
+    function expired() {
+        ready = false;
+        setEnabled(false);
+        status.textContent = "This pairing request is no longer active. Start pairing again in Moonlight, then open View current pairing requests below.";
+    }
+
+    async function isPending(secret) {
+        const response = await fetch("/pairing/pending", {cache: "no-store"});
+        if (!response.ok) throw new Error("Could not check pairing requests");
+        const data = await response.json();
+        return data.secrets.includes(secret);
+    }
+
+    async function checkRequest() {
+        ready = false;
+        setEnabled(false);
+        const secret = window.location.hash.substring(1);
+        try {
+            if (!secret || !await isPending(secret)) {
+                expired();
+                return;
             }
-            if (input.value) {
-                if (key === 3) {
-                    const userCode = [...inputs].map((input) => input.value).join("");
-                    send(userCode);
-                    [...inputs].forEach((input) => input.remove());
-                } else {
-                    inputs[key + 1].focus();
-                }
+            if (secret !== window.location.hash.substring(1)) return;
+            ready = true;
+            setEnabled(true);
+            status.textContent = "Ready for the PIN shown in Moonlight.";
+            inputs[0].focus();
+        } catch {
+            status.textContent = "Unable to check this request. Open View current pairing requests to try again.";
+        }
+    }
+
+    async function send() {
+        const pin = inputs.map(input => input.value).join("");
+        if (!ready || sending || !/^[0-9]{4}$/.test(pin)) return;
+        sending = true;
+        setEnabled(false);
+        status.textContent = "Sending PIN...";
+        const secret = window.location.hash.substring(1);
+        try {
+            if (!await isPending(secret)) {
+                expired();
+                return;
+            }
+            if (secret !== window.location.hash.substring(1)) return;
+            const response = await fetch("/pin/", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({pin, secret}),
+            });
+            if (response.status === 410 || response.status === 409) {
+                expired();
+                return;
+            }
+            if (!response.ok) throw new Error("PIN submission failed");
+            ready = false;
+            status.textContent = "PIN sent. Finish pairing in Moonlight. If pairing fails, start a new request from Moonlight.";
+        } catch {
+            status.textContent = "Could not send the PIN. Check that Moonlight is still waiting, then try again.";
+            if (ready) setEnabled(true);
+        } finally {
+            sending = false;
+        }
+    }
+
+    form.addEventListener("submit", event => { event.preventDefault(); void send(); });
+    inputs.forEach((input, index) => {
+        input.addEventListener("input", () => {
+            input.value = input.value.replace(/[^0-9]/g, "").slice(-1);
+            if (input.value && index < inputs.length - 1) inputs[index + 1].focus();
+            if (inputs.every(digit => digit.value)) void send();
+        });
+        input.addEventListener("keydown", event => {
+            if (event.key === "Backspace" && !input.value && index > 0) inputs[index - 1].focus();
+        });
+        input.addEventListener("paste", event => {
+            const pin = event.clipboardData.getData("text").trim();
+            if (/^[0-9]{4}$/.test(pin)) {
+                event.preventDefault();
+                inputs.forEach((digit, key) => { digit.value = pin[key]; });
+                void send();
             }
         });
     });
-    inputs[0].focus();
+    window.addEventListener("hashchange", () => {
+        inputs.forEach(input => { input.value = ""; });
+        void checkRequest();
+    });
+    void checkRequest();
 </script>
 </html>

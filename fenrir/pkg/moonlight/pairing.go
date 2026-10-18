@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
@@ -52,6 +53,15 @@ type pendingPairCacheEntry struct {
 	Username        string
 }
 
+var ErrInactivePIN = errors.New("this pairing request has expired or was already used; restart pairing in Moonlight and open the current request on the pairing dashboard")
+
+type pendingPIN struct {
+	secret string
+	pin    chan string
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
 type PairingManager struct {
 	// Stores currently pending pairing sessions that have not yet completed.
 	// They are at various stages of the pairing process.
@@ -59,11 +69,11 @@ type PairingManager struct {
 	// value: pendingPairCacheEntry
 	PairingCache sync.Map // Go's equivalent of an immer::map for thread safety
 
-	// Map of pairing secret to <-chan string for pin code where a request is
-	// pending
+	// Map of pairing secret to *pendingPIN while PIN entry is pending.
 	// key: randomly generated ephemeral secret for /pair request
-	// value: channel to send pin code
 	PendingPins sync.Map
+	pairingMu   sync.Mutex
+	waiting     map[string]*pendingPIN
 
 	// Certificate of the secure serving endpoint used for pairing
 	SecureServerCerificate tls.Certificate
@@ -87,23 +97,28 @@ func failPair(statusMsg string) PairingResponse {
 }
 
 func (m *PairingManager) PostPin(secret string, pin string) error {
-	channel, found := m.PendingPins.Load(secret)
+	m.pairingMu.Lock()
+	defer m.pairingMu.Unlock()
+	value, found := m.PendingPins.LoadAndDelete(secret)
 	if !found {
-		err := fmt.Errorf("no pending pin for secret %s", secret)
-		return err
+		return ErrInactivePIN
 	}
-
-	select {
-	case channel.(chan string) <- pin:
-		klog.Infof("Sent pin %s to channel for secret %s", pin, secret)
-		return nil
-	default:
-		err := fmt.Errorf("failed to send pin %s to channel for secret %s. Either full buffer or closed channel", pin, secret)
-		return err
+	request := value.(*pendingPIN)
+	if request.ctx.Err() != nil {
+		return ErrInactivePIN
 	}
+	request.pin <- pin
+	return nil
 }
 
 func (m *PairingManager) Unpair(cacheKey string) error {
+	m.pairingMu.Lock()
+	defer m.pairingMu.Unlock()
+	if request := m.waiting[cacheKey]; request != nil {
+		request.cancel()
+		m.PendingPins.Delete(request.secret)
+		delete(m.waiting, cacheKey)
+	}
 	//!TODO: Persist unpaired clients
 	m.PairingCache.Delete(cacheKey)
 	return nil
@@ -112,9 +127,13 @@ func (m *PairingManager) Unpair(cacheKey string) error {
 // GetPendingSecrets returns all currently pending pairing secrets
 // These are the secrets that are waiting for PIN entry
 func (m *PairingManager) GetPendingSecrets() []string {
+	m.pairingMu.Lock()
+	defer m.pairingMu.Unlock()
 	secrets := make([]string, 0)
 	m.PendingPins.Range(func(key, value any) bool {
-		secrets = append(secrets, key.(string))
+		if value.(*pendingPIN).ctx.Err() == nil {
+			secrets = append(secrets, key.(string))
+		}
 		return true
 	})
 	return secrets
@@ -130,19 +149,16 @@ func (m *PairingManager) GetPendingSecrets() []string {
  *
  * At this stage we only have to send back our public certificate (`plaincert`).
  */
-func (m *PairingManager) pairPhase1(cacheKey string, salt string, clientCertStr string) PairingResponse {
-	// Check if pairing session exists
-	if _, found := m.PairingCache.Load(cacheKey); found {
-		m.PairingCache.Delete(cacheKey)
-		return failPair("Out of order pair request (phase 1)")
-	}
-
+func (m *PairingManager) pairPhase1(ctx context.Context, cacheKey string, salt string, clientCertStr string) PairingResponse {
 	clientCertData, err := hex.DecodeString(clientCertStr)
 	if err != nil {
 		return failPair(fmt.Sprintf("Failed to decode client cert: %s", err))
 	}
 
 	clientCertDER, _ := pem.Decode(clientCertData)
+	if clientCertDER == nil || clientCertDER.Type != "CERTIFICATE" {
+		return failPair("Invalid client certificate PEM")
+	}
 	clientCert, err := x509.ParseCertificate(clientCertDER.Bytes)
 	if err != nil {
 		return failPair(fmt.Sprintf("Failed to parse client cert: %s", err))
@@ -152,6 +168,9 @@ func (m *PairingManager) pairPhase1(cacheKey string, salt string, clientCertStr 
 	if err != nil {
 		return failPair(fmt.Sprintf("Failed to decode salt: %s", err))
 	}
+	if len(saltData) < 16 {
+		return failPair("Pairing salt must contain at least 16 bytes")
+	}
 
 	// Create a new pairing session
 	pinSecret, err := util.SecureRandomBytes(8)
@@ -160,11 +179,29 @@ func (m *PairingManager) pairPhase1(cacheKey string, salt string, clientCertStr 
 	}
 	pinSecretHex := hex.EncodeToString(pinSecret)
 
-	// Store the pin secret
-	pinChannel := make(chan string, 1)
-	defer close(pinChannel)
-	defer m.PendingPins.Delete(pinSecretHex)
-	m.PendingPins.Store(pinSecretHex, pinChannel)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	request := &pendingPIN{secret: pinSecretHex, pin: make(chan string, 1), ctx: ctx, cancel: cancel}
+	m.pairingMu.Lock()
+	if m.waiting == nil {
+		m.waiting = make(map[string]*pendingPIN)
+	}
+	if previous := m.waiting[cacheKey]; previous != nil {
+		previous.cancel()
+		m.PendingPins.Delete(previous.secret)
+	}
+	m.PairingCache.Delete(cacheKey)
+	m.waiting[cacheKey] = request
+	m.PendingPins.Store(pinSecretHex, request)
+	m.pairingMu.Unlock()
+	defer func() {
+		m.pairingMu.Lock()
+		defer m.pairingMu.Unlock()
+		m.PendingPins.Delete(pinSecretHex)
+		if m.waiting[cacheKey] == request {
+			delete(m.waiting, cacheKey)
+		}
+	}()
 
 	//!TODO: Get proper hostname
 	klog.Infof("Insert pin at http://%s/pin/#%s", "127.0.0.1:47989", pinSecretHex)
@@ -175,7 +212,16 @@ func (m *PairingManager) pairPhase1(cacheKey string, salt string, clientCertStr 
 		klog.Infof("Debugger attached, using hardcoded pin")
 		pin = hardcoded
 	} else {
-		pin = <-pinChannel
+		select {
+		case pin = <-request.pin:
+		case <-ctx.Done():
+			return failPair("Pairing request cancelled, expired, or replaced; restart pairing in Moonlight")
+		}
+	}
+	m.pairingMu.Lock()
+	defer m.pairingMu.Unlock()
+	if ctx.Err() != nil || m.waiting[cacheKey] != request {
+		return failPair("Pairing request cancelled, expired, or replaced; restart pairing in Moonlight")
 	}
 
 	// Generate server cert and AES key
@@ -209,6 +255,8 @@ func (m *PairingManager) pairPhase1(cacheKey string, salt string, clientCertStr 
  * The hash + server_challenge will then be AES encrypted and sent as the `challengeresponse` in the returned XML
  */
 func (m *PairingManager) pairPhase2(cacheKey string, clientChallenge string) PairingResponse {
+	m.pairingMu.Lock()
+	defer m.pairingMu.Unlock()
 	clientChallengeBytes, err := hex.DecodeString(clientChallenge)
 	if err != nil {
 		return failPair(fmt.Sprintf("Failed to decode client challenge: %s", err))
@@ -273,6 +321,8 @@ func (m *PairingManager) pairPhase2(cacheKey string, clientChallenge string) Pai
  * @return pair<ptree, string> the response and the decrypted client_hash
  */
 func (m *PairingManager) pairPhase3(cacheKey string, serverChallenge string) PairingResponse {
+	m.pairingMu.Lock()
+	defer m.pairingMu.Unlock()
 	serverChallengeBytes, err := hex.DecodeString(serverChallenge)
 	if err != nil {
 		return failPair(fmt.Sprintf("Failed to decode server challenge: %s", err))
@@ -329,41 +379,52 @@ func (m *PairingManager) pairPhase3(cacheKey string, serverChallenge string) Pai
  * paired = 1, if all checks are fine
  * paired = 0, otherwise
  */
-func (m *PairingManager) pairPhase4(cacheKey string, pairingSecret string) PairingResponse {
+func (m *PairingManager) consumePairingSecret(cacheKey string, pairingSecret string) (pendingPairCacheEntry, error) {
+	m.pairingMu.Lock()
+	defer m.pairingMu.Unlock()
 	pairingSecretData, err := hex.DecodeString(pairingSecret)
 	if err != nil {
-		return failPair(fmt.Sprintf("Failed to decode pairing secret: %s", err))
+		return pendingPairCacheEntry{}, fmt.Errorf("failed to decode pairing secret: %w", err)
 	} else if len(pairingSecretData) < 256 {
-		return failPair("Invalid pairing secret")
+		return pendingPairCacheEntry{}, errors.New("invalid pairing secret")
 	}
 
 	val, found := m.PairingCache.Load(cacheKey)
 	if !found {
-		return failPair("Pairing session not found")
+		return pendingPairCacheEntry{}, errors.New("pairing session not found")
 	}
 
 	clientCache := val.(pendingPairCacheEntry)
 	if clientCache.LastPhase != "SERVERCHALLENGERESP" {
-		return failPair("Out of order pair request (phase 4)")
+		return pendingPairCacheEntry{}, errors.New("out of order pair request (phase 4)")
 	}
 
 	clientSecret := pairingSecretData[:16]
 	clientSignature := pairingSecretData[16:]
+	if clientCache.ClientCert == nil {
+		return pendingPairCacheEntry{}, errors.New("client cert not found")
+	}
 
 	if !bytes.Equal(util.Hash(
 		clientCache.ServerChallenge,
 		clientCache.ClientCert.Signature,
 		clientSecret,
 	), clientCache.ClientHash) {
-		return failPair("Client hash mismatch")
-	} else if clientCache.ClientCert == nil {
-		return failPair("Client cert not found")
+		return pendingPairCacheEntry{}, errors.New("client hash mismatch")
 	} else if err := util.VerifySignature(clientCache.ClientCert.PublicKey, clientSecret, clientSignature); err != nil {
-		return failPair(fmt.Sprintf("Failed to verify client signature: %s", err))
+		return pendingPairCacheEntry{}, fmt.Errorf("failed to verify client signature: %w", err)
 	}
 
 	clientCache.LastPhase = "CLIENTPAIRINGSECRET"
 	m.PairingCache.Delete(cacheKey)
+	return clientCache, nil
+}
+
+func (m *PairingManager) pairPhase4(cacheKey string, pairingSecret string) PairingResponse {
+	clientCache, err := m.consumePairingSecret(cacheKey, pairingSecret)
+	if err != nil {
+		return failPair(err.Error())
+	}
 
 	// Pull the fingerprint out of the client certificate and save the AESKey
 	// and certificate as a paired client authenticated as the User used

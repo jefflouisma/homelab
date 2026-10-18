@@ -193,6 +193,7 @@ func (s *RESTServer) livezHandler(w http.ResponseWriter, r *http.Request) {
 
 // pendingPairingsHandler returns pending pairing secrets as JSON for E2E automation
 func (s *RESTServer) pendingPairingsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	type response struct {
 		Secrets []string `json:"secrets"`
 	}
@@ -203,6 +204,7 @@ func (s *RESTServer) pendingPairingsHandler(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *RESTServer) dashboardHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	secrets := s.manager.GetPendingSecrets()
 
 	var requestsHTML string
@@ -314,7 +316,7 @@ func (s *RESTServer) pairHandler(w http.ResponseWriter, r *http.Request) {
 		salt := r.URL.Query().Get("salt")
 		clientCertStr := r.URL.Query().Get("clientcert")
 
-		sendXML(w, s.manager.pairPhase1(cacheKey, salt, clientCertStr))
+		sendXML(w, s.manager.pairPhase1(r.Context(), cacheKey, salt, clientCertStr))
 		return
 	} else if r.URL.Query().Has("clientchallenge") {
 		klog.Infof("Pairing phase 2 with %s\n", cacheKey)
@@ -364,6 +366,7 @@ func (s *RESTServer) unpairHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *RESTServer) pinHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	klog.Infof("Handling %v pin request from %s", r.Method, r.RemoteAddr)
 	// Handle GET /pin/<secret>
 	if r.Method == "GET" {
@@ -378,7 +381,7 @@ func (s *RESTServer) pinHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		type PinRequest struct {
 			Pin    string `json:"pin"`
-			Secret string `secret:"secret"`
+			Secret string `json:"secret"`
 		}
 
 		var req PinRequest
@@ -388,15 +391,18 @@ func (s *RESTServer) pinHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if req.Pin == "" || req.Secret == "" {
+		if len(req.Pin) != 4 || strings.Trim(req.Pin, "0123456789") != "" || req.Secret == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("Invalid request"))
+			w.Write([]byte("Enter the four-digit PIN shown in Moonlight and use the current pairing request."))
 			return
 		}
 
 		// Provide the pin to the pair manager
-		klog.Infof("Received pin %s for secret %s", req.Pin, req.Secret)
 		err := s.manager.PostPin(req.Secret, req.Pin)
+		if errors.Is(err, ErrInactivePIN) {
+			http.Error(w, err.Error(), http.StatusGone)
+			return
+		}
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))

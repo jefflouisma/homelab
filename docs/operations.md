@@ -19,6 +19,8 @@ kubectl apply -f barleta/bootstrap/argocd-root.yaml
 
 The helper copies the existing TLS material into `moonlight-server-identity` only if that Secret is absent. Preserve and back up that Secret with the cluster. It is deliberately independent of certificate renewal: Moonlight clients pin the server certificate, and changing it requires pairing again. Private keys belong in cluster/backup storage, never in Git.
 
+Start each new pairing from Moonlight, then open `http://192.168.1.221:47989/` and choose the current request. A `/pin/#...` link belongs to one attempt; do not bookmark it. Requests disappear when the client disconnects, retries, or waits three minutes. An inactive PIN page offers a link back to the dashboard so you can select the new attempt. A proxy restart also ends pending attempts; existing completed pairings remain valid.
+
 `platform/cluster-issuer.yaml` contains the pre-existing issuer definitions. The optional CA issuer requires `barleta-ca-secret`; it is not part of the root Kustomization. Do not enable an unconfigured issuer as a prerequisite for unrelated applications.
 
 ## Health checks
