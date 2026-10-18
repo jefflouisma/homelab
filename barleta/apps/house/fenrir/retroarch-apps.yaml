@@ -135,6 +135,7 @@ spec:
                   mkdir -p "$(dirname "$SPIDER_MAN_REMAP")"
                   printf 'input_libretro_device_p1 = "769"\n' > "$SPIDER_MAN_REMAP"
               fi
+              python3 /usr/local/bin/stream_scaling.py --config /config/retroarch.cfg
               exec retroarch --config /config/retroarch.cfg
           resources:
             requests:
