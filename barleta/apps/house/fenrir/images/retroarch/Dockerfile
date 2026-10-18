@@ -129,7 +129,7 @@ RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/fbneo_libr
 RUN chmod +x /usr/lib/libretro/*.so
 
 COPY emudeck/stream_scaling.py emudeck/probe-core-options.py /usr/local/bin/
-RUN python3 /usr/local/bin/probe-core-options.py /usr/lib/libretro /etc/stream-core-options.json
+RUN TMPDIR=/Volumes/4TB_Drive/tmp python3 /usr/local/bin/probe-core-options.py /usr/lib/libretro /etc/stream-core-options.json
 
 # Download core info files (.info) for proper core detection
 RUN git clone --depth 1 https://github.com/libretro/libretro-core-info.git /tmp/info && \

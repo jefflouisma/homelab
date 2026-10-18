@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import ctypes as c
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 
 RESOLUTION_KEYS = {
@@ -43,9 +45,20 @@ class Variable(c.Structure):
 
 def probe(library: Path) -> None:
     options = {}
+    system_directory = b""
+
+    @c.CFUNCTYPE(None, c.c_int, c.c_char_p)
+    def log_message(level, message):
+        print(f"Core log level {level}: {message.decode(errors='replace')}", file=sys.stderr)
 
     @c.CFUNCTYPE(c.c_bool, c.c_uint, c.c_void_p)
     def environment(command, data):
+        if command == 9 and system_directory:
+            c.cast(data, c.POINTER(c.c_char_p))[0] = system_directory
+            return True
+        if command == 27:
+            c.cast(data, c.POINTER(c.c_void_p))[0] = c.cast(log_message, c.c_void_p).value
+            return True
         if command == 52:
             c.cast(data, c.POINTER(c.c_uint))[0] = 2
             return True
@@ -79,6 +92,17 @@ def probe(library: Path) -> None:
     core.retro_set_environment.argtypes = [type(environment)]
     core.retro_set_environment.restype = None
     core.retro_set_environment(environment)
+    if library.name == "pcsx2_libretro.so" and not options:
+        scratch = Path(os.environ.get("TMPDIR", "/Volumes/4TB_Drive/tmp")).resolve()
+        if not scratch.is_relative_to(Path("/Volumes/4TB_Drive/tmp").resolve()):
+            sys.exit("Core option probe TMPDIR must be under /Volumes/4TB_Drive/tmp")
+        scratch.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=scratch) as directory:
+            system_directory = directory.encode()
+            core.retro_init.argtypes = []
+            core.retro_init.restype = None
+            core.retro_init()
+        print("PCSX2 options registered during metadata-only retro_init with isolated empty BIOS directory", file=sys.stderr)
     print("CORE_OPTIONS_JSON=" + json.dumps(options))
 
 

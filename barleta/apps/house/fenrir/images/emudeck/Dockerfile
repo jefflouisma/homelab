@@ -169,7 +169,7 @@ RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/latest/fbneo_libr
 RUN chmod +x /usr/lib/libretro/*.so
 
 COPY probe-core-options.py /usr/local/bin/probe-core-options.py
-RUN python3 /usr/local/bin/probe-core-options.py /usr/lib/libretro /etc/stream-core-options.json
+RUN TMPDIR=/Volumes/4TB_Drive/tmp python3 /usr/local/bin/probe-core-options.py /usr/lib/libretro /etc/stream-core-options.json
 
 # RetroArch assets, core info, and databases
 RUN mkdir -p /usr/share/retroarch/assets && \
