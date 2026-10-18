@@ -20,7 +20,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: loader
-              image: ghcr.io/jefflouisma/uci-data-loader:5a22b7a
+              image: ghcr.io/jefflouisma/uci-data-loader:772ffcf
               env:
                 - name: PGHOST
                   value: postgresql.identity.svc.cluster.local
