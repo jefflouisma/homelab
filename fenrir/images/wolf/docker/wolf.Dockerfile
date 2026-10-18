@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=ghcr.io/games-on-whales/gstreamer:1.26.7
+ARG BASE_IMAGE=ghcr.io/games-on-whales/gstreamer:1.26.7-ubuntu@sha256:d9f35db41e1a965d26f0b893e36bc0604a13fcad5898fb94769d826f1ce71e4c
 
 ########################################################
 # STAGE 1: gst-wayland-display builder (Rust, ~11 min)
