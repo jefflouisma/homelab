@@ -1411,15 +1411,23 @@ mod tests {
         let dir =
             std::env::temp_dir().join(format!("moonlight-driver-fixture-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let executable = dir.join("driver");
-        for (output, exit, accepted) in [
+        for (case, (output, exit, accepted)) in [
             (r#"{"acknowledged":true}"#, 0, true),
             (r#"{"acknowledged":false}"#, 0, false),
             (r#"{"acknowledged":true}"#, 1, false),
             (r#"{}"#, 0, false),
             ("not json", 0, false),
-        ] {
-            std::fs::write(&executable, format!("#!/bin/sh\nread -r payload\n[ \"$payload\" = '{{\"type\":\"keyboard\",\"host\":\"localhost\",\"key\":\"enter\",\"action\":\"tap\"}}' ] || exit 2\nprintf '%s' '{output}'\nexit {exit}\n")).unwrap();
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let executable = dir.join(format!("driver-{case}"));
+            {
+                use std::io::Write;
+                let mut file = std::fs::File::create_new(&executable).unwrap();
+                write!(file, "#!/bin/sh\nread -r payload\n[ \"$payload\" = '{{\"type\":\"keyboard\",\"host\":\"localhost\",\"key\":\"enter\",\"action\":\"tap\"}}' ] || exit 2\nprintf '%s' '{output}'\nexit {exit}\n").unwrap();
+                file.sync_all().unwrap();
+            }
             std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
             let input = NativeInput::Keyboard {
                 host: "localhost",
