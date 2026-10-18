@@ -55,6 +55,8 @@ kubectl logs -n NAMESPACE POD -c CONTAINER --previous
 
 The Go sidecar retries failed subscriptions and becomes unready after event-stream loss. Wolf HTTP failures propagate to callers. Session Services explicitly request the proxy's IP; pending allocation and stream errors are requeued, and a different address is never published as ready. Do not treat successful command submission, an RTSP URL, or an SDL acknowledgement as proof that video and controller input work in a game.
 
+If an established Session loses `status.wolfSessionID`, the operator matches its encryption key/IV against Wolf's live session list and restores the ID exposed there as `client_id`. A live `streamURL` prevents the five-minute startup timeout from deleting that session during recovery. Status conflicts return to the work queue for retry. After a controller rollout, test reconnection and a stream lasting more than five minutes.
+
 When migrating from k3s ServiceLB to MetalLB, disabling ServiceLB does not clear its old Service finalizers. A deleting session Service can retain the streaming ports and block the next session. After confirming ServiceLB is disabled, no svclb pods remain, and MetalLB owns allocation, remove only the obsolete `service.kubernetes.io/load-balancer-cleanup` finalizer from affected Services. Preserve other finalizers and wait for the old Service to disappear before retrying a stream.
 
 Home Assistant uses `Recreate` because two instances cannot share its configuration database/lock. Its init container seeds the declared proxy stanza only when no `http` section exists. It preserves existing configuration and leaves a user-defined HTTP section under user control.
