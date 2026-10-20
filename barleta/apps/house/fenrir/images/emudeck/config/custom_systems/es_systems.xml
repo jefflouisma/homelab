@@ -25,4 +25,13 @@
         <platform>ps4</platform>
         <theme>ps4</theme>
     </system>
+    <system>
+        <name>ps5</name>
+        <fullname>Sony PlayStation 5</fullname>
+        <path>/Emulation/storage/ps5-games</path>
+        <extension>.ps5 .PS5</extension>
+        <command label="KytyPS5 (Standalone)">/usr/local/bin/kytyps5 %ROM%</command>
+        <platform>ps5</platform>
+        <theme>ps5</theme>
+    </system>
 </systemList>

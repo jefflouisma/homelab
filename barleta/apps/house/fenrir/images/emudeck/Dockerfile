@@ -83,13 +83,17 @@ RUN wget -q "https://github.com/mhx/dwarfs/releases/download/v${DWARFS_VERSION}/
 # =============================================================================
 # Stage 2: ES-DE Frontend (AppImage extract)
 # =============================================================================
-# ES-DE 3.5.0 x64 asset from the official GitLab release.
-RUN wget -q "https://gitlab.com/es-de/emulationstation-de/-/package_files/357718352/download" \
-      -O /tmp/esde.AppImage && \
-    extract-appimage /tmp/esde.AppImage /opt/es-de && \
-    rm -f /tmp/esde.AppImage
+RUN mkdir -p /Volumes/4TB_Drive/tmp && \
+    ESDE_URL="$(wget -qO- "https://gitlab.com/api/v4/projects/18817634/releases/v${ESDE_VERSION}" | \
+      python3 -c 'import json,sys; print(next(a["url"] for a in json.load(sys.stdin)["assets"]["links"] if a["name"] == "ES-DE_x64.AppImage"))')" && \
+    wget -q "$ESDE_URL" -O /Volumes/4TB_Drive/tmp/esde.AppImage && \
+    extract-appimage /Volumes/4TB_Drive/tmp/esde.AppImage /opt/es-de && \
+    rm -f /Volumes/4TB_Drive/tmp/esde.AppImage
 
 COPY --chmod=755 es-de.sh /usr/local/bin/es-de
+COPY --chmod=755 package-path.py /usr/local/bin/package-path
+COPY --chmod=755 kytyps5.sh /usr/local/bin/kytyps5
+COPY --chmod=755 generate-ps5-shortcuts.py /usr/local/bin/generate-ps5-shortcuts
 
 ARG UPSTREAM_REFRESH=manual
 RUN wget -q https://buildbot.libretro.com/nightly/linux/x86_64/RetroArch_update.7z -O /tmp/retroarch.7z && \
@@ -300,6 +304,8 @@ RUN if ! id retro >/dev/null 2>&1; then \
       fi; \
     fi && mkdir -p /home/retro && chown 1000:1000 /home/retro
 
+RUN mkdir -p /Volumes/4TB_Drive/tmp/fenrir-session /Volumes/4TB_Drive/tmp/kytyps5 && \
+    chown -R 1000:1000 /Volumes/4TB_Drive/tmp
 USER retro
 RUN retroarch --version
 

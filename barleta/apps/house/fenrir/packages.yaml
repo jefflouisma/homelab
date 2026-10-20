@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fenrir-packages
+  namespace: house
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fenrir-packages
+  namespace: house
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: fenrir-packages
+  template:
+    metadata:
+      labels:
+        app: fenrir-packages
+    spec:
+      serviceAccountName: fenrir-operator
+      containers:
+        - name: packages
+          image: ghcr.io/jefflouisma/fenrir-packages:initial
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /api/updates
+              port: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          volumeMounts:
+            - name: packages
+              mountPath: /Volumes/4TB_Drive/tmp/fenrir-packages
+      volumes:
+        - name: packages
+          persistentVolumeClaim:
+            claimName: fenrir-packages
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fenrir-packages
+  namespace: house
+spec:
+  selector:
+    app: fenrir-packages
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -9,6 +9,7 @@ on:
       - "fenrir/go.mod"
       - "fenrir/go.sum"
       - "fenrir/Dockerfile"
+      - "fenrir/Dockerfile.packages"
       - "fenrir/.dockerignore"
       - ".github/workflows/operator-moonlightproxy-wolfagent.yml"
   workflow_dispatch: {}
@@ -79,6 +80,16 @@ jobs:
           cache-from: type=gha,scope=fenrir-wolf-agent
           cache-to: type=gha,mode=max,scope=fenrir-wolf-agent
 
+      - name: Build/push fenrir-packages
+        uses: docker/build-push-action@v6
+        with:
+          context: fenrir
+          file: fenrir/Dockerfile.packages
+          tags: ghcr.io/jefflouisma/fenrir-packages:${{ steps.vars.outputs.tag }}
+          push: true
+          cache-from: type=gha,scope=fenrir-packages
+          cache-to: type=gha,mode=max,scope=fenrir-packages
+
       - name: Commit manifest updates
         run: |
           git config user.name "github-actions[bot]"
@@ -90,7 +101,9 @@ jobs:
             perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-operator:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/wolf-operator.yaml
             perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-moonlight-proxy:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/moonlight-proxy.yaml
             perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-wolf-agent:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/wolf-operator.yaml
+            perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-packages:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/packages.yaml
             git add barleta/apps/house/fenrir/wolf-operator.yaml barleta/apps/house/fenrir/moonlight-proxy.yaml
+            git add barleta/apps/house/fenrir/packages.yaml
             if git diff --cached --quiet; then exit 0; fi
             git commit -m "chore(fenrir): bump operator + proxy + wolf-agent to ${TAG}"
             if git push origin HEAD:main; then exit 0; fi

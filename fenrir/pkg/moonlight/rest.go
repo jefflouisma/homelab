@@ -91,6 +91,7 @@ func NewRESTServer(
 	}
 
 	// Register routes
+	ps.registerUpdates()
 	ps.router.HandleFunc("/serverinfo", ps.serverInfoHandler)
 	ps.router.HandleFunc("/pair", ps.pairHandler)
 	ps.router.HandleFunc("/unpair", ps.unpairHandler)

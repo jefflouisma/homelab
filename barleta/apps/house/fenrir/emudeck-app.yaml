@@ -217,6 +217,9 @@ spec:
               readOnly: true
             - name: esde-storage
               mountPath: /Emulation/storage
+            - name: packages
+              mountPath: /Volumes/4TB_Drive/tmp/fenrir-packages
+              readOnly: true
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000
@@ -236,5 +239,8 @@ spec:
         - name: esde-storage
           persistentVolumeClaim:
             claimName: fenrir-config
+        - name: packages
+          persistentVolumeClaim:
+            claimName: fenrir-packages
 
       restartPolicy: Always

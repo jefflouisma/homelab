@@ -18,6 +18,17 @@ CORE_SCHEMA = {
 
 def stage_display_helpers(directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
+    package_path = directory / "package-path"
+    package_path.write_text(
+        (SOURCE / "package-path.py").read_text()
+        .replace("/Volumes/4TB_Drive/tmp/fenrir-packages", str(directory / "packages"))
+        .replace("/Volumes/4TB_Drive/tmp/fenrir-session/packages.json", str(directory / "selection.json"))
+        .replace("/opt/es-de", str(directory.parent / "opt/es-de"))
+    )
+    package_path.chmod(0o755)
+    shortcuts = directory / "generate-ps5-shortcuts"
+    shortcuts.write_text((SOURCE / "generate-ps5-shortcuts.py").read_text())
+    shortcuts.chmod(0o755)
     helper = directory / "prepare-console-display"
     helper.write_text((SOURCE / "prepare-console-display.py").read_text())
     helper.chmod(0o755)

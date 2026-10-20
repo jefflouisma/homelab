@@ -1,0 +1,16 @@
+FROM golang:1.24 AS builder
+ENV TMPDIR=/Volumes/4TB_Drive/tmp/build GOTMPDIR=/Volumes/4TB_Drive/tmp/build GOCACHE=/Volumes/4TB_Drive/tmp/go-cache GOMODCACHE=/Volumes/4TB_Drive/tmp/go-mod
+RUN mkdir -p /Volumes/4TB_Drive/tmp/build
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd/ ./cmd/
+COPY pkg/ ./pkg/
+RUN CGO_ENABLED=0 go build -o /package-manager ./cmd/package-manager
+
+FROM ghcr.io/jefflouisma/fenrir-emudeck:8cfe7a2
+USER root
+COPY --from=builder /package-manager /usr/local/bin/package-manager
+ENV TMPDIR=/Volumes/4TB_Drive/tmp/fenrir-updates
+RUN mkdir -p /Volumes/4TB_Drive/tmp/fenrir-updates
+ENTRYPOINT ["/usr/local/bin/package-manager"]

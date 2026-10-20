@@ -91,6 +91,7 @@ class StreamResolutionTests(unittest.TestCase):
         wrapper.write_text(
             (SOURCE / "es-de.sh").read_text()
             .replace("/opt/es-de", str(install))
+            .replace("/Emulation", str(self.home / "Emulation"))
             .replace("/lib64/ld-linux-x86-64.so.2", str(loader))
         )
         self.env["PATH"] = str(self.helper.parent) + os.pathsep + self.env["PATH"]

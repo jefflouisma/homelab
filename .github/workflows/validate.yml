@@ -13,7 +13,16 @@ permissions:
 jobs:
   go:
     runs-on: ubuntu-latest
+    env:
+      TMPDIR: /Volumes/4TB_Drive/tmp/fenrir-go
+      GOTMPDIR: /Volumes/4TB_Drive/tmp/fenrir-go/build-tmp
+      GOCACHE: /Volumes/4TB_Drive/tmp/fenrir-go/cache
+      GOMODCACHE: /Volumes/4TB_Drive/tmp/fenrir-go/mod
     steps:
+      - name: Prepare Go temporary drive path
+        run: |
+          sudo mkdir -p "$GOTMPDIR"
+          sudo chown -R "$(id -u):$(id -g)" "$TMPDIR"
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
