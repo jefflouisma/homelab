@@ -84,10 +84,16 @@ func (m *Manager) stage(ctx context.Context, id Component) {
 		s.Error = ""
 	}
 	m.state.Components[id] = s
-	if err := m.saveLocked(); err != nil {
-		slog.ErrorContext(ctx, "persist staging result", "error", err)
-		s.Error = err.Error()
+	if saveErr := m.saveLocked(); saveErr != nil {
+		slog.ErrorContext(ctx, "persist staging result", "error", saveErr)
+		s.Error = saveErr.Error()
 		m.state.Components[id] = s
+	} else if err == nil {
+		if cleanupErr := m.pruneLocked(id, s); cleanupErr != nil {
+			s.Error = cleanupErr.Error()
+			m.state.Components[id] = s
+			slog.ErrorContext(ctx, "prune superseded staging", "error", cleanupErr)
+		}
 	}
 }
 
@@ -134,31 +140,35 @@ func (m *Manager) Cancel(id Component) error {
 }
 
 func (m *Manager) Activate(ctx context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	queued := false
-	for _, s := range m.state.Components {
-		queued = queued || s.Queued != ""
-	}
-	if !queued {
-		return nil
-	}
-	n, err := m.activeSessions(ctx)
-	if err != nil {
-		return fmt.Errorf("check running sessions: %w", err)
-	}
-	if n > 0 {
-		return nil
-	}
 	for _, id := range []Component{EmuDeck, Kyty} {
-		s := m.state.Components[id]
-		if s.Queued == "" {
+		m.mu.Lock()
+		candidate := m.state.Components[id].Queued
+		m.mu.Unlock()
+		if candidate == "" {
 			continue
 		}
-		if s.Queued != "bundled-3.5.0" {
-			if err := m.installer.Probe(ctx, id, filepath.Join(m.root, string(id), s.Queued)); err != nil {
-				return fmt.Errorf("activation check: %w", err)
-			}
+		n, err := m.activeSessions(ctx)
+		if err != nil {
+			return fmt.Errorf("check running sessions: %w", err)
+		}
+		if n > 0 {
+			return nil
+		}
+		if err := m.installer.Probe(ctx, id, filepath.Join(m.root, string(id), candidate)); err != nil {
+			return fmt.Errorf("activation check: %w", err)
+		}
+		n, err = m.activeSessions(ctx)
+		if err != nil {
+			return fmt.Errorf("recheck running sessions: %w", err)
+		}
+		if n > 0 {
+			return nil
+		}
+		m.mu.Lock()
+		s := m.state.Components[id]
+		if s.Queued != candidate {
+			m.mu.Unlock()
+			continue
 		}
 		before := s
 		previous := []string{}
@@ -177,9 +187,12 @@ func (m *Manager) Activate(ctx context.Context) error {
 		m.state.Components[id] = s
 		if err := m.saveLocked(); err != nil {
 			m.state.Components[id] = before
+			m.mu.Unlock()
 			return err
 		}
-		if err := m.pruneLocked(id, s); err != nil {
+		err = m.pruneLocked(id, s)
+		m.mu.Unlock()
+		if err != nil {
 			return err
 		}
 	}

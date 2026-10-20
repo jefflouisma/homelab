@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -62,8 +63,86 @@ func TestActivationFailsClosedWhenSessionLookupFails(t *testing.T) {
 	require.Empty(t, snapshot(t, m).Components[Kyty].Active)
 }
 
+func TestActivationWaitsForSessionStartingDuringProbe(t *testing.T) {
+	lookups := 0
+	m := newManager(t, func(context.Context) (int, error) {
+		lookups++
+		if lookups == 1 {
+			return 0, nil
+		}
+		return 1, nil
+	})
+	s := m.state.Components[Kyty]
+	s.Staged = &Release{Version: "v1"}
+	m.state.Components[Kyty] = s
+	require.NoError(t, m.Queue(Kyty, ""))
+	require.NoError(t, m.Activate(t.Context()))
+	require.Empty(t, snapshot(t, m).Components[Kyty].Active)
+	require.Equal(t, "v1", snapshot(t, m).Components[Kyty].Queued)
+}
+
+func TestCancelRemovesPendingActivation(t *testing.T) {
+	m := newManager(t, func(context.Context) (int, error) { return 0, nil })
+	s := m.state.Components[Kyty]
+	s.Staged = &Release{Version: "v1"}
+	m.state.Components[Kyty] = s
+	require.NoError(t, m.Queue(Kyty, ""))
+	require.NoError(t, m.Cancel(Kyty))
+	require.NoError(t, m.Activate(t.Context()))
+	require.Empty(t, snapshot(t, m).Components[Kyty].Active)
+	require.Empty(t, snapshot(t, m).Components[Kyty].Queued)
+}
+
+func TestStatusRemainsReadableDuringActivationProbe(t *testing.T) {
+	m := newManager(t, func(context.Context) (int, error) { return 0, nil })
+	s := m.state.Components[Kyty]
+	s.Staged = &Release{Version: "v1"}
+	m.state.Components[Kyty] = s
+	require.NoError(t, m.Queue(Kyty, ""))
+	m.installer.Probe = func(ctx context.Context, _ Component, _ string) error {
+		read := make(chan error, 1)
+		go func() { _, err := m.Snapshot(); read <- err }()
+		select {
+		case err := <-read:
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	require.NoError(t, m.Activate(ctx))
+}
+
+func TestNewStagingPrunesSupersededBuildsButKeepsQueuedVersion(t *testing.T) {
+	m := newManager(t, func(context.Context) (int, error) { return 1, nil })
+	checksum := strings.Repeat("a", 64)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"tag_name": "new", "assets": []map[string]string{{"name": "new-Linux-x86_64.tar.gz", "browser_download_url": "https://github.com/new", "digest": "sha256:" + checksum}}})
+	}))
+	defer server.Close()
+	m.sources = Sources{Client: server.Client(), GitHub: server.URL}
+	s := m.state.Components[Kyty]
+	s.Active = "active"
+	s.Queued = "queued"
+	s.Previous = []string{"previous"}
+	s.Staged = &Release{Version: "obsolete"}
+	m.state.Components[Kyty] = s
+	for _, v := range []string{"active", "queued", "previous", "obsolete", "new"} {
+		path := filepath.Join(m.root, string(Kyty), v)
+		require.NoError(t, os.MkdirAll(path, 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(path, ".verified"), []byte(checksum), 0644))
+	}
+	m.stage(t.Context(), Kyty)
+	require.NoDirExists(t, filepath.Join(m.root, string(Kyty), "obsolete"))
+	for _, v := range []string{"active", "queued", "previous", "new"} {
+		require.DirExists(t, filepath.Join(m.root, string(Kyty), v))
+	}
+}
+
 func TestRollbackRetainsThreeVersionsAndNeverPrunesActive(t *testing.T) {
 	m := newManager(t, func(context.Context) (int, error) { return 0, nil })
+	frontendBefore := snapshot(t, m).Components[EmuDeck]
 	for n := 1; n <= 5; n++ {
 		version := fmt.Sprintf("v%d", n)
 		dir := filepath.Join(m.root, string(Kyty), version)
@@ -81,7 +160,7 @@ func TestRollbackRetainsThreeVersionsAndNeverPrunesActive(t *testing.T) {
 	require.NoError(t, m.Activate(t.Context()))
 	require.Equal(t, "v3", snapshot(t, m).Components[Kyty].Active)
 	require.FileExists(t, filepath.Join(m.root, string(Kyty), "v3", "save-sentinel"))
-	require.Equal(t, "bundled-3.5.0", snapshot(t, m).Components[EmuDeck].Active)
+	require.Equal(t, frontendBefore, snapshot(t, m).Components[EmuDeck])
 }
 
 func TestHTTPRejectsUnknownAndUnretainedVersions(t *testing.T) {

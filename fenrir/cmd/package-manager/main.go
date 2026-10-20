@@ -38,7 +38,12 @@ func main() {
 		return len(s.Items) + len(p.Items), nil
 	}
 	client := &http.Client{Timeout: 5 * time.Minute}
-	manager, err := packages.New(packages.DefaultRoot, packages.Sources{Client: client, GitHub: "https://api.github.com", GitLab: "https://gitlab.com/api/v4"}, packages.Installer{Root: packages.DefaultRoot, Client: client, Probe: packages.Probe}, sessions)
+	installer := packages.Installer{Root: packages.DefaultRoot, Client: client, Probe: packages.Probe}
+	if err := installer.SeedBundled(ctx, "/opt/es-de"); err != nil {
+		slog.Error("preserve bundled frontend", "error", err)
+		os.Exit(1)
+	}
+	manager, err := packages.New(packages.DefaultRoot, packages.Sources{Client: client, GitHub: "https://api.github.com", GitLab: "https://gitlab.com/api/v4"}, installer, sessions)
 	if err != nil {
 		slog.Error("initialize packages", "error", err)
 		os.Exit(1)

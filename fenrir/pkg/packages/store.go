@@ -26,7 +26,7 @@ func New(root string, sources Sources, installer Installer, sessions func(contex
 			}
 		}
 	}
-	m := &Manager{root: root, sources: sources, installer: installer, activeSessions: sessions, now: time.Now, checks: make(chan Component, 2), state: State{Components: map[Component]Status{EmuDeck: {Active: "bundled-3.5.0", Previous: []string{}}, Kyty: {Previous: []string{}}}}}
+	m := &Manager{root: root, sources: sources, installer: installer, activeSessions: sessions, now: time.Now, checks: make(chan Component, 2), state: State{Components: map[Component]Status{EmuDeck: {Active: BundledFrontend, Previous: []string{}}, Kyty: {Previous: []string{}}}}}
 	data, err := os.ReadFile(filepath.Join(root, "state.json"))
 	if err == nil {
 		if err := json.Unmarshal(data, &m.state); err != nil {
@@ -42,6 +42,19 @@ func New(root string, sources Sources, installer Installer, sessions func(contex
 		s, ok := m.state.Components[id]
 		if !ok {
 			return nil, fmt.Errorf("missing component %s", id)
+		}
+		if id == EmuDeck {
+			if s.Active == "bundled-3.5.0" {
+				s.Active = BundledFrontend
+			}
+			if s.Queued == "bundled-3.5.0" {
+				s.Queued = BundledFrontend
+			}
+			for n, version := range s.Previous {
+				if version == "bundled-3.5.0" {
+					s.Previous[n] = BundledFrontend
+				}
+			}
 		}
 		for _, v := range append(slices.Clone(s.Previous), s.Active, s.Queued) {
 			if v != "" && !versionPattern.MatchString(v) {
