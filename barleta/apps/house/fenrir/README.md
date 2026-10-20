@@ -70,11 +70,15 @@ Open **[Updates](http://192.168.1.221:47989/updates)** from the pairing dashboar
 
 The package manager checks official GitLab ES-DE x64 AppImages and official GitHub KytyPS5 Linux releases on startup and every six hours. Checks resolve actual release assets and their upstream SHA-256 digests, download and extract into a staging directory, and run a bounded CLI/dependency check. Only verified packages appear as staged. **Check now** performs the same operation immediately. This launch check does not certify a game's compatibility or performance.
 
+The original ES-DE 3.5.0 package is copied from the pinned bootstrap image into the package volume before updates start. Rollback therefore retains its original bytes even when a later container image changes its bundled frontend. Superseded staged packages are removed; the active version, current stage, queue and previous three versions are retained.
+
 Choose **Update** to queue activation. It waits for Session resources and EmuDeck pods, including terminating pods, to disappear; Kubernetes lookup failures pause activation and appear on the page. **Cancel queued update** keeps the installed version. **Roll back** queues a retained version through the same idle-session guard. The active version, staged release, queue and previous three versions persist on `fenrir-packages`; installation directories are immutable and mounted read-only by EmuDeck. A session captures its package selection once at frontend launch. Updates never replace files in a running package. Failed downloads, checks or state transactions preserve the working selection. This runtime-managed state is deliberately separate from GitOps-managed container image versions.
 
 Put extracted PS5 game directories containing `eboot.bin` and `sce_sys/param.json`, or `.zar` game dumps, in `fenrir-games/ps5`. At launch, EmuDeck generates named PS5 entries and invokes `kytyps5` with the negotiated Moonlight width/height and fullscreen presentation. Existing stream, GPU and controller device configuration is reused. These presentation flags do not force a game's internal rendering resolution.
 
 Kyty's writable working directory is `$HOME/.local/share/kytyps5` on the user's persistent EmuDeck profile. Its `_SaveData` and other guest data remain separate from the versioned executable and survive program rollback. Scratch files use `/Volumes/4TB_Drive/tmp/kytyps5`; the package PVC is mounted under `/Volumes/4TB_Drive/tmp/fenrir-packages`, and updater scratch uses the same approved temporary root. The upstream GUI self-updater is not used for these read-only, centrally selected installations.
+
+EmuDeck selects Qt's PulseAudio backend explicitly to match the streaming audio service. RPCS3 build 0.0.43-20344 crashes in Qt Multimedia during game startup when this setting is omitted in this container.
 
 ## Stream resolution and scaling
 

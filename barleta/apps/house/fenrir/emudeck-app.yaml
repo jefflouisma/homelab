@@ -52,6 +52,8 @@ spec:
           env:
             - name: SDL_JOYSTICK_DISABLE_UDEV
               value: "1"
+            - name: QT_AUDIO_BACKEND
+              value: pulseaudio
           command:
             - /bin/bash
             - -c
