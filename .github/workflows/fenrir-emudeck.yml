@@ -5,7 +5,8 @@ on:
     branches: [main]
     paths:
       - "barleta/apps/house/fenrir/images/emudeck/**"
-      - ".github/workflows/fenrir-emudeck.yml"
+      - "!barleta/apps/house/fenrir/images/emudeck/test_*.py"
+      - "!barleta/apps/house/fenrir/images/emudeck/emulator_test_support.py"
   workflow_dispatch: {}
 
 permissions:
@@ -61,8 +62,8 @@ jobs:
           for i in 1 2 3; do
             git fetch origin main
             git reset --hard origin/main
-            perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-emudeck:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/{emudeck-app,retroarch-apps}.yaml
-            git add barleta/apps/house/fenrir/{emudeck-app,retroarch-apps}.yaml
+            perl -pi -e 's|(ghcr.io/jefflouisma/fenrir-emudeck:)[^[:space:]]+|${1}'"${TAG}"'|g' barleta/apps/house/fenrir/emudeck-app.yaml
+            git add barleta/apps/house/fenrir/emudeck-app.yaml
             if git diff --cached --quiet; then exit 0; fi
             git commit -m "chore(fenrir): bump emudeck to ${TAG}"
             if git push origin HEAD:main; then exit 0; fi

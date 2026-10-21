@@ -73,7 +73,7 @@ Use an isolated test pairing/profile when possible. Record the original pairing 
 2. Navigate ES-DE with both buttons and directional input.
 3. Launch RPCS3 Street Fighter, enter gameplay, and open the pause menu with Start.
 4. Launch shadPS4 Dead or Alive 5 and verify selection changes from controller input.
-5. Open standalone RetroArch and verify menu movement/confirmation.
+5. Launch PSP and Wii titles from ES-DE to verify bundled RetroArch-core video/input and a clean return to the frontend.
 6. Check Wolf, sidecar, emulator, and operator logs for new failures.
 7. Disconnect the owned client and remove only the test session/pairing. Verify original PVC identities and pairings remain.
 

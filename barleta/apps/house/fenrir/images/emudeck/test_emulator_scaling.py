@@ -144,10 +144,9 @@ class EmulatorScalingTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(path.read_text(), expected)
 
-    def test_production_retroarch_config_with_duplicate_keys_is_supported(self) -> None:
-        documents = yaml.safe_load_all((SOURCE.parents[1] / "retroarch-apps.yaml").read_text())
-        template = next(doc["data"]["retroarch.cfg"] for doc in documents if doc.get("metadata", {}).get("name") == "retroarch-config")
-        config = self.write(".config/retroarch/retroarch.cfg", template)
+    def test_emudeck_retroarch_config_with_duplicate_keys_is_supported(self) -> None:
+        template = (SOURCE / "config/retroarch.cfg").read_text()
+        config = self.write(".config/retroarch/retroarch.cfg", template + '\nvideo_driver = "vulkan"\n')
         result = self.launch((3840, 2160))
         self.assertEqual(result.returncode, 0, result.stderr)
         settings = read_flat(config)

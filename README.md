@@ -21,7 +21,7 @@ See [operations](docs/operations.md), [house services](barleta/house.md), [analy
 
 ## Apple TV
 
-Add **`192.168.1.221`** in Moonlight. Start pairing on the Apple TV, then open **<http://192.168.1.221:47989/>** on another device and enter the displayed PIN. Select EmuDeck or RetroArch after pairing.
+Add **`192.168.1.221`** in Moonlight. Start pairing on the Apple TV, then open **<http://192.168.1.221:47989/>** on another device and enter the displayed PIN. Select EmuDeck after pairing; its ES-DE frontend launches both standalone emulators and bundled RetroArch cores.
 
 The October 2026 reliability update replaces the proxy's temporary server identity with a persistent Secret. Existing clients need one pairing after this transition; if the client retains the old server certificate, remove the saved host and add it again. Subsequent proxy rollouts retain the same identity.
 
@@ -40,10 +40,10 @@ Go, Rust, kubectl, Python 3.11+, and PyYAML are required for the complete local 
 
 ## Releases
 
-GitHub Actions builds images and commits source SHA tags into the manifests for Go components, EmuDeck, RetroArch and the UCI loader. Argo CD deploys those manifest changes. Go components, Wolf, EmuDeck and the UCI loader require the reusable project checks before publication. Publication retries reapply their own tag updates to the current `main` and fail if all pushes fail.
+GitHub Actions builds images and commits source SHA tags into the manifests for Go components, EmuDeck and the UCI loader. Argo CD deploys those manifest changes. Go components, Wolf, EmuDeck and the UCI loader require the reusable project checks before publication. Publication retries reapply their own tag updates to the current `main` and fail if all pushes fail.
 
 Wolf builds publish candidate images without changing the deployed pin. Promote a candidate by changing `WOLF_IMAGE` to its tested tag and digest only after the real emulator checks in the operations guide pass. The deployed Wolf digest preserves the working PS3 controller path.
 
-EmuDeck and RetroArch builds fetch upstream emulator releases and cores when their image workflows run. Their `UPSTREAM_REFRESH` build argument prevents an old download layer from silently supplying stale upstream builds. Wolf's platform/toolchain inputs remain pinned because its GPU compositor has compatibility requirements.
+EmuDeck builds fetch upstream emulator releases and RetroArch cores when its image workflow runs. Its `UPSTREAM_REFRESH` build argument prevents an old download layer from silently supplying stale upstream builds. Test-only and workflow-only edits do not rebuild the emulator image; runtime edits and manual dispatch still do. Wolf's platform/toolchain inputs remain pinned because its GPU compositor has compatibility requirements.
 
 Obsolete Harvester/Terraform, undeployed NixOS configuration, provider caches, compiled binaries, unused templates, and broken gitlinks are retired from the active tree after validation. Historical source remains available in Git; operational state and live PVCs are separate from those files.

@@ -11,7 +11,7 @@ Fenrir is a Kubernetes-native adaptation of [Wolf (games-on-whales)](https://gam
 | `direwolf.games-on-whales.github.io_*.yaml` | Custom Resource Definitions (App, Session, Pairing, User) |
 | `wolf-operator.yaml` | Fenrir operator and session image configuration |
 | `moonlight-proxy.yaml` | Entry point for Moonlight clients |
-| `retroarch-apps.yaml` | RetroArch game definitions |
+| `emudeck-app.yaml` | Single Moonlight application: ES-DE, standalone emulators, and bundled RetroArch cores |
 | `storage.yaml` | PVCs for games and saves |
 | `packages.yaml` | Independent ES-DE and KytyPS5 package staging, activation and rollback |
 
@@ -31,7 +31,7 @@ Fenrir is deployed automatically via ArgoCD when manifests are committed.
    - Open Moonlight on Apple TV
    - Add server by **IP address** (hostname not supported on Apple TV)
    - Open http://192.168.1.221:47989/ on another device and enter the Apple TV's PIN
-   - Select "EmuDeck" for ES-DE or "RetroArch" for the standalone core browser
+   - Select "EmuDeck" for ES-DE; games launch through standalone emulators or its bundled RetroArch cores
 
 ## ArgoCD Applications
 
@@ -45,7 +45,7 @@ Fenrir is deployed automatically via ArgoCD when manifests are committed.
 
 ## Container Images
 
-The `fenrir-emudeck.yml` and `fenrir-retroarch.yml` GitHub workflows build images after changes to their image directories reach `main`. Each workflow publishes a commit-tagged image and updates the GitOps manifests after a successful push. EmuDeck's image also seeds the shared Dolphin and PPSSPP assets in both applications.
+The `fenrir-emudeck.yml` GitHub workflow builds an image after runtime changes to its image directory reach `main`, or on manual dispatch. Test-only and workflow-only changes do not rebuild the image. The workflow publishes a commit-tagged image and updates `emudeck-app.yaml` after a successful push. EmuDeck's image includes RetroArch cores and seeds the shared Dolphin and PPSSPP assets; there is no separate RetroArch application or image workflow.
 
 RetroArch and libretro cores come from the upstream nightly buildbot. DuckStation and RPCS3 use their upstream rolling releases. ES-DE, PCSX2, PPSSPP, and shadPS4 use the explicit upstream release versions in the EmuDeck Dockerfile. Each CI run changes `UPSTREAM_REFRESH` so rolling downloads refresh while dependency layers can remain cached.
 
@@ -58,11 +58,13 @@ export TMPDIR=/Volumes/4TB_Drive/tmp/
 
 ## Game Storage
 
-The `fenrir-games` PVC appears at `/Emulation/roms` in EmuDeck and `/roms` in RetroArch. Use the system directories (`ps3`, `ps4`, `psp`, `wii`, and so on). PS3 disc directories should end in `.ps3dir` and contain `PS3_GAME`. PS4 directories must contain `eboot.bin` and `sce_sys/param.sfo`; startup generates named shortcuts that resolve to the actual executable.
+The `fenrir-games` PVC appears at `/Emulation/roms` in EmuDeck. Use the system directories (`ps3`, `ps4`, `psp`, `wii`, and so on). PS3 disc directories should end in `.ps3dir` and contain `PS3_GAME`. PS4 directories must contain `eboot.bin` and `sce_sys/param.sfo`; startup generates named shortcuts that resolve to the actual executable.
 
 The `fenrir-bios` PVC supplies system files. Put a PS3 firmware PUP in `ps3/PS3UPDAT.PUP` and dumped PS4 firmware libraries in `ps4/sys_modules`. Startup installs missing PS3 firmware into the user's persistent profile without opening a GUI. RPCS3 0.0.43 can abort during installer teardown after writing the firmware; the preparation script checks the installed version and required libraries before allowing startup to continue. First PS3 game launches compile shaders and PPU modules, which can take several minutes.
 
-Profiles, configuration, and emulator caches persist on each user's application PVC; shared saves persist on `fenrir-saves`.
+Profiles, configuration, emulator caches, and RPCS3/shadPS4 saves persist on each user's application PVC. EmuDeck's RetroArch cores save to `fenrir-saves/retroarch/saves` and `fenrir-saves/retroarch/states`.
+
+The standalone RetroArch Moonlight application is retired. Existing `<user>-retroarch` profile PVCs and shared save files are retained; retirement does not delete or automatically migrate game progress. Preserve those volumes when cleaning up application resources.
 
 ## EmuDeck and KytyPS5 updates
 
@@ -102,15 +104,15 @@ Games retain their aspect ratio. Emulators with internal resolution controls ren
 
 Real Moonlight sessions on g913 reached gameplay in PS3 Super Street Fighter IV Arcade Edition (RPCS3 0.0.43), PS4 Dead or Alive 5 Last Round (shadPS4 0.20.0), PSP God of War: Chains of Olympus, and Wii Spider-Man: Edge of Time (upstream RetroArch nightly 1.22.2). PS3 attacks and pause, PS4 menus and pause, PSP attacks and pause, and Wii Nunchuk setup were exercised. The reliability rollout also verified controller navigation with upstream RPCS3 revision 20332-cbfcf1f6 and the pinned Wolf image. PS3 firmware 4.92 and dumped PS4 system modules are installed. Physical controllers and compatibility with other PS3/PS4 games were not verified.
 
-The 2026-10-18 resolution rollout reproduced the old 720p cropping and verified full menus and streamed controller navigation at 1280x720, 1920x1080, and 3840x2160 in both EmuDeck and the separate RetroArch app. At 4K, Street Fighter reached training gameplay with attacks and pause (RPCS3 revision 20334, 300% rendering, window at 0,0 with size 3840x2160). DOA5 reached controller-operated title/play-style menus with FSR enabled; God of War reached a controller-operated title/menu with the PPSSPP core reporting 3840x2160 geometry; Spider-Man rendered its intro/title and responded to Home-menu input with Dolphin configured for 6x EFB. These checks do not certify full gameplay or frame rate for every title. Other cores passed installed-binary option/load checks and scaling regression tests, without game testing where assets were unavailable. The physical Google TV device was not directly tested because network debugging was disabled; these were native Moonlight 6.1.0 sessions against g913.
+The 2026-10-18 resolution rollout reproduced the old 720p cropping and verified full menus and streamed controller navigation at 1280x720, 1920x1080, and 3840x2160 in EmuDeck and the now-retired standalone RetroArch app. At 4K, Street Fighter reached training gameplay with attacks and pause (RPCS3 revision 20334, 300% rendering, window at 0,0 with size 3840x2160). DOA5 reached controller-operated title/play-style menus with FSR enabled; God of War reached a controller-operated title/menu with the PPSSPP core reporting 3840x2160 geometry; Spider-Man rendered its intro/title and responded to Home-menu input with Dolphin configured for 6x EFB. These checks do not certify full gameplay or frame rate for every title. Other cores passed installed-binary option/load checks and scaling regression tests, without game testing where assets were unavailable. The physical Google TV device was not directly tested because network debugging was disabled; these were native Moonlight 6.1.0 sessions against g913.
 
-The final EmuDeck and RetroArch images are `8cfe7a2`, and operator/proxy/agent are `f956543`. Their scaler/core binaries match the images used for the game checks; the final images also passed fresh native launches. The Wolf image remains pinned to the controller-verified `546a17d` digest. Test evidence and screenshots are stored under `/Volumes/4TB_Drive/tmp/fenrir-resolution-20261018/qa.md`.
+At that rollout, the final EmuDeck and RetroArch images were `8cfe7a2`, and operator/proxy/agent were `f956543`. Their scaler/core binaries matched the images used for the game checks; those images also passed fresh native launches. The Wolf image remains pinned to the controller-verified `546a17d` digest. Test evidence and screenshots are stored under `/Volumes/4TB_Drive/tmp/fenrir-resolution-20261018/qa.md`.
 
 ## Controllers
 
-Both app templates include g913's host `input` group (GID 996) so the non-root emulator can read Wolf controllers created after the init containers finish. If moving to another host, check `getent group input` and update the supplemental group. Init-time device chmod alone does not cover newly connected controllers.
+The EmuDeck template includes g913's host `input` group (GID 996) so the non-root emulator can read Wolf controllers created after the init containers finish. If moving to another host, check `getent group input` and update the supplemental group. Init-time device chmod alone does not cover newly connected controllers.
 
-The apps set `SDL_JOYSTICK_DISABLE_UDEV=1` to watch the shared `/dev/input` devices directly. Host udev notifications do not cross the pod network namespace. No in-container udev daemon or synthetic hotplug relay is required. Existing controller mappings remain on the user profile PVC.
+EmuDeck sets `SDL_JOYSTICK_DISABLE_UDEV=1` to watch the shared `/dev/input` devices directly. Host udev notifications do not cross the pod network namespace. No in-container udev daemon or synthetic hotplug relay is required. Existing controller mappings remain on the user profile PVC.
 
 EmuDeck seeds a missing RPCS3 global `Default.yml` input profile with the SDL handler and `Xbox One S Controller 1`, matching Wolf's streamed Xbox controller. RPCS3 supplies the standard button and axis mappings. Existing global and per-game profiles are preserved. Restart the EmuDeck session to initialize a profile that has no saved RPCS3 pad configuration.
 
