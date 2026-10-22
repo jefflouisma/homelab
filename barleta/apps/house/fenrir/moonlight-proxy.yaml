@@ -95,6 +95,9 @@ metadata:
   namespace: house
 spec:
   secretName: moonlight-tls
+  # Preserve the pairing key when cert-manager's rotation default changes.
+  privateKey:
+    rotationPolicy: Never
   duration: 8760h # 1 year
   renewBefore: 720h # 30 days
   issuerRef:

@@ -1,0 +1,8 @@
+---
+# Required by the Keycloak and Moonlight Certificates.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}

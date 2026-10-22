@@ -138,6 +138,8 @@ metadata:
   namespace: identity
 spec:
   secretName: keycloak-tls
+  privateKey:
+    rotationPolicy: Never
   issuerRef:
     name: selfsigned-issuer
     kind: ClusterIssuer
