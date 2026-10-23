@@ -26,7 +26,7 @@ spec:
       initContainers:
         # Fix permissions on all PVC mounts for UID 1000
         - name: fix-permissions
-          image: ghcr.io/jefflouisma/fenrir-emudeck:7b0fde9
+          image: ghcr.io/jefflouisma/fenrir-emudeck:e543911
           command:
             - sh
             - -c
@@ -48,7 +48,7 @@ spec:
             runAsUser: 0
       containers:
         - name: emudeck
-          image: ghcr.io/jefflouisma/fenrir-emudeck:7b0fde9
+          image: ghcr.io/jefflouisma/fenrir-emudeck:e543911
           env:
             - name: SDL_JOYSTICK_DISABLE_UDEV
               value: "1"
