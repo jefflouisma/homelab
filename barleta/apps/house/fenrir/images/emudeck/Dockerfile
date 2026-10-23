@@ -94,6 +94,7 @@ COPY --chmod=755 es-de.sh /usr/local/bin/es-de
 COPY --chmod=755 package-path.py /usr/local/bin/package-path
 COPY --chmod=755 kytyps5.sh /usr/local/bin/kytyps5
 COPY --chmod=755 kytyps5.sh /usr/local/bin/ps5plus
+COPY config/title-options /etc/kytyps5/title-options
 COPY --chmod=755 generate-ps5-shortcuts.py /usr/local/bin/generate-ps5-shortcuts
 
 ARG UPSTREAM_REFRESH=manual

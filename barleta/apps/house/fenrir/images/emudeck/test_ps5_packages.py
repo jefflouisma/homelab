@@ -100,6 +100,42 @@ class PS5PackageTests(unittest.TestCase):
                 self.assertTrue((root / f"profile/.local/share/{component}/_TempData").is_symlink())
                 self.assertTrue((root / f"runtime/{component}/logs").is_dir())
 
+    def test_title_options_are_added_for_listed_games_only(self) -> None:
+        for title, expected in (("PPSA08332", ["--tessellation"]), ("PPSA00001", [])):
+            with self.subTest(title=title), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                stage_display_helpers(root / "bin")
+                package = root / "bin/packages/ps5plus/daily"
+                package.mkdir(parents=True)
+                (package / ".verified").write_text("digest")
+                capture = root / "args"
+                binary = package / "kyty_emulator"
+                binary.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE"\n')
+                binary.chmod(0o755)
+                (root / "bin/packages/state.json").write_text(json.dumps({
+                    "components": {"ps5plus": {"active": "daily"}},
+                }))
+                subprocess.run([str(root / "bin/package-path"), "emudeck", "--pin"],
+                               check=True, capture_output=True)
+                game = root / "roms/GAME"
+                (game / "sce_sys").mkdir(parents=True)
+                (game / "eboot.bin").touch()
+                (game / "sce_sys/param.json").write_text(json.dumps({"titleId": title}))
+                options = root / "title-options"
+                options.write_text((SOURCE / "config/title-options").read_text())
+                wrapper = root / "ps5plus.sh"
+                wrapper.write_text((SOURCE / "kytyps5.sh").read_text()
+                                   .replace("/Volumes/4TB_Drive/tmp/", str(root / "runtime") + "/")
+                                   .replace("/etc/kytyps5/title-options", str(options)))
+                env = dict(os.environ, HOME=str(root / "profile"), CAPTURE=str(capture),
+                           PATH=str(root / "bin") + os.pathsep + os.environ["PATH"])
+                subprocess.run(["sh", str(wrapper), str(game)], env=env, check=True)
+                args = capture.read_text().splitlines()
+                self.assertEqual(args[-len(expected):] if expected else args[-1:],
+                                 expected or [str(root / "runtime/ps5plus/logs/guest.txt")])
+                self.assertIn("COPY config/title-options /etc/kytyps5/title-options",
+                              (SOURCE / "Dockerfile").read_text())
+
     def test_ps5plus_without_an_active_release_names_itself(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -10,6 +10,13 @@ width="${GAMESCOPE_WIDTH:-1920}"
 height="${GAMESCOPE_HEIGHT:-1080}"
 case "$width:$height" in *[!0-9:]*|:*|*:) echo 'Invalid stream dimensions' >&2; exit 1;; esac
 
+# Title-specific emulator options, e.g. tessellation for games that draw terrain with it.
+options=""
+if [ -f "$game/sce_sys/param.json" ] && [ -f /etc/kytyps5/title-options ]; then
+    title="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("titleId", ""))' "$game/sce_sys/param.json" 2>/dev/null || true)"
+    options="$(awk -v title="$title" '$1 == title { $1 = ""; print }' /etc/kytyps5/title-options)"
+fi
+
 # Kyty stores guest data relative to its working directory, independently of its executable.
 data="$HOME/.local/share/$component"
 scratch="/Volumes/4TB_Drive/tmp/$component"
@@ -24,4 +31,4 @@ exec "$package/kyty_emulator" --game "$game" --fullscreen \
     --screen-width "$width" --screen-height "$height" --hide-cursor \
     --shader-log-folder "$scratch/logs/shaders" \
     --command-buffer-dump-folder "$scratch/logs/buffers" \
-    --printf-output-file "$scratch/logs/guest.txt"
+    --printf-output-file "$scratch/logs/guest.txt" $options

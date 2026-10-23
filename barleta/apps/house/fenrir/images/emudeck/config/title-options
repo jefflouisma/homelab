@@ -1,0 +1,3 @@
+# TITLE_ID kyty_emulator options, applied by /usr/local/bin/kytyps5 and ps5plus.
+# God of War Ragnarok draws its terrain and snow with tessellation.
+PPSA08332 --tessellation
