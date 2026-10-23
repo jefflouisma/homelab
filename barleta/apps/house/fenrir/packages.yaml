@@ -30,7 +30,7 @@ spec:
       serviceAccountName: fenrir-operator
       containers:
         - name: packages
-          image: ghcr.io/jefflouisma/fenrir-packages:d6e9fbe
+          image: ghcr.io/jefflouisma/fenrir-packages:7b0fde9
           env:
             - name: POD_NAMESPACE
               valueFrom:

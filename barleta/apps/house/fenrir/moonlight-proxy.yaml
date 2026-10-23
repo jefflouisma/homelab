@@ -22,7 +22,7 @@ spec:
       containers:
         - name: moonlight-proxy
           # Custom-built moonlight-proxy image
-          image: ghcr.io/jefflouisma/fenrir-moonlight-proxy:d6e9fbe
+          image: ghcr.io/jefflouisma/fenrir-moonlight-proxy:7b0fde9
           imagePullPolicy: Always
           args:
             - --tls-cert=/etc/moonlight-tls/tls.crt
