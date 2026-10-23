@@ -16,7 +16,14 @@ type Component string
 const (
 	EmuDeck Component = "emudeck"
 	Kyty    Component = "kytyps5"
+	PS5Plus Component = "ps5plus"
 )
+
+// Components lists every managed package in check and activation order.
+var Components = []Component{EmuDeck, Kyty, PS5Plus}
+
+// gitHubRepositories publish Linux tarballs that share the KytyPS5 package layout.
+var gitHubRepositories = map[Component]string{Kyty: "KytyPS5/KytyPS5", PS5Plus: "jefflouisma/PS5Plus"}
 
 type Release struct {
 	Version string `json:"version"`
@@ -28,7 +35,7 @@ var versionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$`)
 
 func ParseComponent(value string) (Component, error) {
 	switch Component(value) {
-	case EmuDeck, Kyty:
+	case EmuDeck, Kyty, PS5Plus:
 		return Component(value), nil
 	default:
 		return "", fmt.Errorf("unknown component %q", value)
@@ -61,29 +68,37 @@ func (s Sources) get(ctx context.Context, address string, target any) error {
 	return nil
 }
 
+func (s Sources) latestGitHub(ctx context.Context, repository string) (Release, error) {
+	var release struct {
+		Tag    string `json:"tag_name"`
+		Draft  bool   `json:"draft"`
+		Assets []struct {
+			Name   string `json:"name"`
+			URL    string `json:"browser_download_url"`
+			Digest string `json:"digest"`
+		} `json:"assets"`
+	}
+	if err := s.get(ctx, s.GitHub+"/repos/"+repository+"/releases/latest", &release); err != nil {
+		return Release{}, err
+	}
+	if release.Draft {
+		return Release{}, fmt.Errorf("latest %s release is a draft", repository)
+	}
+	for _, asset := range release.Assets {
+		if asset.Name == release.Tag+"-Linux-x86_64.tar.gz" {
+			return Release{Version: release.Tag, URL: asset.URL, SHA256: strings.TrimPrefix(asset.Digest, "sha256:")}, nil
+		}
+	}
+	return Release{}, nil
+}
+
 func (s Sources) Latest(ctx context.Context, component Component) (Release, error) {
 	var result Release
 	switch component {
-	case Kyty:
-		var release struct {
-			Tag    string `json:"tag_name"`
-			Draft  bool   `json:"draft"`
-			Assets []struct {
-				Name   string `json:"name"`
-				URL    string `json:"browser_download_url"`
-				Digest string `json:"digest"`
-			} `json:"assets"`
-		}
-		if err := s.get(ctx, s.GitHub+"/repos/KytyPS5/KytyPS5/releases/latest", &release); err != nil {
+	case Kyty, PS5Plus:
+		var err error
+		if result, err = s.latestGitHub(ctx, gitHubRepositories[component]); err != nil {
 			return result, err
-		}
-		if release.Draft {
-			return result, fmt.Errorf("latest Kyty release is a draft")
-		}
-		for _, asset := range release.Assets {
-			if asset.Name == release.Tag+"-Linux-x86_64.tar.gz" {
-				result = Release{Version: release.Tag, URL: asset.URL, SHA256: strings.TrimPrefix(asset.Digest, "sha256:")}
-			}
 		}
 	case EmuDeck:
 		var release struct {

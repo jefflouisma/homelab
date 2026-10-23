@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,6 +15,8 @@ func TestOfficialReleaseResolutionSelectsLinuxAndMatchingChecksum(t *testing.T) 
 		switch r.URL.Path {
 		case "/repos/KytyPS5/KytyPS5/releases/latest":
 			json.NewEncoder(w).Encode(map[string]any{"tag_name": "daily-123", "assets": []map[string]string{{"name": "daily-123-Windows-x64.zip", "digest": "sha256:" + string(make([]byte, 64))}, {"name": "daily-123-Linux-x86_64.tar.gz", "browser_download_url": "https://github.com/linux", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}})
+		case "/repos/jefflouisma/PS5Plus/releases/latest":
+			json.NewEncoder(w).Encode(map[string]any{"tag_name": "PS5Plus-1", "assets": []map[string]string{{"name": "PS5Plus-1-Linux-x86_64.tar.gz", "browser_download_url": "https://github.com/ps5plus", "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}}})
 		case "/projects/18817634/releases/permalink/latest":
 			w.Write([]byte(`{"tag_name":"v4.0.0","assets":{"links":[{"name":"ES-DE_x64_SteamDeck.AppImage","url":"https://wrong"},{"name":"ES-DE_x64.AppImage","url":"https://gitlab.com/files/999/download"}]}}`))
 		case "/projects/18817634/packages":
@@ -29,6 +32,9 @@ func TestOfficialReleaseResolutionSelectsLinuxAndMatchingChecksum(t *testing.T) 
 	kyty, err := sources.Latest(t.Context(), Kyty)
 	require.NoError(t, err)
 	require.Equal(t, "https://github.com/linux", kyty.URL)
+	ps5plus, err := sources.Latest(t.Context(), PS5Plus)
+	require.NoError(t, err)
+	require.Equal(t, Release{Version: "PS5Plus-1", URL: "https://github.com/ps5plus", SHA256: strings.Repeat("c", 64)}, ps5plus)
 	esde, err := sources.Latest(t.Context(), EmuDeck)
 	require.NoError(t, err)
 	require.Equal(t, "v4.0.0", esde.Version)

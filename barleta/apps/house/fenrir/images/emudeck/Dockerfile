@@ -93,6 +93,7 @@ RUN mkdir -p /Volumes/4TB_Drive/tmp && \
 COPY --chmod=755 es-de.sh /usr/local/bin/es-de
 COPY --chmod=755 package-path.py /usr/local/bin/package-path
 COPY --chmod=755 kytyps5.sh /usr/local/bin/kytyps5
+COPY --chmod=755 kytyps5.sh /usr/local/bin/ps5plus
 COPY --chmod=755 generate-ps5-shortcuts.py /usr/local/bin/generate-ps5-shortcuts
 
 ARG UPSTREAM_REFRESH=manual
@@ -304,7 +305,7 @@ RUN if ! id retro >/dev/null 2>&1; then \
       fi; \
     fi && mkdir -p /home/retro && chown 1000:1000 /home/retro
 
-RUN mkdir -p /Volumes/4TB_Drive/tmp/fenrir-session /Volumes/4TB_Drive/tmp/kytyps5 && \
+RUN mkdir -p /Volumes/4TB_Drive/tmp/fenrir-session /Volumes/4TB_Drive/tmp/kytyps5 /Volumes/4TB_Drive/tmp/ps5plus && \
     chown -R 1000:1000 /Volumes/4TB_Drive/tmp
 USER retro
 RUN retroarch --version

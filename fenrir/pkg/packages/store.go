@@ -15,7 +15,11 @@ func New(root string, sources Sources, installer Installer, sessions func(contex
 	if err := os.MkdirAll(root, 0755); err != nil {
 		return nil, fmt.Errorf("create package root: %w", err)
 	}
-	for _, pattern := range []string{".state-*", "emudeck/.stage-*", "kytyps5/.stage-*"} {
+	patterns := []string{".state-*"}
+	for _, id := range Components {
+		patterns = append(patterns, string(id)+"/.stage-*")
+	}
+	for _, pattern := range patterns {
 		paths, err := filepath.Glob(filepath.Join(root, pattern))
 		if err != nil {
 			return nil, fmt.Errorf("find interrupted staging: %w", err)
@@ -26,7 +30,7 @@ func New(root string, sources Sources, installer Installer, sessions func(contex
 			}
 		}
 	}
-	m := &Manager{root: root, sources: sources, installer: installer, activeSessions: sessions, now: time.Now, checks: make(chan Component, 2), state: State{Components: map[Component]Status{EmuDeck: {Active: BundledFrontend, Previous: []string{}}, Kyty: {Previous: []string{}}}}}
+	m := &Manager{root: root, sources: sources, installer: installer, activeSessions: sessions, now: time.Now, checks: make(chan Component, len(Components)), state: State{Components: map[Component]Status{EmuDeck: {Active: BundledFrontend, Previous: []string{}}, Kyty: {Previous: []string{}}, PS5Plus: {Previous: []string{}}}}}
 	data, err := os.ReadFile(filepath.Join(root, "state.json"))
 	if err == nil {
 		if err := json.Unmarshal(data, &m.state); err != nil {
@@ -35,10 +39,11 @@ func New(root string, sources Sources, installer Installer, sessions func(contex
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("open package state: %w", err)
 	}
-	if len(m.state.Components) != 2 {
-		return nil, fmt.Errorf("package state must contain both components")
+	// Stored state predating a component keeps its default; anything else is not ours.
+	if len(m.state.Components) != len(Components) {
+		return nil, fmt.Errorf("package state contains an unknown component")
 	}
-	for _, id := range []Component{EmuDeck, Kyty} {
+	for _, id := range Components {
 		s, ok := m.state.Components[id]
 		if !ok {
 			return nil, fmt.Errorf("missing component %s", id)

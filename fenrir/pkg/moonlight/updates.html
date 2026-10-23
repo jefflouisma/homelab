@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Manage EmuDeck frontend and KytyPS5 versions on Fenrir.">
+<meta name="description" content="Manage EmuDeck frontend, KytyPS5 and PS5Plus versions on Fenrir.">
 <title>Updates · Fenrir</title>
 <style>
 :root{color-scheme:dark;--ink:#fff;--surface:rgb(255 255 255 / 10%);--nested:rgb(0 0 0 / 20%);--action:#006b35;--secondary:rgb(255 255 255 / 15%);--error:#ffe4e6;--space:.5rem;--radius:.5rem}
@@ -12,8 +12,8 @@
 </head>
 <body><main>
 <nav aria-label="Fenrir"><a href="/dashboard">Pair a device</a><a href="/updates" aria-current="page">Updates</a></nav>
-<header><h1>Emulator updates</h1><p class="muted">Update EmuDeck’s frontend and KytyPS5 independently.</p></header>
-<p class="notice">Official releases are checked and staged every six hours. Choose when to activate them. Updates and rollback wait until running sessions have closed. Choose Quit in Moonlight to end a session.</p>
+<header><h1>Emulator updates</h1><p class="muted">Update EmuDeck’s frontend, KytyPS5 and PS5Plus independently.</p></header>
+<p class="notice">Published releases are checked and staged every six hours. Choose when to activate them. Updates and rollback wait until running sessions have closed. Choose Quit in Moonlight to end a session.</p>
 <p id="result" class="status" role="status" aria-live="polite">Loading installed versions…</p>
 <div id="components"></div>
 <noscript><p>Enable JavaScript to view and manage installed versions.</p></noscript>
@@ -22,9 +22,9 @@
 <script>
 const result=document.querySelector('#result');
 const cards=new Map();let refreshing=false;let acting=false;
-for(const [id,label] of [['emudeck','EmuDeck · ES-DE frontend'],['kytyps5','KytyPS5']]){
+for(const [id,label,name] of [['emudeck','EmuDeck · ES-DE frontend','EmuDeck'],['kytyps5','KytyPS5','KytyPS5'],['ps5plus','PS5Plus · KytyPS5 fork','PS5Plus']]){
  const card=document.createElement('section');card.className='card';card.setAttribute('aria-labelledby',id+'-title');
- card.innerHTML=`<h2 id="${id}-title">${label}</h2><dl class="versions"><dt>Installed</dt><dd data-field="active">Loading…</dd><dt>Available</dt><dd data-field="available">Loading…</dd><dt>Staged</dt><dd data-field="staged">Loading…</dd></dl><p class="status" data-field="queue"></p><p class="muted" data-field="checked"></p><p class="error" data-field="error"></p><div class="actions"><button class="secondary" data-action="check">Check now</button><button data-action="apply">Update ${id==='emudeck'?'EmuDeck':'KytyPS5'}</button></div><div class="rollback"><label for="${id}-rollback">Restore a previous version</label><select id="${id}-rollback" aria-label="Previous ${label} version"></select><button class="secondary" data-action="rollback">Roll back</button></div>`;
+ card.innerHTML=`<h2 id="${id}-title">${label}</h2><dl class="versions"><dt>Installed</dt><dd data-field="active">Loading…</dd><dt>Available</dt><dd data-field="available">Loading…</dd><dt>Staged</dt><dd data-field="staged">Loading…</dd></dl><p class="status" data-field="queue"></p><p class="muted" data-field="checked"></p><p class="error" data-field="error"></p><div class="actions"><button class="secondary" data-action="check">Check now</button><button data-action="apply">Update ${name}</button></div><div class="rollback"><label for="${id}-rollback">Restore a previous version</label><select id="${id}-rollback" aria-label="Previous ${label} version"></select><button class="secondary" data-action="rollback">Roll back</button></div>`;
  document.querySelector('#components').append(card);cards.set(id,card);
  const cancel=document.createElement('button');cancel.className='secondary';cancel.dataset.action='cancel';cancel.textContent='Cancel queued update';cancel.hidden=true;card.querySelector('.actions').append(cancel);
  for(const button of card.querySelectorAll('button'))button.addEventListener('click',()=>action(id,button.dataset.action));
@@ -32,9 +32,9 @@ for(const [id,label] of [['emudeck','EmuDeck · ES-DE frontend'],['kytyps5','Kyt
 function render(data){
  if(data.activation_error){result.textContent='Activation is paused: '+data.activation_error;result.dataset.failed='yes';}
  for(const [id,card] of cards){
-  const state=data.components[id];const field=(name,text)=>card.querySelector(`[data-field="${name}"]`).textContent=text;
+  const state=data.components[id];card.hidden=!state;if(!state)continue;const field=(name,text)=>card.querySelector(`[data-field="${name}"]`).textContent=text;
   field('active',state.active||'Not installed');field('available',state.available?.version||'Not checked');field('staged',state.staged?.version||'No verified package yet');
-  field('queue',state.queued?`Queued: ${state.queued}. Activation waits for running sessions to close.`:state.busy?'Checking and staging the official release…':'Ready');
+  field('queue',state.queued?`Queued: ${state.queued}. Activation waits for running sessions to close.`:state.busy?'Checking and staging the latest release…':'Ready');
   field('checked',state.checked&& !state.checked.startsWith('0001')?'Last checked: '+new Date(state.checked).toLocaleString():'Checks run every six hours.');field('error',state.error||'');
   const select=card.querySelector('select');const previous=state.previous||[];const selected=select.value;
   if(select.options.length===0||JSON.stringify([...select.options].map(option=>option.value).filter(Boolean))!==JSON.stringify(previous)){
@@ -59,7 +59,7 @@ async function action(id,command){
   const body=command==='rollback'?JSON.stringify({version:cards.get(id).querySelector('select').value}):'{}';
   const response=await fetch(`/api/updates/${id}/${command}`,{method:'POST',headers:{'Content-Type':'application/json'},body});
   if(!response.ok)throw Error(await response.text());
-  result.textContent=command==='check'?'Checking and staging the latest official release.':command==='cancel'?'Queued activation cancelled.':'Activation queued. It will apply after running sessions close.';result.dataset.failed='no';
+  result.textContent=command==='check'?'Checking and staging the latest release.':command==='cancel'?'Queued activation cancelled.':'Activation queued. It will apply after running sessions close.';result.dataset.failed='no';
  }catch(error){result.textContent='Unable to complete the action: '+error.message;result.dataset.failed='yes';}
  finally{acting=false;await refresh();}
 }

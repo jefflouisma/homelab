@@ -3,6 +3,7 @@ set -eu
 
 frontend="$(package-path emudeck --pin)"
 generate-ps5-shortcuts /Emulation/roms/ps5 /Emulation/storage/ps5-games >&2
+generate-ps5-shortcuts /Emulation/roms/ps5 /Emulation/storage/ps5plus-games >&2
 
 resolution="$(prepare-console-display)"
 set -- $resolution "$@"

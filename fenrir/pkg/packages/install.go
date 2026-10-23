@@ -54,7 +54,7 @@ func (i Installer) Install(ctx context.Context, component Component, release Rel
 	}
 	content := filepath.Join(tmp, "content")
 	switch component {
-	case Kyty:
+	case Kyty, PS5Plus:
 		if err := os.Mkdir(content, 0755); err != nil {
 			return fmt.Errorf("create extraction directory: %w", err)
 		}
@@ -128,7 +128,7 @@ func Probe(ctx context.Context, component Component, directory string) error {
 	defer cancel()
 	var cmd *exec.Cmd
 	switch component {
-	case Kyty:
+	case Kyty, PS5Plus:
 		cmd = exec.CommandContext(ctx, filepath.Join(directory, "kyty_emulator"), "--help")
 	case EmuDeck:
 		cmd = exec.CommandContext(ctx, "/lib64/ld-linux-x86-64.so.2", "--library-path", filepath.Join(directory, "usr/lib"), filepath.Join(directory, "AppRun"), "--help")
@@ -141,7 +141,7 @@ func Probe(ctx context.Context, component Component, directory string) error {
 	if err != nil {
 		return fmt.Errorf("executable probe: %w: %.2000s", err, output)
 	}
-	if component == Kyty {
+	if component == Kyty || component == PS5Plus {
 		for _, flag := range []string{"--game", "--fullscreen", "--screen-width", "--screen-height"} {
 			if !strings.Contains(string(output), flag) {
 				return fmt.Errorf("Kyty CLI contract is missing %s", flag)

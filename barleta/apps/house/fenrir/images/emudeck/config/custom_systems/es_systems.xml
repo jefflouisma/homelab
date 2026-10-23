@@ -34,4 +34,14 @@
         <platform>ps5</platform>
         <theme>ps5</theme>
     </system>
+    <system>
+        <!-- Same PS5 games, launched with the PS5Plus fork selected in Fenrir Updates -->
+        <name>ps5plus</name>
+        <fullname>Sony PlayStation 5 (PS5Plus)</fullname>
+        <path>/Emulation/storage/ps5plus-games</path>
+        <extension>.ps5 .PS5</extension>
+        <command label="PS5Plus (Standalone)">/usr/local/bin/ps5plus %ROM%</command>
+        <platform>ps5</platform>
+        <theme>ps5</theme>
+    </system>
 </systemList>

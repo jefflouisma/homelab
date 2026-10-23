@@ -140,7 +140,7 @@ func (m *Manager) Cancel(id Component) error {
 }
 
 func (m *Manager) Activate(ctx context.Context) error {
-	for _, id := range []Component{EmuDeck, Kyty} {
+	for _, id := range Components {
 		m.mu.Lock()
 		candidate := m.state.Components[id].Queued
 		m.mu.Unlock()
@@ -226,7 +226,7 @@ func (m *Manager) Run(ctx context.Context) {
 	defer checkTicker.Stop()
 	activationTicker := time.NewTicker(5 * time.Second)
 	defer activationTicker.Stop()
-	for _, id := range []Component{EmuDeck, Kyty} {
+	for _, id := range Components {
 		if err := m.Check(id); err != nil {
 			slog.ErrorContext(ctx, "schedule initial check", "error", err)
 		}
@@ -238,7 +238,7 @@ func (m *Manager) Run(ctx context.Context) {
 		case id := <-m.checks:
 			m.stage(ctx, id)
 		case <-checkTicker.C:
-			for _, id := range []Component{EmuDeck, Kyty} {
+			for _, id := range Components {
 				if err := m.Check(id); err != nil {
 					slog.WarnContext(ctx, "schedule release check", "error", err)
 				}

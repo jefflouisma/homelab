@@ -174,6 +174,7 @@ func TestHTTPRejectsUnknownAndUnretainedVersions(t *testing.T) {
 		{"/api/updates/kytyps5/rollback", `{"version":"../../other"}`, 409},
 		{"/api/updates/kytyps5/rollback", `{"version":""}`, 400},
 		{"/api/updates/kytyps5/rollback", `{"version":`, 409},
+		{"/api/updates/ps5plus/apply", "{}", 409},
 	} {
 		t.Run(tc.path+tc.body, func(t *testing.T) {
 			rec := httptest.NewRecorder()
@@ -193,4 +194,25 @@ func TestFailedProbeDoesNotReplaceWorkingPackage(t *testing.T) {
 	m.installer.Probe = func(context.Context, Component, string) error { return errors.New("loader failure") }
 	require.Error(t, m.Activate(t.Context()))
 	require.Equal(t, "old", snapshot(t, m).Components[Kyty].Active)
+}
+
+func TestStateFromBeforePS5PlusGainsAnEmptyComponent(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "state.json"), []byte(`{"components":{"emudeck":{"active":"v1","previous":[]},"kytyps5":{"active":"k1","previous":["k0"]}}}`), 0644))
+	m, err := New(root, Sources{}, Installer{Root: root}, nil)
+	require.NoError(t, err)
+	state := snapshot(t, m)
+	require.Equal(t, "k1", state.Components[Kyty].Active)
+	require.Equal(t, []string{"k0"}, state.Components[Kyty].Previous)
+	require.Equal(t, Status{Previous: []string{}}, state.Components[PS5Plus])
+	require.NoError(t, os.WriteFile(filepath.Join(root, "state.json"), []byte(`{"components":{"other":{}}}`), 0644))
+	_, err = New(root, Sources{}, Installer{Root: root}, nil)
+	require.ErrorContains(t, err, "unknown component")
+}
+
+func TestEveryComponentCanBeQueuedForCheckAtOnce(t *testing.T) {
+	m := newManager(t, func(context.Context) (int, error) { return 0, nil })
+	for _, id := range Components {
+		require.NoError(t, m.Check(id))
+	}
 }

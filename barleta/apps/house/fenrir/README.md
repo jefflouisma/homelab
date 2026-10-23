@@ -13,7 +13,7 @@ Fenrir is a Kubernetes-native adaptation of [Wolf (games-on-whales)](https://gam
 | `moonlight-proxy.yaml` | Entry point for Moonlight clients |
 | `emudeck-app.yaml` | Single Moonlight application: ES-DE, standalone emulators, and bundled RetroArch cores |
 | `storage.yaml` | PVCs for games and saves |
-| `packages.yaml` | Independent ES-DE and KytyPS5 package staging, activation and rollback |
+| `packages.yaml` | Independent ES-DE, KytyPS5 and PS5Plus package staging, activation and rollback |
 
 ## Quick Start (GitOps)
 
@@ -66,11 +66,11 @@ Profiles, configuration, emulator caches, and RPCS3/shadPS4 saves persist on eac
 
 The standalone RetroArch Moonlight application is retired. Existing `<user>-retroarch` profile PVCs and shared save files are retained; retirement does not delete or automatically migrate game progress. Preserve those volumes when cleaning up application resources.
 
-## EmuDeck and KytyPS5 updates
+## EmuDeck, KytyPS5 and PS5Plus updates
 
-Open **[Updates](http://192.168.1.221:47989/updates)** from the pairing dashboard. The EmuDeck control updates its ES-DE frontend; KytyPS5 has a separate control. Other bundled emulators and the base runtime remain managed by the image workflows.
+Open **[Updates](http://192.168.1.221:47989/updates)** from the pairing dashboard. The EmuDeck control updates its ES-DE frontend; KytyPS5 and PS5Plus have separate controls. Other bundled emulators and the base runtime remain managed by the image workflows.
 
-The package manager checks official GitLab ES-DE x64 AppImages and official GitHub KytyPS5 Linux releases on startup and every six hours. Checks resolve actual release assets and their upstream SHA-256 digests, download and extract into a staging directory, and run a bounded CLI/dependency check. Only verified packages appear as staged. **Check now** performs the same operation immediately. This launch check does not certify a game's compatibility or performance.
+The package manager checks official GitLab ES-DE x64 AppImages, official GitHub KytyPS5 Linux releases and [PS5Plus](https://github.com/jefflouisma/PS5Plus) Linux releases on startup and every six hours. Checks resolve actual release assets and their upstream SHA-256 digests, download and extract into a staging directory, and run a bounded CLI/dependency check. Only verified packages appear as staged. **Check now** performs the same operation immediately. This launch check does not certify a game's compatibility or performance.
 
 The original ES-DE 3.5.0 package is copied from the pinned bootstrap image into the package volume before updates start. Rollback therefore retains its original bytes even when a later container image changes its bundled frontend. Superseded staged packages are removed; the active version, current stage, queue and previous three versions are retained.
 
@@ -79,6 +79,8 @@ Choose **Update** to queue activation. It waits for Session resources and EmuDec
 Put extracted PS5 game directories containing `eboot.bin` and `sce_sys/param.json`, or `.zar` game dumps, in `fenrir-games/ps5`. At launch, EmuDeck generates named PS5 entries and invokes `kytyps5` with the negotiated Moonlight width/height and fullscreen presentation. Existing stream, GPU and controller device configuration is reused. These presentation flags do not force a game's internal rendering resolution.
 
 Kyty's writable working directory is `$HOME/.local/share/kytyps5` on the user's persistent EmuDeck profile. Its `_SaveData` and other guest data remain separate from the versioned executable and survive program rollback. Scratch files use `/Volumes/4TB_Drive/tmp/kytyps5`; the package PVC is mounted under `/Volumes/4TB_Drive/tmp/fenrir-packages`, and updater scratch uses the same approved temporary root. The upstream GUI self-updater is not used for these read-only, centrally selected installations.
+
+PS5Plus is a KytyPS5 fork developed on macOS and merged with upstream nightly; its repository describes that workflow. Each push to its `main` publishes a Linux release in the same tarball layout and command-line contract as KytyPS5. It is a separate `ps5plus` component with its own staging, activation and rollback. ES-DE lists the same `fenrir-games/ps5` titles under **Sony PlayStation 5 (PS5Plus)**, launched through `ps5plus`. That launcher shares the KytyPS5 wrapper but selects the PS5Plus package and keeps guest data and saves in `$HOME/.local/share/ps5plus`, with scratch files in `/Volumes/4TB_Drive/tmp/ps5plus`. Experimental builds therefore never touch KytyPS5 saves. PS5Plus's `scripts/validate-g913.sh` waits for a release, then stages and queues it through this page's API.
 
 EmuDeck selects Qt's PulseAudio backend explicitly to match the streaming audio service. RPCS3 build 0.0.43-20344 crashes in Qt Multimedia during game startup when this setting is omitted in this container.
 

@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from xml.etree import ElementTree
 
 from emulator_test_support import stage_display_helpers
 
@@ -66,37 +67,64 @@ class PS5PackageTests(unittest.TestCase):
             self.assertTrue(any(link.name.startswith("A Game _ Name") for link in links))
 
     def test_kyty_launch_uses_stream_dimensions_and_separate_data(self) -> None:
+        for component in ("kytyps5", "ps5plus"):
+            with self.subTest(component=component), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                stage_display_helpers(root / "bin")
+                package = root / f"bin/packages/{component}/daily"
+                package.mkdir(parents=True)
+                (package / ".verified").write_text("digest")
+                capture = root / "args"
+                binary = package / "kyty_emulator"
+                binary.write_text('#!/bin/sh\nprintf "%s\\n" "$PWD" "$@" > "$CAPTURE"\n')
+                binary.chmod(0o755)
+                (root / "bin/packages/state.json").write_text(json.dumps({
+                    "components": {component: {"active": "daily"}},
+                }))
+                subprocess.run([str(root / "bin/package-path"), "emudeck", "--pin"],
+                               check=True, capture_output=True)
+                game = root / "A Game.zar"
+                game.touch()
+                wrapper = root / f"{component}.sh"
+                wrapper.write_text((SOURCE / "kytyps5.sh").read_text().replace(
+                    "/Volumes/4TB_Drive/tmp/", str(root / "runtime") + "/",
+                ))
+                env = dict(os.environ, HOME=str(root / "profile"), CAPTURE=str(capture),
+                           GAMESCOPE_WIDTH="3840", GAMESCOPE_HEIGHT="2160",
+                           PATH=str(root / "bin") + os.pathsep + os.environ["PATH"])
+                subprocess.run(["sh", str(wrapper), str(game)], env=env, check=True)
+                args = capture.read_text().splitlines()
+                self.assertEqual(args[0], str(root / f"profile/.local/share/{component}"))
+                self.assertEqual(args[1:8], ["--game", str(game), "--fullscreen",
+                                          "--screen-width", "3840", "--screen-height", "2160"])
+                self.assertTrue((root / f"profile/.local/share/{component}/_TempData").is_symlink())
+                self.assertTrue((root / f"runtime/{component}/logs").is_dir())
+
+    def test_ps5plus_without_an_active_release_names_itself(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             stage_display_helpers(root / "bin")
-            package = root / "bin/packages/kytyps5/daily"
-            package.mkdir(parents=True)
-            (package / ".verified").write_text("digest")
-            capture = root / "args"
-            binary = package / "kyty_emulator"
-            binary.write_text('#!/bin/sh\nprintf "%s\\n" "$PWD" "$@" > "$CAPTURE"\n')
-            binary.chmod(0o755)
+            (root / "bin/packages").mkdir()
             (root / "bin/packages/state.json").write_text(json.dumps({
-                "components": {"kytyps5": {"active": "daily"}},
+                "components": {"kytyps5": {"active": "daily"}, "ps5plus": {"active": ""}},
             }))
-            subprocess.run([str(root / "bin/package-path"), "emudeck", "--pin"],
-                           check=True, capture_output=True)
-            game = root / "A Game.zar"
-            game.touch()
-            wrapper = root / "kytyps5.sh"
-            wrapper.write_text((SOURCE / "kytyps5.sh").read_text().replace(
-                "/Volumes/4TB_Drive/tmp/kytyps5", str(root / "runtime"),
-            ))
-            env = dict(os.environ, HOME=str(root / "profile"), CAPTURE=str(capture),
-                       GAMESCOPE_WIDTH="3840", GAMESCOPE_HEIGHT="2160",
-                       PATH=str(root / "bin") + os.pathsep + os.environ["PATH"])
-            subprocess.run(["sh", str(wrapper), str(game)], env=env, check=True)
-            args = capture.read_text().splitlines()
-            self.assertEqual(args[0], str(root / "profile/.local/share/kytyps5"))
-            self.assertEqual(args[1:8], ["--game", str(game), "--fullscreen",
-                                      "--screen-width", "3840", "--screen-height", "2160"])
-            self.assertTrue((root / "profile/.local/share/kytyps5/_TempData").is_symlink())
+            selector = root / "bin/package-path"
+            subprocess.run([str(selector), "emudeck", "--pin"], check=True, capture_output=True)
+            result = subprocess.run([str(selector), "ps5plus"], capture_output=True, text=True, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("PS5Plus is not installed", result.stderr)
 
+    def test_ps5plus_is_a_separate_es_de_system_for_the_same_games(self) -> None:
+        systems = ElementTree.parse(SOURCE / "config/custom_systems/es_systems.xml").getroot()
+        commands = {system.findtext("name"): system.findtext("command") for system in systems}
+        self.assertEqual(commands["ps5"], "/usr/local/bin/kytyps5 %ROM%")
+        self.assertEqual(commands["ps5plus"], "/usr/local/bin/ps5plus %ROM%")
+        launcher = (SOURCE / "es-de.sh").read_text()
+        for system in ("ps5", "ps5plus"):
+            path = next(s.findtext("path") for s in systems if s.findtext("name") == system)
+            self.assertIn(f"generate-ps5-shortcuts /Emulation/roms/ps5 {path}", launcher)
+        self.assertIn("COPY --chmod=755 kytyps5.sh /usr/local/bin/ps5plus",
+                      (SOURCE / "Dockerfile").read_text())
 
 if __name__ == "__main__":
     unittest.main()

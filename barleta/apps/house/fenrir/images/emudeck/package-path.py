@@ -8,11 +8,12 @@ from typing import Final
 
 ROOT: Final = Path("/Volumes/4TB_Drive/tmp/fenrir-packages")
 SELECTION: Final = Path("/Volumes/4TB_Drive/tmp/fenrir-session/packages.json")
+NAMES: Final = {"emudeck": "EmuDeck", "kytyps5": "KytyPS5", "ps5plus": "PS5Plus"}
 
 
 def main() -> None:
     component = sys.argv[1]
-    if component not in {"emudeck", "kytyps5"}:
+    if component not in NAMES:
         sys.exit("Unknown package")
     if len(sys.argv) > 2 and sys.argv[2] == "--pin":
         SELECTION.parent.mkdir(parents=True, exist_ok=True)
@@ -24,7 +25,7 @@ def main() -> None:
         print("/opt/es-de")
         return
     if not isinstance(version, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,100}", version):
-        sys.exit("KytyPS5 is not installed. Open Fenrir Updates and activate a verified release.")
+        sys.exit(f"{NAMES[component]} is not installed. Open Fenrir Updates and activate a verified release.")
     path = ROOT / component / version
     if not (path / ".verified").is_file():
         sys.exit(f"Selected {component} package is unavailable: {version}")
