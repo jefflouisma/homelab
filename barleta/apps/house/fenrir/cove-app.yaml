@@ -22,7 +22,7 @@ spec:
         - 996
       containers:
       - name: cove
-        image: ghcr.io/jefflouisma/fenrir-cove:73d8d30
+        image: ghcr.io/jefflouisma/fenrir-cove:75ea1fb
         command:
         - /usr/local/bin/start-cove
         resources:
