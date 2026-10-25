@@ -10,10 +10,14 @@ import sys
 import zipfile
 
 root = Path(sys.argv[1])
-jars = list((root / 'lib/app').glob('desktop-*.jar'))
+entry = 'com/coveninja/cove/desktop/player/SoftwareRenderParameters.class'
+jars = []
+for candidate in (root / 'lib/app').glob('desktop-*.jar'):
+    with zipfile.ZipFile(candidate) as archive:
+        if entry in archive.namelist():
+            jars.append(candidate)
 assert len(jars) == 1, 'Expected the pinned Cove desktop artifact'
 jar = jars[0]
-entry = 'com/coveninja/cove/desktop/player/SoftwareRenderParameters.class'
 old = b'\x00\x04bgr0'
 new = b'\x00\x04bgra'
 target = jar.with_suffix('.alpha-tmp')
