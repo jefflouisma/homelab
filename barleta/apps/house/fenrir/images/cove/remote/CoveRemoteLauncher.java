@@ -57,7 +57,7 @@ public final class CoveRemoteLauncher {
         private final Robot robot = new Robot();
         private final Timer holdTimer;
         private boolean enabled = true;
-        private Point warpTarget;
+        private long nextRecenterWarning;
         private Window pressedWindow;
         private RemoteMenu menu;
 
@@ -100,7 +100,6 @@ public final class CoveRemoteLauncher {
                         enabled = !enabled;
                         holdTimer.stop();
                         input.cancel();
-                        warpTarget = null;
                         for (Window window : Window.getWindows()) setCursor(window);
                         System.out.println("Cove remote: " + (enabled ? "remote navigation" : "normal mouse"));
                     }
@@ -144,21 +143,22 @@ public final class CoveRemoteLauncher {
                 }
                 case MouseEvent.MOUSE_MOVED, MouseEvent.MOUSE_DRAGGED -> {
                     Point point = mouse.getLocationOnScreen();
-                    if (warpTarget != null) {
-                        if (warpTarget.distance(point) < 3) {
-                            input.anchor(point.x, point.y);
-                            warpTarget = null;
-                        }
-                        return true;
-                    }
+                    long now = System.nanoTime() / 1_000_000;
                     Rectangle bounds = window.getGraphicsConfiguration().getBounds();
-                    int key = input.move(point.x, point.y, mouse.getWhen(), Math.max(18, bounds.height / 30));
+                    int timeouts = input.recenterTimeouts();
+                    int key = input.move(point.x, point.y, now, Math.max(18, bounds.height / 30));
+                    if (input.recenterTimeouts() != timeouts && now >= nextRecenterWarning) {
+                        nextRecenterWarning = now + 30_000;
+                        System.out.println("Cove remote: pointer recenter acknowledgement missed; resumed swipe input");
+                    }
                     if (key != 0) tap(key);
                     // Relative swipes must keep working after the pointer reaches an edge.
-                    if (point.x < bounds.x + 8 || point.x > bounds.x + bounds.width - 8
-                            || point.y < bounds.y + 8 || point.y > bounds.y + bounds.height - 8) {
-                        warpTarget = new Point(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-                        robot.mouseMove(warpTarget.x, warpTarget.y);
+                    int margin = 32;
+                    if (!input.isRecentering() && (point.x < bounds.x + margin || point.x > bounds.x + bounds.width - margin
+                            || point.y < bounds.y + margin || point.y > bounds.y + bounds.height - margin)) {
+                        int centerX = bounds.x + bounds.width / 2, centerY = bounds.y + bounds.height / 2;
+                        input.recenter(point.x, point.y, centerX, centerY, now);
+                        robot.mouseMove(centerX, centerY);
                     }
                 }
                 case MouseEvent.MOUSE_ENTERED -> input.anchor(mouse.getXOnScreen(), mouse.getYOnScreen());

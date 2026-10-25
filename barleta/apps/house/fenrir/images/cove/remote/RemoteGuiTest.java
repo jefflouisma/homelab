@@ -11,6 +11,8 @@ public final class RemoteGuiTest {
     private static JTextField field;
     private static JButton button;
     private static final AtomicInteger activations = new AtomicInteger();
+    private static final AtomicInteger rightSteps = new AtomicInteger();
+    private static final AtomicInteger leftSteps = new AtomicInteger();
     private static Robot robot;
 
     private static void check(boolean ok, String message) {
@@ -39,6 +41,21 @@ public final class RemoteGuiTest {
         return found[0];
     }
 
+    private static void swipeAcrossEdges(int direction, AtomicInteger steps) throws Exception {
+        Rectangle screen = frame.getGraphicsConfiguration().getBounds();
+        robot.mouseMove(screen.x + screen.width / 2, screen.y + screen.height * 3 / 4);
+        waitForUi();
+        int halfway = 0;
+        for (int i = 0; i < 120; i++) {
+            Point position = MouseInfo.getPointerInfo().getLocation();
+            robot.mouseMove(Math.max(screen.x, Math.min(screen.x + screen.width - 1, position.x + direction * 20)), position.y);
+            Thread.sleep(12); // Continuous motion can coalesce the exact warp acknowledgement.
+            if (i == 59) halfway = steps.get();
+        }
+        waitForUi();
+        check(steps.get() >= halfway + 2, "continuous swipes must keep navigating after repeated screen edges");
+    }
+
     public static void main(String[] arguments) throws Exception {
         try {
             EventQueue.invokeAndWait(() -> {
@@ -48,6 +65,12 @@ public final class RemoteGuiTest {
                 field = new JTextField("original");
                 button = new JButton("Select this focused button");
                 button.addActionListener(event -> activations.incrementAndGet());
+                button.addKeyListener(new KeyAdapter() {
+                    @Override public void keyPressed(KeyEvent event) {
+                        if (event.getKeyCode() == KeyEvent.VK_RIGHT) rightSteps.incrementAndGet();
+                        if (event.getKeyCode() == KeyEvent.VK_LEFT) leftSteps.incrementAndGet();
+                    }
+                });
                 // Cove's clickable TV controls also activate on Enter, unlike plain Swing buttons.
                 button.getInputMap().put(KeyStroke.getKeyStroke("released ENTER"), "activate");
                 button.getActionMap().put("activate", new AbstractAction() {
@@ -84,6 +107,16 @@ public final class RemoteGuiTest {
             check(!menuVisible(), "Back closes the remote menu");
             EventQueue.invokeAndWait(() -> removeBack[0].run());
 
+            EventQueue.invokeAndWait(() -> {
+                frame.setBounds(frame.getGraphicsConfiguration().getBounds());
+                button.requestFocusInWindow();
+            });
+            waitForUi();
+            robot.setAutoDelay(0);
+            swipeAcrossEdges(1, rightSteps);
+            swipeAcrossEdges(-1, leftSteps);
+            robot.setAutoDelay(30);
+
             EventQueue.invokeAndWait(() -> field.requestFocusInWindow());
             waitForUi();
             center(true);
@@ -102,10 +135,11 @@ public final class RemoteGuiTest {
             check("qw".equals(actual[0]), "remote keyboard must replace focused text; actual=" + actual[0]);
             check(!menuVisible(), "Done restores the application");
             key(KeyEvent.VK_F8);
-            robot.mouseMove(500, 550);
+            Point buttonPoint = button.getLocationOnScreen();
+            robot.mouseMove(buttonPoint.x + button.getWidth() / 2, buttonPoint.y + button.getHeight() / 2);
             center(false);
             check(activations.get() == 2, "F8 restores normal pointer clicking");
-            System.out.println("PASS remote center, hold, release, keyboard, focus restoration and mouse fallback");
+            System.out.println("PASS remote center, hold, Back, continuous edge swipes, keyboard, focus restoration and mouse fallback");
         } finally {
             EventQueue.invokeAndWait(() -> {
                 for (Window window : Window.getWindows()) window.dispose();
