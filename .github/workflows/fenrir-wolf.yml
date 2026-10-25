@@ -27,6 +27,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Test controller lifetime
+        env:
+          TMPDIR: /Volumes/4TB_Drive/tmp/fenrir-controller-test
+        run: |
+          sudo mkdir -p "$TMPDIR"
+          sudo chown "$(id -u):$(id -g)" "$TMPDIR"
+          c++ -std=c++17 -Wall -Wextra -Werror -Ifenrir/images/wolf/src/moonlight-server \
+            fenrir/images/wolf/tests/controller_lifecycle_test.cpp -o "$TMPDIR/controller-test"
+          "$TMPDIR/controller-test"
+
       - name: Tag
         id: vars
         run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"

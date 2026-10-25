@@ -583,12 +583,17 @@ void controller_multi(const CONTROLLER_MULTI_PACKET &pkt,
                       events::StreamSession &session,
                       immer::box<std::shared_ptr<ENetPeer>> connected_client) {
   auto joypads = session.joypads->load();
+  const bool has_input = pkt.button_flags || pkt.buttonFlags2 || pkt.left_trigger || pkt.right_trigger ||
+                         pkt.left_stick_x || pkt.left_stick_y || pkt.right_stick_x || pkt.right_stick_y;
+  const auto action = session.controller_lifecycle->update(
+      pkt.controller_number, pkt.active_gamepad_mask, joypads->find(pkt.controller_number) != nullptr, has_input);
+  if (action == ControllerLifecycle::Action::ignore) return;
   std::shared_ptr<events::JoypadTypes> selected_pad;
   if (auto joypad = joypads->find(pkt.controller_number)) {
     selected_pad = std::move(*joypad);
 
     // Check if Moonlight is sending the final packet for this pad
-    if (!(pkt.active_gamepad_mask & (1 << pkt.controller_number))) {
+    if (action == ControllerLifecycle::Action::remove) {
       logs::log(logs::debug, "Removing joypad {}", pkt.controller_number);
       // Send the event downstream, Docker will pick it up and remove the device
       events::UnplugDeviceEvent unplug_ev{.session_id = std::to_string(session.session_id)};
@@ -602,6 +607,7 @@ void controller_multi(const CONTROLLER_MULTI_PACKET &pkt,
 
       // Remove the joypad, this will delete the last reference
       session.joypads->update([&](events::JoypadList joypads) { return joypads.erase(pkt.controller_number); });
+      return;
     }
   } else {
     // Old Moonlight doesn't support CONTROLLER_ARRIVAL, we create a default pad when it's first mentioned

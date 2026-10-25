@@ -7,6 +7,7 @@
 #include <core/audio.hpp>
 #include <core/input.hpp>
 #include <core/virtual-display.hpp>
+#include <control/controller_lifecycle.hpp>
 #include <cstddef>
 #include <eventbus/event_bus.hpp>
 #include <helpers/tsqueue.hpp>
@@ -436,6 +437,7 @@ struct StreamSession {
       std::make_shared<std::optional<TouchScreenTypes>>(); /* Now added at the start */
 
   std::shared_ptr<immer::atom<JoypadList>> joypads = std::make_shared<immer::atom<JoypadList>>();
+  std::shared_ptr<control::ControllerLifecycle> controller_lifecycle = std::make_shared<control::ControllerLifecycle>();
 
   std::shared_ptr<std::optional<input::PenTablet>> pen_tablet =
       std::make_shared<std::optional<input::PenTablet>>(); /* Optional, will be set on first use */
