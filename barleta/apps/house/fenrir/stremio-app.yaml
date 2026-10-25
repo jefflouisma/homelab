@@ -22,7 +22,7 @@ spec:
       containers:
         - name: stremio
           image: ghcr.io/jefflouisma/fenrir-stremio:78d875e
-          command: [/usr/local/bin/start-stremio]
+          command: [/usr/local/bin/start-stremio, --disable-gpu, --disable-gpu-compositing]
           resources:
             requests:
               cpu: "500m"
