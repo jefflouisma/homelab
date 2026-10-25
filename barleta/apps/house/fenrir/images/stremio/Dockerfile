@@ -6,7 +6,7 @@ ARG STREMIO_SHA256=1028f1a38a70fc66bfcda1c8a9e1674231e17ac81774fc48859ed8f53c7a6
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl pulseaudio-utils qtwayland5 \
-      fonts-dejavu-core fonts-noto-color-emoji dbus-x11 \
+      fonts-dejavu-core fonts-noto-color-emoji dbus-x11 xdg-utils \
       python3 python3-websocket ffmpeg \
     && curl -fL "https://dl.strem.io/shell-linux/v${STREMIO_VERSION}/stremio_${STREMIO_VERSION}-1_amd64.deb" -o /tmp/stremio.deb \
     && echo "${STREMIO_SHA256}  /tmp/stremio.deb" | sha256sum -c - \
