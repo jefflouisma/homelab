@@ -151,9 +151,10 @@ def confirm_release(actions, pads, owned, remove, now):
     invalid = {}
     for path in list(pads):
         identity = pads[path][2]
+        if owned.get(path) != identity:
+            remove(path)
+            continue
         try:
-            if owned.get(path) != identity:
-                raise ConnectionError("controller no longer belongs to this stream")
             pads[path][0].active_keys()
         except OSError:
             remove(path)

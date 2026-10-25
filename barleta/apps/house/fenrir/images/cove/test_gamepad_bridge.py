@@ -70,7 +70,8 @@ class GamepadBridgeTest(unittest.TestCase):
                 def remove(device_path):
                     pads.pop(device_path)
                     actions.cancel()
-                bridge.confirm_release(actions, pads, owned, remove, .2)
+                ignored = bridge.confirm_release(actions, pads, owned, remove, .2)
+                self.assertEqual(ignored, {}, "inventory outages must allow the same live device to recover")
                 if owned.get(path) == identity:
                     self.assertEqual(sent[-1], "SELECT_UP")
                 else:
