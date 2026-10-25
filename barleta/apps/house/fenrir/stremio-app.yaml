@@ -22,7 +22,10 @@ spec:
       containers:
         - name: stremio
           image: ghcr.io/jefflouisma/fenrir-stremio:78d875e
-          command: [/usr/local/bin/start-stremio, --disable-gpu, --disable-gpu-compositing]
+          command: [/usr/local/bin/start-stremio, --webEngineArgs, --disable-gpu, --disable-gpu-compositing]
+          env:
+            - name: QSG_RENDER_LOOP
+              value: basic
           resources:
             requests:
               cpu: "500m"
