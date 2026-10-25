@@ -85,6 +85,7 @@ func main() {
 
 	// Spin up HTTPS server with self-signed certificate to service the wolf.sock
 	mux := http.NewServeMux()
+	mux.HandleFunc("/input-devices", agentController.ServeInputDevices)
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if agentController.Ready() {
 			w.WriteHeader(http.StatusOK)

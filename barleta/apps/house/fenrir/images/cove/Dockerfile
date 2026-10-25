@@ -23,7 +23,7 @@ LABEL org.opencontainers.image.source="https://github.com/jefflouisma/homelab"
 LABEL org.opencontainers.image.description="Cove media player for Fenrir and Moonlight"
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl python3 pulseaudio-utils dbus-x11 \
+      ca-certificates curl python3 python3-evdev pulseaudio-utils dbus-x11 \
       xwayland openbox x11-utils x11-xserver-utils xdotool \
       libmpv2 libgtk-3-0t64 libasound2t64 libatomic1 \
       libgl1 libegl1 libgbm1 libgl1-mesa-dri \
@@ -38,6 +38,7 @@ COPY --from=cove-release /release/ /usr/
 COPY start-cove.sh /usr/local/bin/start-cove
 COPY install-torrentio.py /usr/local/lib/fenrir/install-torrentio.py
 COPY init-remote-pointer.py /usr/local/lib/fenrir/init-remote-pointer.py
+COPY gamepad-bridge.py /usr/local/lib/fenrir/gamepad-bridge.py
 COPY openbox.xml /etc/fenrir/openbox.xml
 COPY patch-video-alpha.py /usr/local/lib/fenrir/patch-video-alpha.py
 COPY video-alpha.patch /usr/share/doc/cove/video-alpha.patch

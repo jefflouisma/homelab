@@ -4,6 +4,11 @@ import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.InvocationTargetException;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import javax.swing.*;
@@ -41,7 +46,9 @@ public final class CoveRemoteLauncher {
         if (!"1".equals(System.getenv("COVE_REMOTE_INPUT"))) return;
         EventQueue.invokeLater(() -> {
             try {
-                Toolkit.getDefaultToolkit().getSystemEventQueue().push(new RemoteQueue());
+                RemoteQueue queue = new RemoteQueue();
+                Toolkit.getDefaultToolkit().getSystemEventQueue().push(queue);
+                queue.startControllerBridge();
                 System.out.println("Cove remote: enabled (center selects; hold center for Back and keyboard; F8 toggles mouse)");
             } catch (Exception error) {
                 System.err.println("Cove remote: could not initialize: " + error);
@@ -51,11 +58,15 @@ public final class CoveRemoteLauncher {
 
     static final class RemoteQueue extends EventQueue {
         private final RemoteInput input = new RemoteInput();
+        private final RemoteInput controllerInput = new RemoteInput();
         private final Map<Window, Cursor> cursors = new IdentityHashMap<>();
         private final Cursor hidden = Toolkit.getDefaultToolkit().createCustomCursor(
                 new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB), new Point(), "Cove remote");
         private final Robot robot = new Robot();
         private final Timer holdTimer;
+        private final Timer controllerHoldTimer;
+        private volatile Process controllerBridge;
+        private volatile boolean stopping;
         private boolean enabled = true;
         private long nextRecenterWarning;
         private Window pressedWindow;
@@ -66,7 +77,80 @@ public final class CoveRemoteLauncher {
                 if (input.hold() && pressedWindow != null && pressedWindow.isFocused()) showMenu(pressedWindow);
             });
             holdTimer.setRepeats(false);
+            controllerHoldTimer = new Timer((int) RemoteInput.HOLD_MS, event -> {
+                Window owner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow();
+                if (owner != null && owner.isFocused() && controllerInput.hold()) showMenu(owner);
+            });
+            controllerHoldTimer.setRepeats(false);
             for (Window window : Window.getWindows()) setCursor(window);
+        }
+
+        private void cancelController() {
+            controllerHoldTimer.stop();
+            controllerInput.cancel();
+        }
+
+        // Called on the EDT; controller events never become host-wide X11 input.
+        void controller(String action) {
+            if ("CANCEL".equals(action)) { cancelController(); return; }
+            Window window = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow();
+            if (!enabled || window == null || !window.isFocused()) { cancelController(); return; }
+            switch (action) {
+                case "UP" -> tap(KeyEvent.VK_UP);
+                case "DOWN" -> tap(KeyEvent.VK_DOWN);
+                case "LEFT" -> tap(KeyEvent.VK_LEFT);
+                case "RIGHT" -> tap(KeyEvent.VK_RIGHT);
+                case "SELECT_DOWN" -> { if (controllerInput.press()) controllerHoldTimer.restart(); }
+                case "SELECT_UP" -> {
+                    controllerHoldTimer.stop();
+                    if (controllerInput.release()) tap(KeyEvent.VK_ENTER);
+                }
+                case "BACK" -> {
+                    cancelController();
+                    if (window instanceof RemoteMenu || !handleBack()) tap(KeyEvent.VK_ESCAPE);
+                }
+                default -> { }
+            }
+        }
+
+        private void startControllerBridge() {
+            Path helper = Path.of("/usr/local/lib/fenrir/gamepad-bridge.py");
+            if (!Files.isRegularFile(helper)) return;
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                stopping = true;
+                Process child = controllerBridge;
+                if (child != null) child.destroy();
+            }, "cove-gamepad-stop"));
+            Thread reader = new Thread(() -> {
+                while (!stopping) {
+                    try {
+                        Process child = new ProcessBuilder("python3", "-u", helper.toString())
+                                .redirectError(ProcessBuilder.Redirect.INHERIT).start();
+                        controllerBridge = child;
+                        child.getOutputStream().close();
+                        try (BufferedReader lines = new BufferedReader(new InputStreamReader(child.getInputStream(), StandardCharsets.UTF_8))) {
+                            String line;
+                            while ((line = lines.readLine()) != null) {
+                                String action = line;
+                                EventQueue.invokeLater(() -> controller(action));
+                            }
+                        }
+                        child.waitFor();
+                    } catch (Exception error) {
+                        if (!stopping) System.err.println("Cove gamepad: bridge stopped: " + error);
+                    } finally {
+                        Process child = controllerBridge;
+                        if (child != null && child.isAlive()) child.destroy();
+                        EventQueue.invokeLater(this::cancelController);
+                    }
+                    if (!stopping) {
+                        System.err.println("Cove gamepad: restarting input bridge");
+                        try { Thread.sleep(1000); } catch (InterruptedException error) { return; }
+                    }
+                }
+            }, "cove-gamepad-input");
+            reader.setDaemon(true);
+            reader.start();
         }
 
         private void setCursor(Window window) {
@@ -93,6 +177,7 @@ public final class CoveRemoteLauncher {
                     if (windowEvent.getID() == WindowEvent.WINDOW_LOST_FOCUS) {
                         holdTimer.stop();
                         input.cancel();
+                        cancelController();
                     }
                 }
                 if (event instanceof KeyEvent key && key.getKeyCode() == KeyEvent.VK_F8) {
@@ -100,6 +185,7 @@ public final class CoveRemoteLauncher {
                         enabled = !enabled;
                         holdTimer.stop();
                         input.cancel();
+                        cancelController();
                         for (Window window : Window.getWindows()) setCursor(window);
                         System.out.println("Cove remote: " + (enabled ? "remote navigation" : "normal mouse"));
                     }
@@ -111,6 +197,7 @@ public final class CoveRemoteLauncher {
                 enabled = false;
                 holdTimer.stop();
                 input.cancel();
+                cancelController();
                 for (Window window : Window.getWindows()) setCursor(window);
                 System.err.println("Cove remote: disabled after input error: " + error);
             }

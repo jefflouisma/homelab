@@ -31,6 +31,11 @@ public final class RemoteGuiTest {
         robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
         waitForUi();
     }
+    private static void controller(String action) throws Exception {
+        EventQueue.invokeAndWait(() -> ((CoveRemoteLauncher.RemoteQueue) Toolkit.getDefaultToolkit()
+                .getSystemEventQueue()).controller(action));
+        waitForUi();
+    }
     private static boolean menuVisible() throws Exception {
         boolean[] found = {false};
         EventQueue.invokeAndWait(() -> {
@@ -97,6 +102,25 @@ public final class RemoteGuiTest {
             key(KeyEvent.VK_ESCAPE);
             check(!menuVisible(), "menu can be cancelled");
 
+            controller("SELECT_DOWN");
+            controller("SELECT_UP");
+            check(activations.get() == 2, "Android TV OK selects the focused control");
+            controller("SELECT_DOWN");
+            controller("CANCEL");
+            controller("SELECT_UP");
+            check(activations.get() == 2, "disconnect cancellation cannot select on release");
+            controller("SELECT_DOWN");
+            Thread.sleep(1000);
+            controller("SELECT_UP");
+            check(menuVisible() && activations.get() == 2, "held Android TV OK opens controls without selecting on release");
+            controller("BACK");
+            check(!menuVisible(), "controller Back cancels the remote menu first");
+            EventQueue.invokeAndWait(() -> button.requestFocusInWindow());
+            int oldRight = rightSteps.get(), oldLeft = leftSteps.get();
+            controller("RIGHT");
+            controller("LEFT");
+            check(rightSteps.get() == oldRight + 1 && leftSteps.get() == oldLeft + 1, "controller D-pad produces TV direction keys");
+
             AtomicInteger backs = new AtomicInteger();
             Runnable[] removeBack = {null};
             EventQueue.invokeAndWait(() -> removeBack[0] = CoveRemoteLauncher.registerBackHandler(backs::incrementAndGet));
@@ -105,6 +129,8 @@ public final class RemoteGuiTest {
             waitForUi();
             check(backs.get() == 1, "remote Back invokes the active navigation callback exactly once");
             check(!menuVisible(), "Back closes the remote menu");
+            controller("BACK");
+            check(backs.get() == 2, "controller Back invokes Cove navigation directly");
             EventQueue.invokeAndWait(() -> removeBack[0].run());
 
             EventQueue.invokeAndWait(() -> {
@@ -138,7 +164,7 @@ public final class RemoteGuiTest {
             Point buttonPoint = button.getLocationOnScreen();
             robot.mouseMove(buttonPoint.x + button.getWidth() / 2, buttonPoint.y + button.getHeight() / 2);
             center(false);
-            check(activations.get() == 2, "F8 restores normal pointer clicking");
+            check(activations.get() == 3, "F8 restores normal pointer clicking");
             System.out.println("PASS remote center, hold, Back, continuous edge swipes, keyboard, focus restoration and mouse fallback");
         } finally {
             EventQueue.invokeAndWait(() -> {

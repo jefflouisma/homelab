@@ -17,6 +17,7 @@ var ErrEventStreamClosed = errors.New("wolf event stream closed")
 type Agent struct {
 	WolfClient wolfapi.Client
 	ready      atomic.Bool
+	input      inputDevices
 }
 
 func NewAgent(wolfClient wolfapi.Client) *Agent {
@@ -32,6 +33,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer a.ready.Store(false)
+	defer a.clearInputDevices()
 
 	ch, err := a.WolfClient.SubscribeToEvents(ctx)
 	if err != nil {
@@ -52,6 +54,13 @@ func (a *Agent) Run(ctx context.Context) error {
 				return ErrEventStreamClosed
 			}
 			switch wolfapi.WolfEventType(ev.Event) {
+			case wolfapi.PlugDeviceEventType, wolfapi.UnplugDeviceEventType:
+				var deviceEvent wolfapi.PlugDeviceEvent
+				if err := json.Unmarshal(ev.Data, &deviceEvent); err != nil {
+					utilruntime.HandleError(fmt.Errorf("failed to unmarshal input device event: %w", err))
+					continue
+				}
+				a.updateInputDevices(deviceEvent, wolfapi.WolfEventType(ev.Event) == wolfapi.PlugDeviceEventType)
 			case wolfapi.PauseStreamEventType:
 				var pauseEvent wolfapi.PauseStreamEvent
 				if err := json.Unmarshal(ev.Data, &pauseEvent); err != nil {
@@ -61,6 +70,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				if err := a.WolfClient.StopSession(ctx, pauseEvent.SessionID); err != nil {
 					return fmt.Errorf("stop paused session: %w", err)
 				}
+				a.removeSessionDevices(pauseEvent.SessionID)
 			}
 		}
 	}
