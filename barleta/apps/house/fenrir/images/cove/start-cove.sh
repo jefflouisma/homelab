@@ -29,6 +29,10 @@ if [[ -n "$sink" ]]; then export PULSE_SINK="$sink"; fi
 
 # Compose Desktop uses AWT/X11. A rootful Xwayland window bridges it to Wolf's
 # Wayland compositor; Openbox keeps the TV shell at the negotiated stream size.
+export WAYLAND_DISPLAY="$wayland_socket"
+export XDG_RUNTIME_DIR="$TMPDIR/runtime"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
 export DISPLAY=:0
 width="${GAMESCOPE_WIDTH:-1920}"
 height="${GAMESCOPE_HEIGHT:-1080}"

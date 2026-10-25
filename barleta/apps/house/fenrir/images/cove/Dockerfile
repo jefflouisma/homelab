@@ -22,7 +22,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY start-cove.sh /usr/local/bin/start-cove
 COPY install-torrentio.py /usr/local/lib/fenrir/install-torrentio.py
 COPY openbox.xml /etc/fenrir/openbox.xml
-RUN chmod 755 /usr/local/bin/start-cove \
+COPY patch-video-alpha.py /usr/local/lib/fenrir/patch-video-alpha.py
+COPY video-alpha.patch /usr/share/doc/cove/video-alpha.patch
+RUN python3 /usr/local/lib/fenrir/patch-video-alpha.py /usr/lib/cove/Cove \
+    && chmod 755 /usr/local/bin/start-cove \
     && LD_LIBRARY_PATH=/usr/lib/cove/Cove/lib/runtime/lib:/usr/lib/cove/Cove/lib/runtime/lib/server \
        ldd /usr/lib/cove/Cove/lib/runtime/lib/libawt_xawt.so > /tmp/cove-ldd \
     && ! grep -q 'not found' /tmp/cove-ldd && rm /tmp/cove-ldd

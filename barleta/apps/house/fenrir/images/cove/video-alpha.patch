@@ -1,0 +1,11 @@
+--- a/app/desktop/src/main/kotlin/com/coveninja/cove/desktop/player/MpvSoftwarePlayer.kt
++++ b/app/desktop/src/main/kotlin/com/coveninja/cove/desktop/player/MpvSoftwarePlayer.kt
+@@ -585,7 +585,7 @@
+ /** Owns every allocation referenced indirectly by mpv's software render params. */
+ private class SoftwareRenderParameters : AutoCloseable {
+     private val dimensions = Memory(2L * Int.SIZE_BYTES)
+-    private val format = Memory(5).apply { setString(0, "bgr0") }
++    private val format = Memory(5).apply { setString(0, "bgra") }
+     private val stride = Memory(Native.SIZE_T_SIZE.toLong())
+     private val params = renderParamArray(5).apply {
+         this[0].type = Mpv.RENDER_PARAM_SW_SIZE
