@@ -18,6 +18,20 @@ class GamepadBridgeTest(unittest.TestCase):
         state.event(SimpleNamespace(type=1, code=304, value=0), None)
         self.assertEqual(state.actions(), set())
 
+    def test_first_press_that_created_the_device_can_select_and_hold(self):
+        state = bridge.PadState()
+        device = SimpleNamespace(active_keys=lambda: [304], absinfo=lambda code: SimpleNamespace(value=0))
+        state.sync(device)
+        sent = []
+        actions = bridge.Actions(sent.append)
+        actions.update(state.actions(), 0)
+        actions.update(state.actions(), 1)
+        self.assertEqual(sent, ["SELECT_DOWN"])
+        state.event(SimpleNamespace(type=1, code=304, value=0), device)
+        actions.update(state.actions(), 1.1)
+        actions.flush_release(1.15)
+        self.assertEqual(sent, ["SELECT_DOWN", "SELECT_RELEASE", "SELECT_UP"])
+
     def test_press_repeat_release_and_reverse(self):
         sent = []
         actions = bridge.Actions(sent.append)

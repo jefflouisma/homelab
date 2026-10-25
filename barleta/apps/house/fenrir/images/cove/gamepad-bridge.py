@@ -199,7 +199,7 @@ def main():
         while True:
             now = time.monotonic()
             if now >= next_inventory:
-                next_inventory = now + .25
+                next_inventory = now + .05
                 try:
                     owned = load_inventory()
                     for path in list(pads):
@@ -227,7 +227,9 @@ def main():
                                 continue
                             state = PadState()
                             state.sync(device)
-                            actions.blocked.update(state.actions() & {"SELECT", "BACK"})
+                            # A remote may create its controller with the very first
+                            # button-down. Preserve that press from the synced state;
+                            # release still requires a live, session-owned device.
                             pads[path] = (device, state, identity)
                             selector.register(device.fd, selectors.EVENT_READ, path)
                             print("Cove gamepad: attached " + path, file=sys.stderr, flush=True)
@@ -240,7 +242,7 @@ def main():
                     if now >= next_warning:
                         print("Cove gamepad: session inventory unavailable; input suspended", file=sys.stderr, flush=True)
                         next_warning = now + 30
-            for key, _ in selector.select(.02):
+            for key, _ in selector.select(.005):
                 path = key.data
                 if path not in pads:
                     continue
