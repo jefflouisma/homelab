@@ -232,6 +232,9 @@ def main():
                             # release still requires a live, session-owned device.
                             pads[path] = (device, state, identity)
                             selector.register(device.fd, selectors.EVENT_READ, path)
+                            # Deliver the observed initial down before draining a
+                            # release that may already be queued on this descriptor.
+                            actions.update(held(), time.monotonic())
                             print("Cove gamepad: attached " + path, file=sys.stderr, flush=True)
                         except OSError:
                             if device is not None:
