@@ -23,7 +23,8 @@ COPY start-cove.sh /usr/local/bin/start-cove
 COPY install-torrentio.py /usr/local/lib/fenrir/install-torrentio.py
 COPY openbox.xml /etc/fenrir/openbox.xml
 RUN chmod 755 /usr/local/bin/start-cove \
-    && ldd /usr/lib/cove/Cove/lib/runtime/lib/libawt_xawt.so > /tmp/cove-ldd \
+    && LD_LIBRARY_PATH=/usr/lib/cove/Cove/lib/runtime/lib:/usr/lib/cove/Cove/lib/runtime/lib/server \
+       ldd /usr/lib/cove/Cove/lib/runtime/lib/libawt_xawt.so > /tmp/cove-ldd \
     && ! grep -q 'not found' /tmp/cove-ldd && rm /tmp/cove-ldd
 ENV HOME=/home/retro COVE_DATA_DIR=/home/retro/.config/cove
 USER 1000:1000
