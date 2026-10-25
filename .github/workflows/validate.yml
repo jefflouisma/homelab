@@ -97,4 +97,4 @@ jobs:
           chmod 700 "$TMPDIR/runtime"
           COVE_REMOTE_INPUT=1 COVE_DATA_DIR="$TMPDIR/data" XDG_RUNTIME_DIR="$TMPDIR/runtime" \
             JAVA_TOOL_OPTIONS="-Dskiko.renderApi=SOFTWARE -Djava.io.tmpdir=$TMPDIR" \
-            timeout 20s xvfb-run -a "$TMPDIR/cove/bin/cove" --backend-mode fixtures --tv --smoke-seconds 3
+            timeout 20s xvfb-run -a "$TMPDIR/cove/lib/cove/Cove/bin/Cove" --backend-mode fixtures --tv --smoke-seconds 3
