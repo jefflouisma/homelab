@@ -20,6 +20,42 @@ spec:
       securityContext:
         supplementalGroups:
         - 996
+      initContainers:
+      - name: remote-input
+        image: ghcr.io/jefflouisma/fenrir-cove:77e0339
+        restartPolicy: Always
+        command:
+        - python3
+        - -u
+        - /usr/local/lib/fenrir/init-remote-pointer.py
+        env:
+        - name: DISPLAY
+          value: :0
+        - name: PYTHONDONTWRITEBYTECODE
+          value: '1'
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+          runAsNonRoot: false
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: wolf-cfg
+          mountPath: /etc/wolf
+          readOnly: true
+        - name: wolf-runtime
+          mountPath: /tmp/.X11-unix
+          readOnly: true
       containers:
       - name: cove
         image: ghcr.io/jefflouisma/fenrir-cove:77e0339
