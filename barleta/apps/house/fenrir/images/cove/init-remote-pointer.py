@@ -37,8 +37,9 @@ def prime(transport=request):
     session_id = str(sessions[0].get("client_id", ""))
     if not session_id.isascii() or not session_id.isdigit():
         return False
-    # Moonlight relative-motion packet: BE payload size, LE type, BE signed deltas.
-    packet = struct.pack(">I", 8) + struct.pack("<I", 7) + struct.pack(">hh", 1, 1)
+    # Wolf's API expects the control envelope too: INPUT_DATA and payload length,
+    # then the Moonlight input body's BE size, LE type and BE signed deltas.
+    packet = struct.pack("<HH", 0x0206, 12) + struct.pack(">I", 8) + struct.pack("<I", 7) + struct.pack(">hh", 1, 1)
     transport("POST", "/api/v1/sessions/input", {
         "session_id": session_id, "input_packet_hex": packet.hex(),
     })
