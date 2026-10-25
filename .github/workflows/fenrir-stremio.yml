@@ -13,7 +13,10 @@ concurrency:
   group: fenrir-stremio-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
   build-and-update:
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

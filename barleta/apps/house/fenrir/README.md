@@ -11,7 +11,8 @@ Fenrir is a Kubernetes-native adaptation of [Wolf (games-on-whales)](https://gam
 | `direwolf.games-on-whales.github.io_*.yaml` | Custom Resource Definitions (App, Session, Pairing, User) |
 | `wolf-operator.yaml` | Fenrir operator and session image configuration |
 | `moonlight-proxy.yaml` | Entry point for Moonlight clients |
-| `emudeck-app.yaml` | Single Moonlight application: ES-DE, standalone emulators, and bundled RetroArch cores |
+| `emudeck-app.yaml` | ES-DE, standalone emulators, and bundled RetroArch cores |
+| `stremio-app.yaml` | Stremio desktop with Torrentio and persistent per-user settings |
 | `storage.yaml` | PVCs for games and saves |
 | `packages.yaml` | Independent ES-DE, KytyPS5 and PS5Plus package staging, activation and rollback |
 
@@ -32,6 +33,7 @@ Fenrir is deployed automatically via ArgoCD when manifests are committed.
    - Add server by **IP address** (hostname not supported on Apple TV)
    - Open http://192.168.1.221:47989/ on another device and enter the Apple TV's PIN
    - Select "EmuDeck" for ES-DE; games launch through standalone emulators or its bundled RetroArch cores
+   - Select "Stremio" for the media app; Torrentio is installed automatically in each new profile
 
 ## ArgoCD Applications
 

@@ -1,0 +1,38 @@
+# Stremio desktop. Fenrir mounts each user's persistent profile at /home/retro.
+apiVersion: direwolf.games-on-whales.github.io/v1alpha1
+kind: App
+metadata:
+  name: stremio
+  namespace: house
+spec:
+  id: 3
+  title: Stremio
+  isHDRSupported: false
+  wolfConfig:
+    startVirtualCompositor: true
+    startAudioServer: true
+    runner:
+      type: process
+      runCommand: sleep infinity
+  appAssetWebP: "UklGRlAAAABXRUJQVlA4IEQAAADwAQCdASoBAAEAAkA4JZQCdAEO/hOMAAD+9f/e/fn3/vf+7/3v/e/94AAAAAAA"
+  template:
+    spec:
+      securityContext:
+        supplementalGroups: [996]
+      containers:
+        - name: stremio
+          image: ghcr.io/jefflouisma/fenrir-stremio:e97c1c5
+          command: [/usr/local/bin/start-stremio]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 6Gi
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            privileged: true
+      restartPolicy: Always

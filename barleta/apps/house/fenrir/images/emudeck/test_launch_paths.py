@@ -15,7 +15,7 @@ SOURCE = Path(__file__).parent
 
 
 class LaunchPathTests(unittest.TestCase):
-    def test_only_emudeck_is_published_and_embedded_cores_remain(self) -> None:
+    def test_streaming_apps_are_published_and_embedded_cores_remain(self) -> None:
         app_directory = SOURCE.parents[1]
         repository = SOURCE.parents[5]
         documents = [document for path in app_directory.glob("*.yaml")
@@ -23,7 +23,7 @@ class LaunchPathTests(unittest.TestCase):
                      if isinstance(document, dict)]
         apps = [document["metadata"]["name"] for document in documents
                 if document.get("kind") == "App"]
-        self.assertEqual(apps, ["emudeck"])
+        self.assertCountEqual(apps, ["emudeck", "stremio"])
         configmaps = {document["metadata"]["name"] for document in documents
                       if document.get("kind") == "ConfigMap"}
         self.assertTrue(configmaps.isdisjoint({"retroarch-config", "wolf-session-config"}))

@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-websocket ffmpeg \
     && curl -fL "https://dl.strem.io/shell-linux/v${STREMIO_VERSION}/stremio_${STREMIO_VERSION}-1_amd64.deb" -o /tmp/stremio.deb \
     && echo "${STREMIO_SHA256}  /tmp/stremio.deb" | sha256sum -c - \
-    && mkdir -p /usr/share/desktop-directories
+    && mkdir -p /usr/share/desktop-directories \
     && apt-get install -y --no-install-recommends /tmp/stremio.deb \
     && rm -f /tmp/stremio.deb && rm -rf /var/lib/apt/lists/* \
     && groupadd -g 1000 retro && useradd -u 1000 -g 1000 -m -s /bin/bash retro
