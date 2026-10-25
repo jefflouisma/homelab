@@ -21,9 +21,12 @@ EXPRESSION = r"""
     if (!response.ok) throw new Error('Torrentio manifest unavailable');
     const manifest = await response.json();
     if (manifest.id !== id) throw new Error('Unexpected Torrentio manifest');
-    api.addons.add({transportUrl: url, manifest, flags: {}});
-    await api.pushAddonCollection();
+    const addon = require('stremio-addon-client').fromDescriptor({
+      transportUrl: url, manifest, flags: {},
+    });
+    api.addons.add(addon);
   }
+  await api.pushAddonCollection();
   const stored = JSON.parse(localStorage.getItem('addons') || '[]');
   return stored.some(a => a.manifest.id === id) ? 'installed' : 'waiting';
 })()
