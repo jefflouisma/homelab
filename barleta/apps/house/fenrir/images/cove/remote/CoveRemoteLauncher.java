@@ -1,0 +1,193 @@
+package games.fenrir.cove;
+
+import java.awt.*;
+import java.awt.event.*;
+import java.awt.image.BufferedImage;
+import java.lang.reflect.InvocationTargetException;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import javax.swing.*;
+
+/** Maps the stock Moonlight tvOS pointer protocol into Cove's existing TV key controls. */
+public final class CoveRemoteLauncher {
+    private static final java.util.Deque<Runnable> backHandlers = new java.util.ArrayDeque<>();
+
+    public static Runnable registerBackHandler(Runnable handler) {
+        backHandlers.addLast(handler);
+        return () -> backHandlers.removeLastOccurrence(handler);
+    }
+
+    public static boolean handleBack() {
+        Runnable handler = backHandlers.peekLast();
+        if (handler == null) return false;
+        handler.run();
+        return true;
+    }
+
+    public static void main(String[] arguments) throws Throwable {
+        install();
+        try {
+            Class.forName("com.coveninja.cove.desktop.MainKt").getMethod("main", String[].class)
+                    .invoke(null, (Object) arguments);
+        } catch (InvocationTargetException error) {
+            throw error.getCause();
+        }
+    }
+
+    // The GUI regression fixture uses a full JDK; Cove's jlink runtime needs only main().
+    public static void premain(String arguments) { install(); }
+
+    private static void install() {
+        if (!"1".equals(System.getenv("COVE_REMOTE_INPUT"))) return;
+        EventQueue.invokeLater(() -> {
+            try {
+                Toolkit.getDefaultToolkit().getSystemEventQueue().push(new RemoteQueue());
+                System.out.println("Cove remote: enabled (center selects; hold center for Back and keyboard; F8 toggles mouse)");
+            } catch (Exception error) {
+                System.err.println("Cove remote: could not initialize: " + error);
+            }
+        });
+    }
+
+    static final class RemoteQueue extends EventQueue {
+        private final RemoteInput input = new RemoteInput();
+        private final Map<Window, Cursor> cursors = new IdentityHashMap<>();
+        private final Cursor hidden = Toolkit.getDefaultToolkit().createCustomCursor(
+                new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB), new Point(), "Cove remote");
+        private final Robot robot = new Robot();
+        private final Timer holdTimer;
+        private boolean enabled = true;
+        private Point warpTarget;
+        private Window pressedWindow;
+        private RemoteMenu menu;
+
+        RemoteQueue() throws AWTException {
+            holdTimer = new Timer((int) RemoteInput.HOLD_MS, event -> {
+                if (input.hold() && pressedWindow != null && pressedWindow.isFocused()) showMenu(pressedWindow);
+            });
+            holdTimer.setRepeats(false);
+            for (Window window : Window.getWindows()) setCursor(window);
+        }
+
+        private void setCursor(Window window) {
+            if (enabled) {
+                cursors.putIfAbsent(window, window.getCursor());
+                window.setCursor(hidden);
+            } else if (cursors.containsKey(window)) {
+                window.setCursor(cursors.remove(window));
+            }
+        }
+
+        private void showMenu(Window owner) {
+            if (menu != null && menu.isDisplayable()) return;
+            Component target = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+            menu = new RemoteMenu(owner, target, () -> menu = null);
+            menu.setVisible(true);
+        }
+
+        @Override protected void dispatchEvent(AWTEvent event) {
+            try {
+                if (event instanceof WindowEvent windowEvent) {
+                    if (windowEvent.getID() == WindowEvent.WINDOW_OPENED) setCursor(windowEvent.getWindow());
+                    if (windowEvent.getID() == WindowEvent.WINDOW_CLOSED) cursors.remove(windowEvent.getWindow());
+                    if (windowEvent.getID() == WindowEvent.WINDOW_LOST_FOCUS) {
+                        holdTimer.stop();
+                        input.cancel();
+                    }
+                }
+                if (event instanceof KeyEvent key && key.getKeyCode() == KeyEvent.VK_F8) {
+                    if (key.getID() == KeyEvent.KEY_RELEASED) {
+                        enabled = !enabled;
+                        holdTimer.stop();
+                        input.cancel();
+                        warpTarget = null;
+                        for (Window window : Window.getWindows()) setCursor(window);
+                        System.out.println("Cove remote: " + (enabled ? "remote navigation" : "normal mouse"));
+                    }
+                    return;
+                }
+                if (enabled && event instanceof MouseEvent mouse && handleMouse(mouse)) return;
+            } catch (RuntimeException error) {
+                // Preserve the application's normal input if the adapter encounters an error.
+                enabled = false;
+                holdTimer.stop();
+                input.cancel();
+                for (Window window : Window.getWindows()) setCursor(window);
+                System.err.println("Cove remote: disabled after input error: " + error);
+            }
+            super.dispatchEvent(event);
+        }
+
+        private boolean handleMouse(MouseEvent mouse) {
+            Window window = mouse.getComponent() instanceof Window w ? w : SwingUtilities.getWindowAncestor(mouse.getComponent());
+            if (window == null || !window.isFocused()) return true;
+            if (mouse instanceof MouseWheelEvent wheel) {
+                int key = wheel.getPreciseWheelRotation() > 0 ? KeyEvent.VK_DOWN : KeyEvent.VK_UP;
+                if (wheel.getPreciseWheelRotation() != 0) tap(key);
+                return true;
+            }
+            switch (mouse.getID()) {
+                case MouseEvent.MOUSE_PRESSED -> {
+                    if (mouse.getButton() == MouseEvent.BUTTON1 && input.press()) {
+                        pressedWindow = window;
+                        holdTimer.restart();
+                    }
+                }
+                case MouseEvent.MOUSE_RELEASED -> {
+                    if (mouse.getButton() == MouseEvent.BUTTON1) {
+                        holdTimer.stop();
+                        if (input.release()) tap(KeyEvent.VK_ENTER);
+                        pressedWindow = null;
+                    } else if (mouse.getButton() == MouseEvent.BUTTON3) {
+                        tap(KeyEvent.VK_ESCAPE);
+                    }
+                }
+                case MouseEvent.MOUSE_MOVED, MouseEvent.MOUSE_DRAGGED -> {
+                    Point point = mouse.getLocationOnScreen();
+                    if (warpTarget != null) {
+                        if (warpTarget.distance(point) < 3) {
+                            input.anchor(point.x, point.y);
+                            warpTarget = null;
+                        }
+                        return true;
+                    }
+                    Rectangle bounds = window.getGraphicsConfiguration().getBounds();
+                    int key = input.move(point.x, point.y, mouse.getWhen(), Math.max(18, bounds.height / 30));
+                    if (key != 0) tap(key);
+                    // Relative swipes must keep working after the pointer reaches an edge.
+                    if (point.x < bounds.x + 8 || point.x > bounds.x + bounds.width - 8
+                            || point.y < bounds.y + 8 || point.y > bounds.y + bounds.height - 8) {
+                        warpTarget = new Point(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+                        robot.mouseMove(warpTarget.x, warpTarget.y);
+                    }
+                }
+                case MouseEvent.MOUSE_ENTERED -> input.anchor(mouse.getXOnScreen(), mouse.getYOnScreen());
+                default -> { }
+            }
+            // Do not let pointer hover/click change Compose focus after sending a TV action.
+            return true;
+        }
+
+        private void tap(int key) {
+            Component target = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+            if (target != null) postKey(target, key, 0);
+        }
+    }
+
+    static void postKey(Component target, int key, int modifiers) {
+        EventQueue queue = Toolkit.getDefaultToolkit().getSystemEventQueue();
+        long now = System.currentTimeMillis();
+        queue.postEvent(new KeyEvent(target, KeyEvent.KEY_PRESSED, now, modifiers, key, KeyEvent.CHAR_UNDEFINED));
+        queue.postEvent(new KeyEvent(target, KeyEvent.KEY_RELEASED, now + 1, modifiers, key, KeyEvent.CHAR_UNDEFINED));
+    }
+
+    static void postText(Component target, String value) {
+        postKey(target, KeyEvent.VK_A, InputEvent.CTRL_DOWN_MASK);
+        postKey(target, KeyEvent.VK_BACK_SPACE, 0);
+        EventQueue queue = Toolkit.getDefaultToolkit().getSystemEventQueue();
+        for (char character : value.toCharArray()) {
+            queue.postEvent(new KeyEvent(target, KeyEvent.KEY_TYPED, System.currentTimeMillis(), 0,
+                    KeyEvent.VK_UNDEFINED, character));
+        }
+    }
+}

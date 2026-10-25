@@ -67,3 +67,34 @@ jobs:
           sudo mkdir -p "$TMPDIR"
           sudo chown "$(id -u):$(id -g)" "$TMPDIR"
           python -m unittest discover -s barleta/apps/house/fenrir/images/emudeck -v
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Test Cove remote input
+        env:
+          TMPDIR: /Volumes/4TB_Drive/tmp/homelab-cove-remote
+        run: |
+          sudo mkdir -p "$TMPDIR"
+          sudo chown "$(id -u):$(id -g)" "$TMPDIR"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xvfb xauth
+          COVE_DOCKERFILE=barleta/apps/house/fenrir/images/cove/Dockerfile
+          COVE_VERSION=$(sed -n 's/^ARG COVE_VERSION=//p' "$COVE_DOCKERFILE")
+          COVE_SHA256=$(sed -n 's/^ARG COVE_SHA256=//p' "$COVE_DOCKERFILE")
+          curl -fLsS "https://github.com/coveninja/cove/releases/download/v${COVE_VERSION}/cove-linux-amd64.tar.gz" -o "$TMPDIR/cove.tar.gz"
+          echo "$COVE_SHA256  $TMPDIR/cove.tar.gz" | sha256sum -c -
+          mkdir -p "$TMPDIR/cove"
+          tar -xzf "$TMPDIR/cove.tar.gz" -C "$TMPDIR/cove"
+          bash barleta/apps/house/fenrir/images/cove/remote/build.sh "$TMPDIR/build" "$TMPDIR/cove/lib/cove/Cove/lib/app"
+          python barleta/apps/house/fenrir/images/cove/remote/build-tv-back.py "$TMPDIR/cove/lib/cove/Cove/lib/app" "$TMPDIR/build"
+          python barleta/apps/house/fenrir/images/cove/patch-remote-launcher.py "$TMPDIR/cove/lib/cove/Cove" \
+            "$TMPDIR/build/cove-remote.jar" \
+            "$TMPDIR/build/back/com/coveninja/cove/ui/platform/PlaybackBackHandler_desktopKt.class" "$TMPDIR/build/tv"
+          COVE_REMOTE_INPUT=1 xvfb-run -a java -javaagent:"$TMPDIR/build/cove-remote.jar" \
+            -cp "$TMPDIR/build/classes" games.fenrir.cove.RemoteGuiTest
+          mkdir -p "$TMPDIR/runtime" "$TMPDIR/data"
+          chmod 700 "$TMPDIR/runtime"
+          COVE_REMOTE_INPUT=1 COVE_DATA_DIR="$TMPDIR/data" XDG_RUNTIME_DIR="$TMPDIR/runtime" \
+            JAVA_TOOL_OPTIONS="-Dskiko.renderApi=SOFTWARE -Djava.io.tmpdir=$TMPDIR" \
+            timeout 20s xvfb-run -a "$TMPDIR/cove/bin/cove" --backend-mode fixtures --tv --smoke-seconds 3

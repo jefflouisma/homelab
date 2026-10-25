@@ -60,7 +60,20 @@ export TMPDIR=/Volumes/4TB_Drive/tmp/
 
 ## Cove and Torrentio
 
-Choose **Cove** in Moonlight on the Fenrir server (`192.168.1.221`). The official [Cove](https://github.com/coveninja/cove) 1.6.0 Linux release runs with its TV shell and real Kotlin backend. Use arrows, Enter and Escape, or Moonlight's mouse/keyboard controls. Complete or skip the first-run setup; signing in is optional.
+Choose **Cove** in Moonlight on the Fenrir server (`192.168.1.221`). The official [Cove](https://github.com/coveninja/cove) 1.6.0 Linux release runs with its TV shell and real Kotlin backend. Complete or skip the first-run setup; signing in is optional.
+
+The Apple TV Siri Remote works through the stock Moonlight client:
+
+| Remote action | Cove action |
+| --- | --- |
+| Direction buttons or swipe on the touch surface | Move the highlighted selection |
+| Click center | Select the highlighted item, regardless of pointer position |
+| Hold center for about 1–2 seconds | Open remote controls; choose **Back** to return to the previous screen |
+| Focus a search/text field, hold center, choose **On-screen keyboard** | Enter letters/numbers with the remote; **Done** replaces the field's text; **Cancel** preserves it |
+
+Moonlight reserves the remote's Play/Pause and double Back/Menu presses to disconnect; single Back/Menu is not forwarded. Use Cove's on-screen player controls for playback and the hold-center menu for Back. Arrows, Enter and Escape still work on a keyboard. F8 toggles normal mouse input for desktop clients; set `COVE_REMOTE_INPUT=0` in the Cove container environment to disable the adapter at launch.
+
+`images/cove/remote` builds a small Java launcher alongside the pinned upstream release. `patch-remote-launcher.py` adds it to Cove's launcher classpath, validates the original main class and wraps that entry point without requiring instrumentation modules absent from the bundled Java runtime. It translates only this Cove process's pointer events into its existing TV key controls, hides the pointer, limits swipe repeat and restores relative swipes at screen edges. A held click opens a remote-operated Back/text-entry overlay and cannot also activate an item when released. The adapter leaves the player and GPU decoding unchanged; it does not change Wolf, Moonlight, EmuDeck or other sessions' input handling. The `desktop-back.patch` changes wire the previously empty desktop Back handler into the TV root after child controls handle their own Back actions, and allow Up/Down to leave single-line text fields. The small desktop compatibility class is compiled against the bundled Compose ABI; `build-tv-back.py` compiles the two TV sources against that same bundle with hash-verified Kotlin 2.4.10 and upstream sources pinned to commit `1db340a93cdad0e61822fd892f7d178132a54da1`. Gesture tests, UI compatibility compilation, archive checks, and Xvfb interaction checks run in the validation workflow.
 
 The official tarball includes its Java runtime and is checked against its published SHA-256 digest. The image applies the documented `images/cove/video-alpha.patch` compatibility change to Cove 1.6.0: the libmpv software-render target requests opaque BGRA pixels, preventing washed-out video in Compose. GPU decoding remains enabled. `patch-video-alpha.py` applies the equivalent single JVM constant change to the pinned unsigned desktop JAR and fails the build if its layout changes. Corresponding upstream source is [Cove v1.6.0](https://github.com/coveninja/cove/tree/v1.6.0). Xwayland and Openbox bridge Compose Desktop's X11 window to Wolf's Wayland display and maximize it at the negotiated stream resolution. Audio uses the session's PulseAudio sink. The `fenrir-cove.yml` workflow validates the project, publishes a separate image and updates `cove-app.yaml`; it does not rebuild EmuDeck.
 

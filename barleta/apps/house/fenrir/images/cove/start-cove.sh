@@ -48,6 +48,7 @@ xdpyinfo >/dev/null
 openbox --config-file /etc/fenrir/openbox.xml &
 xset s off
 xset -dpms 2>/dev/null || true
+export COVE_REMOTE_INPUT="${COVE_REMOTE_INPUT:-1}"
 export JAVA_TOOL_OPTIONS="-Dskiko.renderApi=SOFTWARE -Djava.io.tmpdir=$TMPDIR/java -Dsun.awt.X11.XWMClass=Cove"
 python3 /usr/local/lib/fenrir/install-torrentio.py &
 unset DBUS_SESSION_BUS_ADDRESS

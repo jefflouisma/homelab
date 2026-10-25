@@ -1,0 +1,73 @@
+--- a/app/ui/src/desktopMain/kotlin/com/coveninja/cove/ui/platform/PlaybackBackHandler.desktop.kt
++++ b/app/ui/src/desktopMain/kotlin/com/coveninja/cove/ui/platform/PlaybackBackHandler.desktop.kt
+@@ -1,6 +1,13 @@
+ package com.coveninja.cove.ui.platform
+
+ import androidx.compose.runtime.Composable
++import androidx.compose.runtime.DisposableEffect
++import games.fenrir.cove.CoveRemoteLauncher
+
+ @Composable
+-actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) = Unit
++actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
++    DisposableEffect(enabled, onBack) {
++        val remove = if (enabled) CoveRemoteLauncher.registerBackHandler(onBack) else Runnable {}
++        onDispose { remove.run() }
++    }
++}
+
+--- a/app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/CoveTvApp.kt
++++ b/app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/CoveTvApp.kt
+@@ -126,7 +126,11 @@
+         ) {
+             TvTheme(dimens) {
+                 // Keep the fixture marker visible across every TV layer.
+-                Box(modifier = Modifier.fillMaxSize()) {
++                Box(modifier = Modifier.fillMaxSize().onKeyEvent { event ->
++                    event.type == KeyEventType.KeyDown &&
++                        tvKeyAction(event.key) == TvKeyAction.Back &&
++                        games.fenrir.cove.CoveRemoteLauncher.handleBack()
++                }) {
+                     OnboardingGate(
+                         graph = graph,
+                         forced = forceOnboarding,
+
+--- a/app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/components/TvTextField.kt
++++ b/app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/components/TvTextField.kt
+@@ -20,6 +20,13 @@
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.remember
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalFocusManager
++import androidx.compose.ui.focus.FocusDirection
++import androidx.compose.ui.input.key.Key
++import androidx.compose.ui.input.key.KeyEventType
++import androidx.compose.ui.input.key.key
++import androidx.compose.ui.input.key.type
++import androidx.compose.ui.input.key.onPreviewKeyEvent
+ import androidx.compose.ui.graphics.SolidColor
+ import androidx.compose.ui.text.input.ImeAction
+ import androidx.compose.ui.text.input.KeyboardType
+@@ -53,6 +60,7 @@
+     secret: Boolean = false,
+     onSubmit: () -> Unit = {},
+ ) {
++    val focusManager = LocalFocusManager.current
+     val interactionSource = remember { MutableInteractionSource() }
+     val focused by interactionSource.collectIsFocusedAsState()
+     val reducedMotion = LocalMotionPolicy.current.reducedMotion
+@@ -107,7 +115,13 @@
+                     imeAction = ImeAction.Done,
+                 ),
+                 keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+-                modifier = Modifier.fillMaxWidth(),
++                modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
++                    if (event.type != KeyEventType.KeyDown) false else when (event.key) {
++                        Key.DirectionDown -> focusManager.moveFocus(FocusDirection.Down)
++                        Key.DirectionUp -> focusManager.moveFocus(FocusDirection.Up)
++                        else -> false
++                    }
++                },
+             )
+             if (value.isEmpty() && placeholder.isNotEmpty()) {
+                 Text(
