@@ -58,6 +58,16 @@ export TMPDIR=/Volumes/4TB_Drive/tmp/
 ./scripts/moonlight-client.sh stream --1080 --fps 60 --display-mode windowed 192.168.1.221 EmuDeck
 ```
 
+## Stremio and Torrentio
+
+Choose **Stremio** in Moonlight on the same Fenrir server (`192.168.1.221`). Sign in or choose guest mode on the first launch. Use Moonlight's mouse/keyboard controls to navigate the desktop interface.
+
+Stremio 4.4.168 comes from the official Debian package, verified against a pinned SHA-256 digest. The `fenrir-stremio.yml` workflow validates the project, publishes its separate image, and updates `stremio-app.yaml`. It does not rebuild EmuDeck. Fenrir creates a separate `<user>-stremio` profile PVC and mounts it at `/home/retro`; settings, add-ons and the streaming cache persist there.
+
+On a new profile, startup installs the default `https://torrentio.strem.fun/manifest.json` add-on through Stremio's own API and verifies it was saved. An existing Torrentio configuration is preserved. A profile marker prevents later launches from reinstalling an add-on the user removed. Torrentio configuration, including an optional debrid account, can be changed from Stremio's Add-ons page. No paid-service credentials are bundled in the image.
+
+The startup helper uses Qt WebEngine's debugging endpoint bound to loopback inside the session pod; no Kubernetes Service exposes it. Only the session's Wayland display and PulseAudio sink are used. The EmuDeck games, BIOS and shared saves volumes are not mounted by Stremio.
+
 ## Game Storage
 
 The `fenrir-games` PVC appears at `/Emulation/roms` in EmuDeck. Use the system directories (`ps3`, `ps4`, `psp`, `wii`, and so on). PS3 disc directories should end in `.ps3dir` and contain `PS3_GAME`. PS4 directories must contain `eboot.bin` and `sce_sys/param.sfo`; startup generates named shortcuts that resolve to the actual executable.
