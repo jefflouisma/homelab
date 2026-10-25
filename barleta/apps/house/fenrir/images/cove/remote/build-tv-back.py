@@ -14,6 +14,8 @@ SOURCE_SHA256 = "ab57b9e14590555448737c8bc191e938c2f27c1d244e77546b4d367abe7cb83
 SOURCE_PATH = "app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/CoveTvApp.kt"
 FIELD_PATH = "app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/components/TvTextField.kt"
 FIELD_SHA256 = "d569ec7fe22d3d3836730374173b7f7bf921aa83f7fc2e744b56c5e21b6e0a50"
+PLAYER_PATH = "app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/player/TvPlayerLayer.kt"
+PLAYER_SHA256 = "86335956b3344a5797fbb7435b2723c28be3de19630b6f08c5f47f8be5b0f3e2"
 
 
 def download(url: str, path: Path, digest: str) -> None:
@@ -70,6 +72,22 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent""")
                         else -> false
                     }
                 },"""))
+    original_player = output / "TvPlayerLayer.original.kt"
+    download(f"https://raw.githubusercontent.com/coveninja/cove/{SOURCE_COMMIT}/{PLAYER_PATH}", original_player, PLAYER_SHA256)
+    player_text = original_player.read_text()
+    player_needle = """                activityPulse++
+                val action = tvKeyAction(event.key)"""
+    if player_text.count(player_needle) != 1:
+        raise ValueError("Cove TV player key handler changed")
+    player = output / "TvPlayerLayer.kt"
+    player.write_text(player_text.replace(player_needle, """                val action = tvKeyAction(event.key)
+                // Hidden playback controls must not consume Back in the source picker,
+                // loading stage or failure notice. Their activity effect reopens them.
+                if (action == TvKeyAction.Back && (phase !is PlaybackPhase.Playing || !start.started)) {
+                    session.close()
+                    return@onPreviewKeyEvent true
+                }
+                activityPulse++"""))
     classes = output / "tv"
     classes.mkdir(exist_ok=True)
     jars = sorted(app.glob("*.jar"))
@@ -86,7 +104,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent""")
         "-no-stdlib", "-no-reflect", "-jvm-target", "21", "-module-name", "ui",
         "-classpath", classpath, "-Xfriend-paths=" + str(ui[0]),
         "-Xplugin=" + str(compiler / "lib/compose-compiler-plugin.jar"),
-        "-d", str(classes), str(source), str(field),
+        "-d", str(classes), str(source), str(field), str(player),
     ], check=True)
 
 
