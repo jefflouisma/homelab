@@ -22,7 +22,7 @@ spec:
         - 996
       initContainers:
       - name: remote-input
-        image: ghcr.io/jefflouisma/fenrir-cove:77e0339
+        image: ghcr.io/jefflouisma/fenrir-cove:600831e
         restartPolicy: Always
         command:
         - python3
@@ -58,7 +58,7 @@ spec:
           readOnly: true
       containers:
       - name: cove
-        image: ghcr.io/jefflouisma/fenrir-cove:77e0339
+        image: ghcr.io/jefflouisma/fenrir-cove:600831e
         command:
         - /usr/local/bin/start-cove
         resources:
