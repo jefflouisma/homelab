@@ -26,6 +26,20 @@ public final class RemoteGuiTest {
         waitForUi();
     }
     private static void center(boolean hold) throws Exception {
+        long deadline = System.nanoTime() + 3_000_000_000L;
+        boolean[] focused = {false};
+        do {
+            EventQueue.invokeAndWait(() -> {
+                KeyboardFocusManager manager = KeyboardFocusManager.getCurrentKeyboardFocusManager();
+                Window expected = frame;
+                for (Window window : Window.getWindows()) {
+                    if (window instanceof RemoteMenu && window.isShowing()) expected = window;
+                }
+                focused[0] = manager.getFocusedWindow() == expected && manager.getFocusOwner() != null;
+            });
+            if (!focused[0]) Thread.sleep(20);
+        } while (!focused[0] && System.nanoTime() < deadline);
+        check(focused[0], "the active remote window must have input focus before clicking");
         robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
         Thread.sleep(hold ? 1000 : 80);
         robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
@@ -132,9 +146,11 @@ public final class RemoteGuiTest {
             Runnable[] removeBack = {null};
             EventQueue.invokeAndWait(() -> removeBack[0] = CoveRemoteLauncher.registerBackHandler(backs::incrementAndGet));
             center(true);
+            check(menuVisible(), "held mouse click opens the Back menu");
             center(false); // Back must call navigation even if Compose has lost child focus.
-            waitForUi();
-            check(backs.get() == 1, "remote Back invokes the active navigation callback exactly once");
+            long backDeadline = System.nanoTime() + 2_000_000_000L;
+            while (backs.get() == 0 && System.nanoTime() < backDeadline) Thread.sleep(20);
+            check(backs.get() == 1, "remote Back invokes the active navigation callback exactly once; actual=" + backs.get());
             check(!menuVisible(), "Back closes the remote menu");
             controller("BACK");
             check(backs.get() == 2, "controller Back invokes Cove navigation directly");
