@@ -87,7 +87,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent""")
                     session.close()
                     return@onPreviewKeyEvent true
                 }
-                activityPulse++"""))
+                // Back must not reopen the controls it just dismissed.
+                if (action != TvKeyAction.Back) activityPulse++"""))
     classes = output / "tv"
     classes.mkdir(exist_ok=True)
     jars = sorted(app.glob("*.jar"))
