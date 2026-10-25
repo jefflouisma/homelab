@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=cove-release /release/ /usr/
 COPY start-cove.sh /usr/local/bin/start-cove
 COPY install-torrentio.py /usr/local/lib/fenrir/install-torrentio.py
+COPY init-remote-pointer.py /usr/local/lib/fenrir/init-remote-pointer.py
 COPY openbox.xml /etc/fenrir/openbox.xml
 COPY patch-video-alpha.py /usr/local/lib/fenrir/patch-video-alpha.py
 COPY video-alpha.patch /usr/share/doc/cove/video-alpha.patch
