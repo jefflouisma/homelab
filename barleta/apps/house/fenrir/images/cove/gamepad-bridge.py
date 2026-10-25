@@ -30,12 +30,19 @@ class Actions:
         self.active = set()
         self.blocked = set()
         self.repeat = {}
+        self.release_at = None
 
     def cancel(self, held=()):
         self.emit("CANCEL")
         self.active.clear()
         self.repeat.clear()
+        self.release_at = None
         self.blocked = set(held) & {"SELECT", "BACK"}
+
+    def flush_release(self, now):
+        if self.release_at is not None and now >= self.release_at:
+            self.emit("SELECT_UP")
+            self.release_at = None
 
     def update(self, held, now):
         held = set(held)
@@ -45,10 +52,19 @@ class Actions:
             if pair <= held:
                 held.difference_update(pair)
         if "SELECT" in self.active - held:
-            self.emit("SELECT_UP")
+            # uinput sends a final button-up just before destroying a controller.
+            # Stop the hold timer immediately, but confirm device liveness before
+            # turning that release into a selection on the next event-loop turn.
+            self.emit("SELECT_RELEASE")
+            self.release_at = now + .04
         if "SELECT" in held - self.active:
+            if self.release_at is not None:
+                self.emit("SELECT_UP")
+                self.release_at = None
             self.emit("SELECT_DOWN")
         if "BACK" in held - self.active:
+            self.release_at = None
+            self.emit("CANCEL")
             self.emit("BACK")
         for direction in DIRECTIONS:
             if direction not in held:
@@ -221,6 +237,15 @@ def main():
                     remove(path)
                     ignored[path] = identity
             actions.update(held(), time.monotonic())
+            if actions.release_at is not None:
+                for path in list(pads):
+                    try:
+                        pads[path][0].active_keys()
+                    except OSError:
+                        identity = pads[path][2]
+                        remove(path)
+                        ignored[path] = identity
+                actions.flush_release(time.monotonic())
     finally:
         actions.cancel()
         for path in list(pads):

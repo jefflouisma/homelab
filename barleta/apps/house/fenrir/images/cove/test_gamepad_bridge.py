@@ -42,14 +42,27 @@ class GamepadBridgeTest(unittest.TestCase):
         self.assertEqual(sent, ["SELECT_DOWN", "CANCEL"])
         actions.update({"SELECT"}, 5)
         actions.update(set(), 6)
-        self.assertEqual(sent[-2:], ["SELECT_DOWN", "SELECT_UP"])
+        self.assertEqual(sent[-2:], ["SELECT_DOWN", "SELECT_RELEASE"])
+        actions.flush_release(6.05)
+        self.assertEqual(sent[-1], "SELECT_UP")
+
+    def test_kernel_disconnect_button_up_is_not_a_click(self):
+        sent = []
+        actions = bridge.Actions(sent.append)
+        actions.update({"SELECT"}, 0)
+        actions.update(set(), .1)
+        actions.flush_release(.12)
+        self.assertNotIn("SELECT_UP", sent)
+        actions.cancel()
+        actions.flush_release(.2)
+        self.assertEqual(sent, ["SELECT_DOWN", "SELECT_RELEASE", "CANCEL"])
 
     def test_back_is_not_repeated_and_opposing_directions_cancel(self):
         sent = []
         actions = bridge.Actions(sent.append)
         actions.update({"BACK", "LEFT", "RIGHT"}, 0)
         actions.update({"BACK", "LEFT", "RIGHT"}, 2)
-        self.assertEqual(sent, ["BACK"])
+        self.assertEqual(sent, ["CANCEL", "BACK"])
 
     def test_dropped_evdev_packet_resynchronizes_device_state(self):
         state = bridge.PadState()

@@ -101,6 +101,7 @@ public final class CoveRemoteLauncher {
                 case "LEFT" -> tap(KeyEvent.VK_LEFT);
                 case "RIGHT" -> tap(KeyEvent.VK_RIGHT);
                 case "SELECT_DOWN" -> { if (controllerInput.press()) controllerHoldTimer.restart(); }
+                case "SELECT_RELEASE" -> controllerHoldTimer.stop();
                 case "SELECT_UP" -> {
                     controllerHoldTimer.stop();
                     if (controllerInput.release()) tap(KeyEvent.VK_ENTER);

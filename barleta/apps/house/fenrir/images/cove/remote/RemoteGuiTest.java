@@ -110,6 +110,13 @@ public final class RemoteGuiTest {
             controller("SELECT_UP");
             check(activations.get() == 2, "disconnect cancellation cannot select on release");
             controller("SELECT_DOWN");
+            controller("SELECT_RELEASE");
+            Thread.sleep(600);
+            check(!menuVisible(), "physical release stops the hold timer before click confirmation");
+            controller("CANCEL");
+            controller("SELECT_UP");
+            check(activations.get() == 2, "device removal during click confirmation cannot activate");
+            controller("SELECT_DOWN");
             Thread.sleep(1000);
             controller("SELECT_UP");
             check(menuVisible() && activations.get() == 2, "held Android TV OK opens controls without selecting on release");
