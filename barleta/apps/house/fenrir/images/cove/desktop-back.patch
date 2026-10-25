@@ -71,23 +71,3 @@
              )
              if (value.isEmpty() && placeholder.isNotEmpty()) {
                  Text(
-
---- a/app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/player/TvPlayerLayer.kt
-+++ b/app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/player/TvPlayerLayer.kt
-@@ -337,8 +337,15 @@
-             .focusable()
-             .onPreviewKeyEvent { event ->
-                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
--                activityPulse++
-                 val action = tvKeyAction(event.key)
-+                // Hidden playback controls must not consume Back in the source picker,
-+                // loading stage or failure notice. Their activity effect reopens them.
-+                if (action == TvKeyAction.Back && (phase !is PlaybackPhase.Playing || !start.started)) {
-+                    session.close()
-+                    return@onPreviewKeyEvent true
-+                }
-+                // Back must not reopen the controls it just dismissed.
-+                if (action != TvKeyAction.Back) activityPulse++
-                 // While media opens, leave centre and Back to Cancel but swallow arrows so
-                 // focus cannot escape to the page behind the player.
-                 if (phase is PlaybackPhase.Playing && !start.started) {

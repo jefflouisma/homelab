@@ -29,7 +29,7 @@ def patch(installation: Path, jar: str = "/usr/local/lib/fenrir/cove-remote.jar"
           for path in Path(tv_classes).rglob("*.class")}
     root = "com/coveninja/cove/ui/tv/CoveTvAppKt.class"
     if root not in tv or any(not name.startswith("com/coveninja/cove/ui/tv/") or
-                            ("CoveTvAppKt" not in name and "TvTextFieldKt" not in name and "TvPlayerLayerKt" not in name and
+                            ("CoveTvAppKt" not in name and "TvTextFieldKt" not in name and
                              not name.endswith("/TvBackAction.class")) for name in tv):
         raise ValueError("Expected only the compiled Cove TV root classes")
     replacements = {entry: replacement, **tv}
@@ -40,7 +40,7 @@ def patch(installation: Path, jar: str = "/usr/local/lib/fenrir/cove-remote.jar"
         if any(name.upper().endswith((".SF", ".RSA", ".DSA")) for name in source.namelist()):
             raise ValueError("Refusing to modify a signed Cove UI artifact")
         for item in source.infolist():
-            if any(part in item.filename for part in ("CoveTvAppKt", "TvTextFieldKt", "TvPlayerLayerKt")) and item.filename not in replacements:
+            if ("CoveTvAppKt" in item.filename or "TvTextFieldKt" in item.filename) and item.filename not in replacements:
                 continue
             output.writestr(item, replacements.pop(item.filename, source.read(item.filename)))
         for name, data in replacements.items():

@@ -71,7 +71,11 @@ final class RemoteMenu extends JDialog {
 
     private void activate() {
         if (!keyboard) {
-            if (row == 0) finish(() -> CoveRemoteLauncher.postKey(target, KeyEvent.VK_ESCAPE, 0));
+            if (row == 0) finish(() -> {
+                // Restoring the AWT window does not necessarily restore Compose's focused
+                // node. Invoke Cove's active navigation callback without relying on it.
+                if (!CoveRemoteLauncher.handleBack()) CoveRemoteLauncher.postKey(target, KeyEvent.VK_ESCAPE, 0);
+            });
             else if (row == 1) { keyboard = true; row = column = 0; surface.repaint(); }
             else finish(null);
             return;

@@ -74,6 +74,16 @@ public final class RemoteGuiTest {
             key(KeyEvent.VK_ESCAPE);
             check(!menuVisible(), "menu can be cancelled");
 
+            AtomicInteger backs = new AtomicInteger();
+            Runnable[] removeBack = {null};
+            EventQueue.invokeAndWait(() -> removeBack[0] = CoveRemoteLauncher.registerBackHandler(backs::incrementAndGet));
+            center(true);
+            center(false); // Back must call navigation even if Compose has lost child focus.
+            waitForUi();
+            check(backs.get() == 1, "remote Back invokes the active navigation callback exactly once");
+            check(!menuVisible(), "Back closes the remote menu");
+            EventQueue.invokeAndWait(() -> removeBack[0].run());
+
             EventQueue.invokeAndWait(() -> field.requestFocusInWindow());
             waitForUi();
             center(true);

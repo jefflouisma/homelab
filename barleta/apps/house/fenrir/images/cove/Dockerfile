@@ -48,7 +48,6 @@ COPY desktop-back.patch /usr/share/doc/cove/desktop-back.patch
 COPY remote /usr/share/doc/cove/remote
 COPY --from=remote-build /Volumes/4TB_Drive/tmp/cove-remote-build/out/CoveTvApp.kt /usr/share/doc/cove/remote/CoveTvApp.kt
 COPY --from=remote-build /Volumes/4TB_Drive/tmp/cove-remote-build/out/TvTextField.kt /usr/share/doc/cove/remote/TvTextField.kt
-COPY --from=remote-build /Volumes/4TB_Drive/tmp/cove-remote-build/out/TvPlayerLayer.kt /usr/share/doc/cove/remote/TvPlayerLayer.kt
 COPY patch-remote-launcher.py /usr/local/lib/fenrir/patch-remote-launcher.py
 RUN python3 /usr/local/lib/fenrir/patch-video-alpha.py /usr/lib/cove/Cove \
     && python3 /usr/local/lib/fenrir/patch-remote-launcher.py /usr/lib/cove/Cove \
