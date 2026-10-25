@@ -31,5 +31,6 @@ sink=$(pactl list sinks short | awk '$2 ~ /^virtual_sink/ {print $2; exit}')
 if [[ -n "$sink" ]]; then
     export PULSE_SINK="$sink"
 fi
+python3 /usr/local/lib/fenrir/install-torrentio.py &
 unset DBUS_SESSION_BUS_ADDRESS
 exec dbus-run-session -- /opt/stremio/stremio "$@"
