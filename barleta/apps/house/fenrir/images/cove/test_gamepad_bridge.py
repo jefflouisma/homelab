@@ -57,6 +57,26 @@ class GamepadBridgeTest(unittest.TestCase):
         actions.flush_release(.2)
         self.assertEqual(sent, ["SELECT_DOWN", "SELECT_RELEASE", "CANCEL"])
 
+    def test_unplugged_device_cannot_select_while_kernel_descriptor_lingers(self):
+        path, identity = "/dev/input/event14", (13, 78, 1)
+        for owned in ({}, {path: (13, 78, 2)}, {path: identity}):
+            with self.subTest(owned=owned):
+                sent = []
+                actions = bridge.Actions(sent.append)
+                actions.update({"SELECT"}, 0)
+                actions.update(set(), .1)
+                # The regression: the removed uinput device still answers ioctls.
+                pads = {path: (SimpleNamespace(active_keys=lambda: []), None, identity)}
+                def remove(device_path):
+                    pads.pop(device_path)
+                    actions.cancel()
+                bridge.confirm_release(actions, pads, owned, remove, .2)
+                if owned.get(path) == identity:
+                    self.assertEqual(sent[-1], "SELECT_UP")
+                else:
+                    self.assertNotIn("SELECT_UP", sent)
+                    self.assertEqual(sent[-1], "CANCEL")
+
     def test_back_is_not_repeated_and_opposing_directions_cancel(self):
         sent = []
         actions = bridge.Actions(sent.append)

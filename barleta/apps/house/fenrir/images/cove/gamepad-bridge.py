@@ -147,6 +147,21 @@ def inventory(payload):
     return result
 
 
+def confirm_release(actions, pads, owned, remove, now):
+    invalid = {}
+    for path in list(pads):
+        identity = pads[path][2]
+        try:
+            if owned.get(path) != identity:
+                raise ConnectionError("controller no longer belongs to this stream")
+            pads[path][0].active_keys()
+        except OSError:
+            remove(path)
+            invalid[path] = identity
+    actions.flush_release(now)
+    return invalid
+
+
 def main():
     from evdev import InputDevice
 
@@ -165,6 +180,10 @@ def main():
     actions = Actions(lambda action: print(action, flush=True))
     next_inventory = next_warning = 0.0
 
+    def load_inventory():
+        with opener.open("https://127.0.0.1:8443/input-devices", timeout=1) as response:
+            return inventory(json.load(response))
+
     def held():
         return set().union(*(state.actions() for _, state, _ in pads.values()))
 
@@ -181,8 +200,7 @@ def main():
             if now >= next_inventory:
                 next_inventory = now + .25
                 try:
-                    with opener.open("https://127.0.0.1:8443/input-devices", timeout=1) as response:
-                        owned = inventory(json.load(response))
+                    owned = load_inventory()
                     for path in list(pads):
                         if owned.get(path) != pads[path][2]:
                             remove(path)
@@ -237,15 +255,15 @@ def main():
                     remove(path)
                     ignored[path] = identity
             actions.update(held(), time.monotonic())
-            if actions.release_at is not None:
-                for path in list(pads):
-                    try:
-                        pads[path][0].active_keys()
-                    except OSError:
-                        identity = pads[path][2]
-                        remove(path)
-                        ignored[path] = identity
-                actions.flush_release(time.monotonic())
+            if actions.release_at is not None and time.monotonic() >= actions.release_at:
+                try:
+                    # Wolf announces unplug before its final button-up, while the
+                    # kernel device can linger. Descriptor liveness alone is not
+                    # enough to distinguish that release from a deliberate click.
+                    owned = load_inventory()
+                except (OSError, ValueError, urllib.error.URLError):
+                    owned = {}
+                ignored.update(confirm_release(actions, pads, owned, remove, time.monotonic()))
     finally:
         actions.cancel()
         for path in list(pads):
