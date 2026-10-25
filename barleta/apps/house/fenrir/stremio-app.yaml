@@ -21,7 +21,7 @@ spec:
         supplementalGroups: [996]
       containers:
         - name: stremio
-          image: ghcr.io/jefflouisma/fenrir-stremio:e175977
+          image: ghcr.io/jefflouisma/fenrir-stremio:78d875e
           command: [/usr/local/bin/start-stremio]
           resources:
             requests:
