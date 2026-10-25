@@ -23,7 +23,7 @@ class LaunchPathTests(unittest.TestCase):
                      if isinstance(document, dict)]
         apps = [document["metadata"]["name"] for document in documents
                 if document.get("kind") == "App"]
-        self.assertCountEqual(apps, ["emudeck", "stremio"])
+        self.assertCountEqual(apps, ["emudeck", "cove"])
         configmaps = {document["metadata"]["name"] for document in documents
                       if document.get("kind") == "ConfigMap"}
         self.assertTrue(configmaps.isdisjoint({"retroarch-config", "wolf-session-config"}))

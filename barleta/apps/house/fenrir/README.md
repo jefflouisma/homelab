@@ -12,7 +12,7 @@ Fenrir is a Kubernetes-native adaptation of [Wolf (games-on-whales)](https://gam
 | `wolf-operator.yaml` | Fenrir operator and session image configuration |
 | `moonlight-proxy.yaml` | Entry point for Moonlight clients |
 | `emudeck-app.yaml` | ES-DE, standalone emulators, and bundled RetroArch cores |
-| `stremio-app.yaml` | Stremio desktop with Torrentio and persistent per-user settings |
+| `cove-app.yaml` | Cove TV interface with Torrentio and persistent per-user settings |
 | `storage.yaml` | PVCs for games and saves |
 | `packages.yaml` | Independent ES-DE, KytyPS5 and PS5Plus package staging, activation and rollback |
 
@@ -33,7 +33,7 @@ Fenrir is deployed automatically via ArgoCD when manifests are committed.
    - Add server by **IP address** (hostname not supported on Apple TV)
    - Open http://192.168.1.221:47989/ on another device and enter the Apple TV's PIN
    - Select "EmuDeck" for ES-DE; games launch through standalone emulators or its bundled RetroArch cores
-   - Select "Stremio" for the media app; Torrentio is installed automatically in each new profile
+   - Select "Cove" for the media app; Torrentio is installed automatically in each new user profile
 
 ## ArgoCD Applications
 
@@ -58,15 +58,15 @@ export TMPDIR=/Volumes/4TB_Drive/tmp/
 ./scripts/moonlight-client.sh stream --1080 --fps 60 --display-mode windowed 192.168.1.221 EmuDeck
 ```
 
-## Stremio and Torrentio
+## Cove and Torrentio
 
-Choose **Stremio** in Moonlight on the same Fenrir server (`192.168.1.221`). Sign in or choose guest mode on the first launch. Use Moonlight's mouse/keyboard controls to navigate the desktop interface.
+Choose **Cove** in Moonlight on the Fenrir server (`192.168.1.221`). The official [Cove](https://github.com/coveninja/cove) 1.6.0 Linux release runs with its TV shell and real Kotlin backend. Use arrows, Enter and Escape, or Moonlight's mouse/keyboard controls. Complete or skip the first-run setup; signing in is optional.
 
-Stremio 4.4.168 comes from the official Debian package, verified against a pinned SHA-256 digest. The `fenrir-stremio.yml` workflow validates the project, publishes its separate image, and updates `stremio-app.yaml`. It does not rebuild EmuDeck. Fenrir creates a separate `<user>-stremio` profile PVC and mounts it at `/home/retro`; settings, add-ons and the streaming cache persist there.
+The official tarball includes its Java runtime and is checked against its published SHA-256 digest. Xwayland and Openbox bridge Compose Desktop's X11 window to Wolf's Wayland display and maximize it at the negotiated stream resolution. Audio uses the session's PulseAudio sink. The `fenrir-cove.yml` workflow validates the project, publishes a separate image and updates `cove-app.yaml`; it does not rebuild EmuDeck.
 
-On a new profile, startup installs the default `https://torrentio.strem.fun/manifest.json` add-on through Stremio's own API and verifies it was saved. An existing Torrentio configuration is preserved. A profile marker prevents later launches from reinstalling an add-on the user removed. Torrentio configuration, including an optional debrid account, can be changed from Stremio's Add-ons page. No paid-service credentials are bundled in the image.
+Fenrir creates a separate `<user>-cove` PVC and mounts the persistent profile at `/home/retro`. Cove stores its settings, database, library and addon configuration in `/home/retro/.config/cove`. First launch installs the default `https://torrentio.strem.fun/manifest.json` through Cove's loopback API and reads it back before writing a profile marker. Existing Torrentio configurations are preserved, and the marker prevents reinstallation after a user deliberately removes it. Change providers or an optional debrid configuration in Cove's addon settings. No paid-service credentials are bundled.
 
-The startup helper uses Qt WebEngine's debugging endpoint bound to loopback inside the session pod; no Kubernetes Service exposes it. Only the session's Wayland display and PulseAudio sink are used. The EmuDeck games, BIOS and shared saves volumes are not mounted by Stremio.
+Cove's loopback API is not exposed by a Kubernetes Service. Its app template does not mount EmuDeck's games, BIOS or shared saves. The Stremio tile, image source and publication workflow have been replaced; old `<user>-stremio` PVCs are retained unchanged rather than deleted or reused as Cove profiles.
 
 ## Game Storage
 
