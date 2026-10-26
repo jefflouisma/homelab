@@ -16,6 +16,17 @@ import javax.swing.*;
 /** Maps the stock Moonlight tvOS pointer protocol into Cove's existing TV key controls. */
 public final class CoveRemoteLauncher {
     private static final java.util.Deque<Runnable> backHandlers = new java.util.ArrayDeque<>();
+    private static final java.util.Deque<java.util.function.IntPredicate> playbackHandlers = new java.util.ArrayDeque<>();
+
+    public static Runnable registerPlaybackHandler(java.util.function.IntPredicate handler) {
+        playbackHandlers.addLast(handler);
+        return () -> playbackHandlers.removeLastOccurrence(handler);
+    }
+
+    private static boolean handlePlaybackKey(int key) {
+        java.util.function.IntPredicate handler = playbackHandlers.peekLast();
+        return handler != null && handler.test(key);
+    }
 
     public static Runnable registerBackHandler(Runnable handler) {
         backHandlers.addLast(handler);
@@ -257,7 +268,11 @@ public final class CoveRemoteLauncher {
         }
 
         private void tap(int key) {
+            Window window = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow();
+            // Remote menus and Compose dialogs retain their own button navigation.
+            if (window instanceof Frame && handlePlaybackKey(key)) return;
             Component target = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+            if (target == null && window != null) target = window.getMostRecentFocusOwner();
             if (target != null) postKey(target, key, 0);
         }
     }

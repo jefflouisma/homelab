@@ -94,6 +94,8 @@ jobs:
             "$TMPDIR/build/back/com/coveninja/cove/ui/platform/PlaybackBackHandler_desktopKt.class" "$TMPDIR/build/tv"
           COVE_REMOTE_INPUT=1 xvfb-run -a java -javaagent:"$TMPDIR/build/cove-remote.jar" \
             -cp "$TMPDIR/build/classes" games.fenrir.cove.RemoteGuiTest
+          python barleta/apps/house/fenrir/images/cove/remote/test-playback.py \
+            "$TMPDIR/cove/lib/cove/Cove/lib/app" "$TMPDIR/build"
           mkdir -p "$TMPDIR/runtime" "$TMPDIR/data"
           chmod 700 "$TMPDIR/runtime"
           COVE_REMOTE_INPUT=1 COVE_DATA_DIR="$TMPDIR/data" XDG_RUNTIME_DIR="$TMPDIR/runtime" \

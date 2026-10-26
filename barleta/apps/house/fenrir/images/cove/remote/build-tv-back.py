@@ -1,4 +1,4 @@
-"""Recompile the TV root with Back bubbling, against the exact bundled Compose/Kotlin ABI."""
+"""Recompile TV input/focus fixes against the exact bundled Compose/Kotlin ABI."""
 import hashlib
 from pathlib import Path
 import subprocess
@@ -14,6 +14,8 @@ SOURCE_SHA256 = "ab57b9e14590555448737c8bc191e938c2f27c1d244e77546b4d367abe7cb83
 SOURCE_PATH = "app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/CoveTvApp.kt"
 FIELD_PATH = "app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/components/TvTextField.kt"
 FIELD_SHA256 = "d569ec7fe22d3d3836730374173b7f7bf921aa83f7fc2e744b56c5e21b6e0a50"
+PLAYER_PATH = "app/ui/src/commonMain/kotlin/com/coveninja/cove/ui/tv/player/TvPlayerLayer.kt"
+PLAYER_SHA256 = "86335956b3344a5797fbb7435b2723c28be3de19630b6f08c5f47f8be5b0f3e2"
 
 
 def download(url: str, path: Path, digest: str) -> None:
@@ -70,6 +72,61 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent""")
                         else -> false
                     }
                 },"""))
+    original_player = output / "TvPlayerLayer.original.kt"
+    download(f"https://raw.githubusercontent.com/coveninja/cove/{SOURCE_COMMIT}/{PLAYER_PATH}", original_player, PLAYER_SHA256)
+    player_text = original_player.read_text()
+    anchor = "    val dimens = TvTheme.dimens"
+    if player_text.count(anchor) != 1:
+        raise ValueError("Cove TV player key handler changed")
+    player_text = player_text.replace("import androidx.compose.runtime.Composable", """import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import java.awt.event.KeyEvent as AwtKeyEvent""")
+    player_text = player_text.replace(anchor, """    // Desktop remotes must still reach the active player if a covered page or
+    // a video-surface transition has taken Compose focus. Focused transport
+    // controls and player panels keep their normal D-pad/activation semantics.
+    var remoteFocusPulse by remember { mutableStateOf(0) }
+    LaunchedEffect(remoteFocusPulse) {
+        if (remoteFocusPulse > 0) {
+            withFrameNanos { }
+            runCatching { playFocus.requestFocus() }.let { }
+        }
+    }
+    val remoteKey = rememberUpdatedState(java.util.function.IntPredicate { key ->
+        if (phase !is PlaybackPhase.Playing || !start.started || panelOpen || barHasFocus) {
+            false
+        } else when (key) {
+            AwtKeyEvent.VK_LEFT, AwtKeyEvent.VK_RIGHT -> {
+                activityPulse++
+                jump(if (key == AwtKeyEvent.VK_RIGHT) seekStep else -seekStep)
+                true
+            }
+            AwtKeyEvent.VK_ENTER -> { // Short OK pauses/resumes and reveals controls.
+                activityPulse++
+                host?.togglePause()
+                controlsVisible = true
+                remoteFocusPulse++
+                true
+            }
+            AwtKeyEvent.VK_UP, AwtKeyEvent.VK_DOWN -> {
+                activityPulse++
+                controlsVisible = true
+                remoteFocusPulse++
+                true
+            }
+            else -> false
+        }
+    })
+    DisposableEffect(session) {
+        val remove = games.fenrir.cove.CoveRemoteLauncher.registerPlaybackHandler { key ->
+            remoteKey.value.test(key)
+        }
+        onDispose { remove.run() }
+    }
+
+""" + anchor)
+    player = output / "TvPlayerLayer.kt"
+    player.write_text(player_text)
     classes = output / "tv"
     classes.mkdir(exist_ok=True)
     jars = sorted(app.glob("*.jar"))
@@ -86,7 +143,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent""")
         "-no-stdlib", "-no-reflect", "-jvm-target", "21", "-module-name", "ui",
         "-classpath", classpath, "-Xfriend-paths=" + str(ui[0]),
         "-Xplugin=" + str(compiler / "lib/compose-compiler-plugin.jar"),
-        "-d", str(classes), str(source), str(field),
+        "-d", str(classes), str(source), str(field), str(player),
     ], check=True)
 
 
