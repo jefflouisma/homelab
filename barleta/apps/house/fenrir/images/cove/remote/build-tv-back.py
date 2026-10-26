@@ -93,7 +93,8 @@ import java.awt.event.KeyEvent as AwtKeyEvent""")
         }
     }
     val remoteKey = rememberUpdatedState(java.util.function.IntPredicate { key ->
-        if (phase !is PlaybackPhase.Playing || !start.started || panelOpen || barHasFocus) {
+        if (phase !is PlaybackPhase.Playing || !start.started || panelOpen ||
+            (controlsVisible && barHasFocus)) {
             false
         } else when (key) {
             AwtKeyEvent.VK_LEFT, AwtKeyEvent.VK_RIGHT -> {
