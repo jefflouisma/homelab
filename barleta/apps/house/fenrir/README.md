@@ -12,7 +12,7 @@ Fenrir is a Kubernetes-native adaptation of [Wolf (games-on-whales)](https://gam
 | `wolf-operator.yaml` | Fenrir operator and session image configuration |
 | `moonlight-proxy.yaml` | Entry point for Moonlight clients |
 | `emudeck-app.yaml` | ES-DE, standalone emulators, and bundled RetroArch cores |
-| `cove-app.yaml` | Cove TV interface with Torrentio and persistent per-user settings |
+| `cove-app.yaml.disabled` | Cove template retained offline; excluded from Argo CD reconciliation |
 | `storage.yaml` | PVCs for games and saves |
 | `packages.yaml` | Independent ES-DE, KytyPS5 and PS5Plus package staging, activation and rollback |
 
@@ -33,7 +33,7 @@ Fenrir is deployed automatically via ArgoCD when manifests are committed.
    - Add server by **IP address** (hostname not supported on Apple TV)
    - Open http://192.168.1.221:47989/ on another device and enter the Apple TV's PIN
    - Select "EmuDeck" for ES-DE; games launch through standalone emulators or its bundled RetroArch cores
-   - Select "Cove" for the media app; Torrentio is installed automatically in each new user profile
+   - Cove is currently offline and unavailable in Moonlight.
 
 ## ArgoCD Applications
 
@@ -59,6 +59,8 @@ export TMPDIR=/Volumes/4TB_Drive/tmp/
 ```
 
 ## Cove and Torrentio
+
+Cove was taken offline on 2026-10-26. `cove-app.yaml.disabled` retains its deployment template outside Argo CD's `*.yaml` include pattern. Its Moonlight app entry and running sessions are removed; existing per-user profile PVCs are preserved. The usage notes below apply when Cove is enabled again.
 
 Choose **Cove** in Moonlight on the Fenrir server (`192.168.1.221`). The official [Cove](https://github.com/coveninja/cove) 1.6.0 Linux release runs with its TV shell and real Kotlin backend. Complete or skip the first-run setup; signing in is optional.
 
