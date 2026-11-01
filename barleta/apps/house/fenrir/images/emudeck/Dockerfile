@@ -94,6 +94,7 @@ COPY --chmod=755 es-de.sh /usr/local/bin/es-de
 COPY --chmod=755 package-path.py /usr/local/bin/package-path
 COPY --chmod=755 kytyps5.sh /usr/local/bin/kytyps5
 COPY --chmod=755 kytyps5.sh /usr/local/bin/ps5plus
+COPY --chmod=755 shadps4.sh /usr/local/bin/shadps4
 COPY config/title-options /etc/kytyps5/title-options
 COPY --chmod=755 generate-ps5-shortcuts.py /usr/local/bin/generate-ps5-shortcuts
 
@@ -236,12 +237,11 @@ RUN RPCS3_URL=$(wget -qO- "https://api.github.com/repos/RPCS3/rpcs3-binaries-lin
     rm -f /tmp/rpcs3.AppImage
 
 # shadPS4 (PS4) — zip contains an AppImage (tag format: v.X.Y.Z)
+# Fenrir Updates selects newer releases; this copy is the fallback for package state that predates them.
 RUN wget -q "https://github.com/shadps4-emu/shadPS4/releases/download/v.${SHADPS4_VERSION}/shadps4-linux-sdl-${SHADPS4_VERSION}.zip" \
       -O /tmp/shadps4.zip && \
     unzip -q /tmp/shadps4.zip -d /tmp/shadps4-extract && \
     extract-appimage /tmp/shadps4-extract/Shadps4-sdl.AppImage /opt/shadps4 && \
-    printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/shadps4/usr/lib:$LD_LIBRARY_PATH\ncd /opt/shadps4 && exec ./AppRun "$@"\n' > /usr/local/bin/shadps4 && \
-    chmod +x /usr/local/bin/shadps4 && \
     rm -rf /tmp/shadps4.zip /tmp/shadps4-extract
 
 # =============================================================================

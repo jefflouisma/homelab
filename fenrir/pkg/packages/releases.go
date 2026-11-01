@@ -17,13 +17,23 @@ const (
 	EmuDeck Component = "emudeck"
 	Kyty    Component = "kytyps5"
 	PS5Plus Component = "ps5plus"
+	ShadPS4 Component = "shadps4"
 )
 
 // Components lists every managed package in check and activation order.
-var Components = []Component{EmuDeck, Kyty, PS5Plus}
+var Components = []Component{EmuDeck, Kyty, PS5Plus, ShadPS4}
 
-// gitHubRepositories publish Linux tarballs that share the KytyPS5 package layout.
-var gitHubRepositories = map[Component]string{Kyty: "KytyPS5/KytyPS5", PS5Plus: "jefflouisma/PS5Plus"}
+// gitHubRepositories publish one Linux asset per release, named by gitHubAsset.
+var gitHubRepositories = map[Component]string{Kyty: "KytyPS5/KytyPS5", PS5Plus: "jefflouisma/PS5Plus", ShadPS4: "shadps4-emu/shadPS4"}
+
+func gitHubAsset(component Component, tag string) string {
+	if component == ShadPS4 {
+		// Tags look like v.0.21.0; the zip holds the SDL AppImage.
+		return "shadps4-linux-sdl-" + strings.TrimPrefix(tag, "v.") + ".zip"
+	}
+	// KytyPS5 and its PS5Plus fork share a tarball layout.
+	return tag + "-Linux-x86_64.tar.gz"
+}
 
 type Release struct {
 	Version string `json:"version"`
@@ -35,7 +45,7 @@ var versionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$`)
 
 func ParseComponent(value string) (Component, error) {
 	switch Component(value) {
-	case EmuDeck, Kyty, PS5Plus:
+	case EmuDeck, Kyty, PS5Plus, ShadPS4:
 		return Component(value), nil
 	default:
 		return "", fmt.Errorf("unknown component %q", value)
@@ -68,7 +78,8 @@ func (s Sources) get(ctx context.Context, address string, target any) error {
 	return nil
 }
 
-func (s Sources) latestGitHub(ctx context.Context, repository string) (Release, error) {
+func (s Sources) latestGitHub(ctx context.Context, component Component) (Release, error) {
+	repository := gitHubRepositories[component]
 	var release struct {
 		Tag    string `json:"tag_name"`
 		Draft  bool   `json:"draft"`
@@ -85,7 +96,7 @@ func (s Sources) latestGitHub(ctx context.Context, repository string) (Release, 
 		return Release{}, fmt.Errorf("latest %s release is a draft", repository)
 	}
 	for _, asset := range release.Assets {
-		if asset.Name == release.Tag+"-Linux-x86_64.tar.gz" {
+		if asset.Name == gitHubAsset(component, release.Tag) {
 			return Release{Version: release.Tag, URL: asset.URL, SHA256: strings.TrimPrefix(asset.Digest, "sha256:")}, nil
 		}
 	}
@@ -95,9 +106,9 @@ func (s Sources) latestGitHub(ctx context.Context, repository string) (Release, 
 func (s Sources) Latest(ctx context.Context, component Component) (Release, error) {
 	var result Release
 	switch component {
-	case Kyty, PS5Plus:
+	case Kyty, PS5Plus, ShadPS4:
 		var err error
-		if result, err = s.latestGitHub(ctx, gitHubRepositories[component]); err != nil {
+		if result, err = s.latestGitHub(ctx, component); err != nil {
 			return result, err
 		}
 	case EmuDeck:

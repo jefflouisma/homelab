@@ -30,7 +30,7 @@ func New(root string, sources Sources, installer Installer, sessions func(contex
 			}
 		}
 	}
-	m := &Manager{root: root, sources: sources, installer: installer, activeSessions: sessions, now: time.Now, checks: make(chan Component, len(Components)), state: State{Components: map[Component]Status{EmuDeck: {Active: BundledFrontend, Previous: []string{}}, Kyty: {Previous: []string{}}, PS5Plus: {Previous: []string{}}}}}
+	m := &Manager{root: root, sources: sources, installer: installer, activeSessions: sessions, now: time.Now, checks: make(chan Component, len(Components)), state: State{Components: map[Component]Status{EmuDeck: {Active: BundledFrontend, Previous: []string{}}, Kyty: {Previous: []string{}}, PS5Plus: {Previous: []string{}}, ShadPS4: {Active: BundledShadPS4, Previous: []string{}}}}}
 	data, err := os.ReadFile(filepath.Join(root, "state.json"))
 	if err == nil {
 		if err := json.Unmarshal(data, &m.state); err != nil {

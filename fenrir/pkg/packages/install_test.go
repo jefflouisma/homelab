@@ -43,3 +43,29 @@ func TestDownloadVerifiesChecksumBeforeExtraction(t *testing.T) {
 	require.ErrorContains(t, installer.Install(t.Context(), Kyty, release), "SHA-256")
 	require.NoDirExists(t, filepath.Join(root, string(Kyty), "corrupt"))
 }
+
+func TestShadPS4ProbeProvidesUserDirectoryAndChecksLaunchFlags(t *testing.T) {
+	scratch := t.TempDir()
+	t.Setenv("TMPDIR", scratch)
+	for _, tc := range []struct {
+		help, err string
+	}{
+		{"-g,     --game TEXT\n-f,     --fullscreen TEXT", ""},
+		{"-g,     --game TEXT", "missing --fullscreen"},
+	} {
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "usr/bin"), 0755))
+		// Like shadPS4, fail when ~/.local/share is missing.
+		script := "#!/bin/sh\nmkdir \"$HOME/.local/share/shadPS4\" || exit 1\nprintf '%s\\n' '" + tc.help + "'\n"
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "usr/bin/shadps4"), []byte(script), 0755))
+		err := Probe(t.Context(), ShadPS4, dir)
+		if tc.err == "" {
+			require.NoError(t, err)
+		} else {
+			require.ErrorContains(t, err, tc.err)
+		}
+		leftovers, err := os.ReadDir(scratch)
+		require.NoError(t, err)
+		require.Empty(t, leftovers)
+	}
+}

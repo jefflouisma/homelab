@@ -20,4 +20,4 @@ Use semantic landmarks, one h1, descriptive control labels, 48px minimum tap tar
 
 ## Accepted scope
 
-The existing pairing page is retained, with a link to Updates. The EmuDeck update control manages ES-DE, its frontend; other bundled emulators remain maintained by the image build. Package compatibility and gameplay require real Linux/GPU/controller testing beyond successful downloads.
+The existing pairing page is retained, with a link to Updates. The EmuDeck update control manages ES-DE, its frontend; KytyPS5, PS5Plus and shadPS4 have their own controls, and other bundled emulators remain maintained by the image build. Package compatibility and gameplay require real Linux/GPU/controller testing beyond successful downloads.

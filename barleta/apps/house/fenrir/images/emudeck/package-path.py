@@ -8,7 +8,7 @@ from typing import Final
 
 ROOT: Final = Path("/Volumes/4TB_Drive/tmp/fenrir-packages")
 SELECTION: Final = Path("/Volumes/4TB_Drive/tmp/fenrir-session/packages.json")
-NAMES: Final = {"emudeck": "EmuDeck", "kytyps5": "KytyPS5", "ps5plus": "PS5Plus"}
+NAMES: Final = {"emudeck": "EmuDeck", "kytyps5": "KytyPS5", "ps5plus": "PS5Plus", "shadps4": "shadPS4"}
 
 
 def main() -> None:
@@ -23,6 +23,10 @@ def main() -> None:
     version = data.get("components", {}).get(component, {}).get("active", "")
     if component == "emudeck" and version in {"", "bundled-3.5.0"}:
         print("/opt/es-de")
+        return
+    # Package state that predates shadPS4 updates keeps the image's copy.
+    if component == "shadps4" and version == "":
+        print("/opt/shadps4")
         return
     if not isinstance(version, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,100}", version):
         sys.exit(f"{NAMES[component]} is not installed. Open Fenrir Updates and activate a verified release.")

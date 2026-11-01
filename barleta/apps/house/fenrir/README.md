@@ -14,7 +14,7 @@ Fenrir is a Kubernetes-native adaptation of [Wolf (games-on-whales)](https://gam
 | `emudeck-app.yaml` | ES-DE, standalone emulators, and bundled RetroArch cores |
 | `cove-app.yaml.disabled` | Cove template retained offline; excluded from Argo CD reconciliation |
 | `storage.yaml` | PVCs for games and saves |
-| `packages.yaml` | Independent ES-DE, KytyPS5 and PS5Plus package staging, activation and rollback |
+| `packages.yaml` | Independent ES-DE, KytyPS5, PS5Plus and shadPS4 package staging, activation and rollback |
 
 ## Quick Start (GitOps)
 
@@ -99,13 +99,13 @@ Profiles, configuration, emulator caches, and RPCS3/shadPS4 saves persist on eac
 
 The standalone RetroArch Moonlight application is retired. Existing `<user>-retroarch` profile PVCs and shared save files are retained; retirement does not delete or automatically migrate game progress. Preserve those volumes when cleaning up application resources.
 
-## EmuDeck, KytyPS5 and PS5Plus updates
+## EmuDeck, KytyPS5, PS5Plus and shadPS4 updates
 
-Open **[Updates](http://192.168.1.221:47989/updates)** from the pairing dashboard. The EmuDeck control updates its ES-DE frontend; KytyPS5 and PS5Plus have separate controls. Other bundled emulators and the base runtime remain managed by the image workflows.
+Open **[Updates](http://192.168.1.221:47989/updates)** from the pairing dashboard. The EmuDeck control updates its ES-DE frontend; KytyPS5, PS5Plus and shadPS4 have separate controls. Other bundled emulators and the base runtime remain managed by the image workflows.
 
-The package manager checks official GitLab ES-DE x64 AppImages, official GitHub KytyPS5 Linux releases and [PS5Plus](https://github.com/jefflouisma/PS5Plus) Linux releases on startup and every six hours. Checks resolve actual release assets and their upstream SHA-256 digests, download and extract into a staging directory, and run a bounded CLI/dependency check. Only verified packages appear as staged. **Check now** performs the same operation immediately. This launch check does not certify a game's compatibility or performance.
+The package manager checks official GitLab ES-DE x64 AppImages, official GitHub KytyPS5 Linux releases, [PS5Plus](https://github.com/jefflouisma/PS5Plus) Linux releases and official [shadPS4](https://github.com/shadps4-emu/shadPS4) stable releases on startup and every six hours. Checks resolve actual release assets and their upstream SHA-256 digests, download and extract into a staging directory, and run a bounded CLI/dependency check. Only verified packages appear as staged. **Check now** performs the same operation immediately. This launch check does not certify a game's compatibility or performance.
 
-The original ES-DE 3.5.0 package is copied from the pinned bootstrap image into the package volume before updates start. Rollback therefore retains its original bytes even when a later container image changes its bundled frontend. Superseded staged packages are removed; the active version, current stage, queue and previous three versions are retained.
+The original ES-DE 3.5.0 and shadPS4 0.20.0 packages are copied from the pinned bootstrap image into the package volume before updates start. Rollback therefore retains their original bytes even when a later container image changes its bundled copies. Superseded staged packages are removed; the active version, current stage, queue and previous three versions are retained.
 
 Choose **Update** to queue activation. It waits for Session resources and EmuDeck pods, including terminating pods, to disappear; Kubernetes lookup failures pause activation and appear on the page. **Cancel queued update** keeps the installed version. **Roll back** queues a retained version through the same idle-session guard. The active version, staged release, queue and previous three versions persist on `fenrir-packages`; installation directories are immutable and mounted read-only by EmuDeck. A session captures its package selection once at frontend launch. Updates never replace files in a running package. Failed downloads, checks or state transactions preserve the working selection. This runtime-managed state is deliberately separate from GitOps-managed container image versions.
 
@@ -114,6 +114,8 @@ Put extracted PS5 game directories containing `eboot.bin` and `sce_sys/param.jso
 Kyty's writable working directory is `$HOME/.local/share/kytyps5` on the user's persistent EmuDeck profile. Its `_SaveData` and other guest data remain separate from the versioned executable and survive program rollback. Scratch files use `/Volumes/4TB_Drive/tmp/kytyps5`; the package PVC is mounted under `/Volumes/4TB_Drive/tmp/fenrir-packages`, and updater scratch uses the same approved temporary root. The upstream GUI self-updater is not used for these read-only, centrally selected installations.
 
 PS5Plus is a KytyPS5 fork developed on macOS and merged with upstream nightly; its repository describes that workflow. Each push to its `main` publishes a Linux release in the same tarball layout and command-line contract as KytyPS5. It is a separate `ps5plus` component with its own staging, activation and rollback. ES-DE lists the same `fenrir-games/ps5` titles under **Sony PlayStation 5 (PS5Plus)**, launched through `ps5plus`. That launcher shares the KytyPS5 wrapper but selects the PS5Plus package and keeps guest data and saves in `$HOME/.local/share/ps5plus`, with scratch files in `/Volumes/4TB_Drive/tmp/ps5plus`. Experimental builds therefore never touch KytyPS5 saves. Both launchers add the options listed for a game's `titleId` in `images/emudeck/config/title-options` (God of War Ragnarök gets `--tessellation`, which draws its terrain). PS5Plus's `scripts/validate-g913.sh` waits for a release, then stages and queues it through this page's API.
+
+shadPS4 is the `shadps4` component. Its stable GitHub release `shadps4-linux-sdl-<version>.zip` is checked against the release's SHA-256 digest; the contained AppImage is extracted, and the launch check requires the `--game` and `--fullscreen` options ES-DE passes. Pre-releases are not tracked. Packages that predate this control start on `bundled-0.20.0-8cfe7a2`, the image's copy, so existing PS4 sessions launch the same build until a newer release is activated. ES-DE's **Sony PlayStation 4** entry runs `/usr/local/bin/shadps4`, which launches the release the session pinned at frontend start; if the package state has no shadPS4 entry yet, it uses the image's `/opt/shadps4`. Settings, sys_modules, saves and logs stay in `$HOME/.local/share/shadPS4` and are shared by every version, so check `log/shad_log.txt` there for the version that ran.
 
 EmuDeck selects Qt's PulseAudio backend explicitly to match the streaming audio service. RPCS3 build 0.0.43-20344 crashes in Qt Multimedia during game startup when this setting is omitted in this container.
 

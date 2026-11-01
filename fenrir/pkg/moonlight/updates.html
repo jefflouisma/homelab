@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Manage EmuDeck frontend, KytyPS5 and PS5Plus versions on Fenrir.">
+<meta name="description" content="Manage EmuDeck frontend, KytyPS5, PS5Plus and shadPS4 versions on Fenrir.">
 <title>Updates · Fenrir</title>
 <style>
 :root{color-scheme:dark;--ink:#fff;--surface:rgb(255 255 255 / 10%);--nested:rgb(0 0 0 / 20%);--action:#006b35;--secondary:rgb(255 255 255 / 15%);--error:#ffe4e6;--space:.5rem;--radius:.5rem}
@@ -12,17 +12,17 @@
 </head>
 <body><main>
 <nav aria-label="Fenrir"><a href="/dashboard">Pair a device</a><a href="/updates" aria-current="page">Updates</a></nav>
-<header><h1>Emulator updates</h1><p class="muted">Update EmuDeck’s frontend, KytyPS5 and PS5Plus independently.</p></header>
+<header><h1>Emulator updates</h1><p class="muted">Update EmuDeck’s frontend, KytyPS5, PS5Plus and shadPS4 independently.</p></header>
 <p class="notice">Published releases are checked and staged every six hours. Choose when to activate them. Updates and rollback wait until running sessions have closed. Choose Quit in Moonlight to end a session.</p>
 <p id="result" class="status" role="status" aria-live="polite">Loading installed versions…</p>
 <div id="components"></div>
 <noscript><p>Enable JavaScript to view and manage installed versions.</p></noscript>
-<footer class="muted">The previous three versions are retained for rollback. Game data stays separate from program packages. EmuDeck updates here apply to the ES-DE frontend; other emulators are maintained by the container build.</footer>
+<footer class="muted">The previous three versions are retained for rollback. Game data stays separate from program packages. EmuDeck updates here apply to the ES-DE frontend. Other emulators, apart from the PlayStation 4 and 5 emulators above, are maintained by the container build.</footer>
 </main>
 <script>
 const result=document.querySelector('#result');
 const cards=new Map();let refreshing=false;let acting=false;
-for(const [id,label,name] of [['emudeck','EmuDeck · ES-DE frontend','EmuDeck'],['kytyps5','KytyPS5','KytyPS5'],['ps5plus','PS5Plus · KytyPS5 fork','PS5Plus']]){
+for(const [id,label,name] of [['emudeck','EmuDeck · ES-DE frontend','EmuDeck'],['kytyps5','KytyPS5','KytyPS5'],['ps5plus','PS5Plus · KytyPS5 fork','PS5Plus'],['shadps4','shadPS4 · PlayStation 4','shadPS4']]){
  const card=document.createElement('section');card.className='card';card.setAttribute('aria-labelledby',id+'-title');
  card.innerHTML=`<h2 id="${id}-title">${label}</h2><dl class="versions"><dt>Installed</dt><dd data-field="active">Loading…</dd><dt>Available</dt><dd data-field="available">Loading…</dd><dt>Staged</dt><dd data-field="staged">Loading…</dd></dl><p class="status" data-field="queue"></p><p class="muted" data-field="checked"></p><p class="error" data-field="error"></p><div class="actions"><button class="secondary" data-action="check">Check now</button><button data-action="apply">Update ${name}</button></div><div class="rollback"><label for="${id}-rollback">Restore a previous version</label><select id="${id}-rollback" aria-label="Previous ${label} version"></select><button class="secondary" data-action="rollback">Roll back</button></div>`;
  document.querySelector('#components').append(card);cards.set(id,card);

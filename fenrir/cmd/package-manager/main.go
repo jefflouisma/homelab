@@ -39,9 +39,11 @@ func main() {
 	}
 	client := &http.Client{Timeout: 5 * time.Minute}
 	installer := packages.Installer{Root: packages.DefaultRoot, Client: client, Probe: packages.Probe}
-	if err := installer.SeedBundled(ctx, "/opt/es-de"); err != nil {
-		slog.Error("preserve bundled frontend", "error", err)
-		os.Exit(1)
+	for component, source := range map[packages.Component]string{packages.EmuDeck: "/opt/es-de", packages.ShadPS4: "/opt/shadps4"} {
+		if err := installer.SeedBundled(ctx, component, source); err != nil {
+			slog.Error("preserve bundled package", "component", component, "error", err)
+			os.Exit(1)
+		}
 	}
 	manager, err := packages.New(packages.DefaultRoot, packages.Sources{Client: client, GitHub: "https://api.github.com", GitLab: "https://gitlab.com/api/v4"}, installer, sessions)
 	if err != nil {

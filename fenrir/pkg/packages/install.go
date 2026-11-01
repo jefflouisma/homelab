@@ -65,6 +65,14 @@ func (i Installer) Install(ctx context.Context, component Component, release Rel
 		if err := run(ctx, "extract-appimage", archive, content); err != nil {
 			return err
 		}
+	case ShadPS4:
+		unpacked := filepath.Join(tmp, "zip")
+		if err := run(ctx, "unzip", "-q", archive, "-d", unpacked); err != nil {
+			return err
+		}
+		if err := run(ctx, "extract-appimage", filepath.Join(unpacked, "Shadps4-sdl.AppImage"), content); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported component %q", component)
 	}
@@ -123,29 +131,46 @@ func run(ctx context.Context, name string, args ...string) error {
 	return nil
 }
 
-func Probe(ctx context.Context, component Component, directory string) error {
+func Probe(ctx context.Context, component Component, directory string) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	var cmd *exec.Cmd
+	env := append(os.Environ(), "QT_QPA_PLATFORM=offscreen", "SDL_VIDEODRIVER=dummy", "LD_LIBRARY_PATH="+filepath.Join(directory, "lib"), "HOME="+os.TempDir())
 	switch component {
 	case Kyty, PS5Plus:
 		cmd = exec.CommandContext(ctx, filepath.Join(directory, "kyty_emulator"), "--help")
 	case EmuDeck:
 		cmd = exec.CommandContext(ctx, "/lib64/ld-linux-x86-64.so.2", "--library-path", filepath.Join(directory, "usr/lib"), filepath.Join(directory, "AppRun"), "--help")
+	case ShadPS4:
+		// shadPS4 creates its user directory under ~/.local/share even for --help, without parents.
+		var home string
+		if home, err = os.MkdirTemp("", "shadps4-probe-"); err != nil {
+			return fmt.Errorf("create probe home: %w", err)
+		}
+		defer func() { err = errors.Join(err, os.RemoveAll(home)) }()
+		if err := os.MkdirAll(filepath.Join(home, ".local/share"), 0755); err != nil {
+			return fmt.Errorf("create probe home: %w", err)
+		}
+		cmd = exec.CommandContext(ctx, filepath.Join(directory, "usr/bin/shadps4"), "--help")
+		env = append(env, "LD_LIBRARY_PATH="+filepath.Join(directory, "usr/lib"), "HOME="+home)
 	default:
 		return fmt.Errorf("unsupported component %q", component)
 	}
 	cmd.Dir = directory
-	cmd.Env = append(os.Environ(), "QT_QPA_PLATFORM=offscreen", "SDL_VIDEODRIVER=dummy", "LD_LIBRARY_PATH="+filepath.Join(directory, "lib"), "HOME="+os.TempDir())
+	cmd.Env = env
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("executable probe: %w: %.2000s", err, output)
 	}
-	if component == Kyty || component == PS5Plus {
-		for _, flag := range []string{"--game", "--fullscreen", "--screen-width", "--screen-height"} {
-			if !strings.Contains(string(output), flag) {
-				return fmt.Errorf("Kyty CLI contract is missing %s", flag)
-			}
+	contract := map[Component][]string{
+		Kyty:    {"--game", "--fullscreen", "--screen-width", "--screen-height"},
+		PS5Plus: {"--game", "--fullscreen", "--screen-width", "--screen-height"},
+		// ES-DE launches PS4 games with -g <eboot.bin> -f true.
+		ShadPS4: {"--game", "--fullscreen"},
+	}
+	for _, flag := range contract[component] {
+		if !strings.Contains(string(output), flag) {
+			return fmt.Errorf("%s CLI contract is missing %s", component, flag)
 		}
 	}
 	return nil
