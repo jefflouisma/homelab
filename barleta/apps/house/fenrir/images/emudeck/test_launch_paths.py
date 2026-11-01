@@ -23,7 +23,9 @@ class LaunchPathTests(unittest.TestCase):
                      if isinstance(document, dict)]
         apps = [document["metadata"]["name"] for document in documents
                 if document.get("kind") == "App"]
-        self.assertCountEqual(apps, ["emudeck", "cove"])
+        # Cove is offline; its manifest is kept disabled so it can be restored with saved profiles.
+        self.assertCountEqual(apps, ["emudeck"])
+        self.assertTrue((app_directory / "cove-app.yaml.disabled").is_file())
         configmaps = {document["metadata"]["name"] for document in documents
                       if document.get("kind") == "ConfigMap"}
         self.assertTrue(configmaps.isdisjoint({"retroarch-config", "wolf-session-config"}))
