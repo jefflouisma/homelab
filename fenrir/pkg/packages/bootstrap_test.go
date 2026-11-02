@@ -56,3 +56,15 @@ func TestBundledShadPS4IsNotRestoredAfterItLeavesRetention(t *testing.T) {
 	require.NoDirExists(t, filepath.Join(root, string(ShadPS4)))
 	require.ErrorContains(t, installer.SeedBundled(t.Context(), Kyty, t.TempDir()), "no bundled package")
 }
+
+func TestBundledRPCS3IsSeededForStateThatPredatesIt(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "state.json"), []byte(`{"components":{"shadps4":{"active":"v.0.21.0","previous":[]}}}`), 0644))
+	source := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(source, "usr/bin"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(source, "usr/bin/rpcs3"), []byte("image RPCS3"), 0755))
+	installer := Installer{Root: root, Probe: func(context.Context, Component, string) error { return nil }}
+	require.NoError(t, installer.SeedBundled(t.Context(), RPCS3, source))
+	require.FileExists(t, filepath.Join(root, string(RPCS3), BundledRPCS3, "usr/bin/rpcs3"))
+	require.ErrorContains(t, installer.SeedBundled(t.Context(), Eden, t.TempDir()), "no bundled package")
+}

@@ -44,4 +44,23 @@
         <platform>ps5</platform>
         <theme>ps5</theme>
     </system>
+    <system>
+        <!-- Overrides the built-in system to launch the Eden release selected in Fenrir Updates -->
+        <name>switch</name>
+        <fullname>Nintendo Switch</fullname>
+        <path>%ROMPATH%/switch</path>
+        <extension>.nca .NCA .nro .NRO .nso .NSO .nsp .NSP .xci .XCI</extension>
+        <command label="Eden (Standalone)">/usr/local/bin/eden %ROM%</command>
+        <platform>switch</platform>
+        <theme>switch</theme>
+    </system>
+    <system>
+        <name>switch2</name>
+        <fullname>Nintendo Switch 2</fullname>
+        <path>%ROMPATH%/switch2</path>
+        <extension>.nca .NCA .nro .NRO .nso .NSO .nsp .NSP .nsz .NSZ .nup .NUP .xci .XCI .xcz .XCZ</extension>
+        <command label="Eglantine (Standalone)">/usr/local/bin/eglantine %ROM%</command>
+        <platform>switch</platform>
+        <theme>switch2</theme>
+    </system>
 </systemList>

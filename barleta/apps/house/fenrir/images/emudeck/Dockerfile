@@ -15,7 +15,8 @@ ARG ESDE_VERSION=3.5.0
 ARG PCSX2_VERSION=2.8.2
 ARG PPSSPP_VERSION=1.20.4
 ARG SHADPS4_VERSION=0.20.0
-# DuckStation and RPCS3 use rolling/latest releases
+# DuckStation and RPCS3 use rolling/latest releases; Fenrir Updates selects newer RPCS3 builds
+# Eden (Switch) and Eglantine (Switch 2) are installed only from Fenrir Updates
 
 # =============================================================================
 # Stage 1: System dependencies
@@ -95,6 +96,9 @@ COPY --chmod=755 package-path.py /usr/local/bin/package-path
 COPY --chmod=755 kytyps5.sh /usr/local/bin/kytyps5
 COPY --chmod=755 kytyps5.sh /usr/local/bin/ps5plus
 COPY --chmod=755 shadps4.sh /usr/local/bin/shadps4
+COPY --chmod=755 rpcs3.sh /usr/local/bin/rpcs3
+COPY --chmod=755 switch.sh /usr/local/bin/eden
+COPY --chmod=755 switch.sh /usr/local/bin/eglantine
 COPY config/title-options /etc/kytyps5/title-options
 COPY --chmod=755 generate-ps5-shortcuts.py /usr/local/bin/generate-ps5-shortcuts
 
@@ -228,12 +232,11 @@ RUN wget -q "https://github.com/hrydgard/ppsspp/releases/download/v${PPSSPP_VERS
     rm -f /tmp/ppsspp.AppImage
 
 # RPCS3 (PS3) — AppImage (rolling release from rpcs3-binaries-linux)
+# Fenrir Updates selects newer builds; this copy is the fallback for package state that predates them.
 RUN RPCS3_URL=$(wget -qO- "https://api.github.com/repos/RPCS3/rpcs3-binaries-linux/releases/latest" | \
       grep -oP '"browser_download_url":\s*"\K[^"]+\.AppImage') && \
     wget -q "$RPCS3_URL" -O /tmp/rpcs3.AppImage && \
     extract-appimage /tmp/rpcs3.AppImage /opt/rpcs3 && \
-    printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/rpcs3/usr/lib:$LD_LIBRARY_PATH\ncd /opt/rpcs3 && exec ./AppRun "$@"\n' > /usr/local/bin/rpcs3 && \
-    chmod +x /usr/local/bin/rpcs3 && \
     rm -f /tmp/rpcs3.AppImage
 
 # shadPS4 (PS4) — zip contains an AppImage (tag format: v.X.Y.Z)
@@ -260,6 +263,7 @@ RUN mkdir -p \
     /Emulation/roms/psx /Emulation/roms/ps2 /Emulation/roms/ps3 \
     /Emulation/roms/psp /Emulation/roms/ps4 \
     /Emulation/roms/gc /Emulation/roms/wii \
+    /Emulation/roms/switch /Emulation/roms/switch2 \
     /Emulation/roms/dreamcast /Emulation/roms/saturn \
     /Emulation/roms/genesis /Emulation/roms/megadrive \
     /Emulation/roms/segacd /Emulation/roms/sega32x \

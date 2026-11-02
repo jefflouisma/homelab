@@ -39,13 +39,13 @@ func main() {
 	}
 	client := &http.Client{Timeout: 5 * time.Minute}
 	installer := packages.Installer{Root: packages.DefaultRoot, Client: client, Probe: packages.Probe}
-	for component, source := range map[packages.Component]string{packages.EmuDeck: "/opt/es-de", packages.ShadPS4: "/opt/shadps4"} {
+	for component, source := range map[packages.Component]string{packages.EmuDeck: "/opt/es-de", packages.ShadPS4: "/opt/shadps4", packages.RPCS3: "/opt/rpcs3"} {
 		if err := installer.SeedBundled(ctx, component, source); err != nil {
 			slog.Error("preserve bundled package", "component", component, "error", err)
 			os.Exit(1)
 		}
 	}
-	manager, err := packages.New(packages.DefaultRoot, packages.Sources{Client: client, GitHub: "https://api.github.com", GitLab: "https://gitlab.com/api/v4"}, installer, sessions)
+	manager, err := packages.New(packages.DefaultRoot, packages.Sources{Client: client, GitHub: "https://api.github.com", GitLab: "https://gitlab.com/api/v4", Eden: "https://git.eden-emu.dev/api/v1"}, installer, sessions)
 	if err != nil {
 		slog.Error("initialize packages", "error", err)
 		os.Exit(1)

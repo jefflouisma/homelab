@@ -177,6 +177,9 @@ func TestHTTPRejectsUnknownAndUnretainedVersions(t *testing.T) {
 		{"/api/updates/ps5plus/apply", "{}", 409},
 		{"/api/updates/shadps4/apply", "{}", 409},
 		{"/api/updates/shadps4/rollback", `{"version":"v.0.19.0"}`, 409},
+		{"/api/updates/rpcs3/apply", "{}", 409},
+		{"/api/updates/eden/apply", "{}", 409},
+		{"/api/updates/eglantine/rollback", `{"version":"build-1"}`, 409},
 	} {
 		t.Run(tc.path+tc.body, func(t *testing.T) {
 			rec := httptest.NewRecorder()
@@ -208,6 +211,9 @@ func TestStateFromBeforePS5PlusGainsAnEmptyComponent(t *testing.T) {
 	require.Equal(t, []string{"k0"}, state.Components[Kyty].Previous)
 	require.Equal(t, Status{Previous: []string{}}, state.Components[PS5Plus])
 	require.Equal(t, Status{Active: BundledShadPS4, Previous: []string{}}, state.Components[ShadPS4])
+	require.Equal(t, Status{Active: BundledRPCS3, Previous: []string{}}, state.Components[RPCS3])
+	require.Equal(t, Status{Previous: []string{}}, state.Components[Eden])
+	require.Equal(t, Status{Previous: []string{}}, state.Components[Eglantine])
 	require.NoError(t, os.WriteFile(filepath.Join(root, "state.json"), []byte(`{"components":{"other":{}}}`), 0644))
 	_, err = New(root, Sources{}, Installer{Root: root}, nil)
 	require.ErrorContains(t, err, "unknown component")

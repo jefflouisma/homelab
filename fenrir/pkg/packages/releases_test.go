@@ -53,3 +53,69 @@ func TestIncompleteReleaseIsNotStaged(t *testing.T) {
 	_, err := s.Latest(t.Context(), Kyty)
 	require.Error(t, err)
 }
+
+func TestRPCS3VersionComesFromItsAppImageName(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/repos/RPCS3/rpcs3-binaries-linux/releases/latest", r.URL.Path)
+		json.NewEncoder(w).Encode(map[string]any{"tag_name": "build-" + strings.Repeat("f", 40), "assets": []map[string]string{
+			{"name": "rpcs3-v0.0.44-20400-1b336f41_linux64.AppImage.sig", "browser_download_url": "https://github.com/sig"},
+			{"name": "rpcs3-v0.0.44-20400-1b336f41_linux64.AppImage", "browser_download_url": "https://github.com/rpcs3", "digest": "sha256:" + strings.Repeat("a", 64)},
+		}})
+	}))
+	defer server.Close()
+	release, err := Sources{Client: server.Client(), GitHub: server.URL}.Latest(t.Context(), RPCS3)
+	require.NoError(t, err)
+	require.Equal(t, Release{Version: "v0.0.44-20400-1b336f41", URL: "https://github.com/rpcs3", SHA256: strings.Repeat("a", 64)}, release)
+}
+
+func TestEglantineFollowsNewestBuildOfItsDefaultBranch(t *testing.T) {
+	onBranch, experimental := strings.Repeat("1", 40), strings.Repeat("2", 40)
+	build := func(tag, target, published string) map[string]any {
+		return map[string]any{"tag_name": tag, "target_commitish": target, "published_at": published, "prerelease": true, "assets": []map[string]string{
+			{"name": "eglantine-" + target + "-linux-x86_64.AppImage", "browser_download_url": "https://github.com/standard-" + tag, "digest": "sha256:" + strings.Repeat("b", 64)},
+			{"name": "eglantine-" + target + "-linux-x86_64-pgo.AppImage", "browser_download_url": "https://github.com/" + tag, "digest": "sha256:" + strings.Repeat("c", 64)},
+		}}
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/Djihads80/Eglantine/releases":
+			// GitHub lists releases out of publication order.
+			json.NewEncoder(w).Encode([]map[string]any{
+				build("build-90", onBranch, "2026-11-01T10:00:00Z"),
+				build("build-116", experimental, "2026-11-02T00:29:46Z"),
+				build("build-110", onBranch, "2026-11-01T23:04:38Z"),
+			})
+		case "/repos/Djihads80/Eglantine/commits":
+			require.Equal(t, "nx2", r.URL.Query().Get("sha"))
+			json.NewEncoder(w).Encode([]map[string]string{{"sha": onBranch}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	release, err := Sources{Client: server.Client(), GitHub: server.URL}.Latest(t.Context(), Eglantine)
+	require.NoError(t, err)
+	require.Equal(t, Release{Version: "build-110", URL: "https://github.com/build-110", SHA256: strings.Repeat("c", 64)}, release)
+}
+
+func TestEdenIsVerifiedWithTheSHA1FromItsZsyncIndex(t *testing.T) {
+	filename := "Eden-Linux-v0.2.1-amd64-clang-pgo.AppImage"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/eden-emu/eden/releases/latest":
+			json.NewEncoder(w).Encode(map[string]any{"tag_name": "v0.2.1", "assets": []map[string]string{
+				{"name": "Eden-Linux-v0.2.1-amd64-gcc-standard.AppImage", "browser_download_url": "https://stable/gcc"},
+				{"name": filename, "browser_download_url": "https://stable/pgo"},
+				{"name": "Eden-Linux-amd64-clang-pgo.AppImage.zsync", "browser_download_url": "http://" + r.Host + "/index.zsync"},
+			}})
+		case "/index.zsync":
+			w.Write([]byte("zsync: 0.6.2\nFilename: " + filename + "\nSHA-1: " + strings.Repeat("d", 40) + "\n\n\x00\xffblock checksums"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	release, err := Sources{Client: server.Client(), Eden: server.URL}.Latest(t.Context(), Eden)
+	require.NoError(t, err)
+	require.Equal(t, Release{Version: "v0.2.1", URL: "https://stable/pgo", SHA1: strings.Repeat("d", 40)}, release)
+}

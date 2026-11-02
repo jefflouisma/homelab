@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -67,5 +68,62 @@ func TestShadPS4ProbeProvidesUserDirectoryAndChecksLaunchFlags(t *testing.T) {
 		leftovers, err := os.ReadDir(scratch)
 		require.NoError(t, err)
 		require.Empty(t, leftovers)
+	}
+}
+
+func TestSHA1OnlyReleaseIsVerifiedAndRecorded(t *testing.T) {
+	payload := []byte("eden appimage")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(payload) }))
+	defer server.Close()
+	root := t.TempDir()
+	stub := t.TempDir()
+	// Stand in for extract-appimage, which unpacks the downloaded AppImage.
+	require.NoError(t, os.WriteFile(filepath.Join(stub, "extract-appimage"), []byte("#!/bin/sh\nmkdir -p \"$2\" && cp \"$1\" \"$2/AppRun\"\n"), 0755))
+	t.Setenv("PATH", stub+string(os.PathListSeparator)+os.Getenv("PATH"))
+	installer := Installer{Root: root, Client: server.Client(), Probe: func(context.Context, Component, string) error { return nil }}
+	digest := sha1.Sum(payload)
+	release := Release{Version: "v0.2.1", URL: server.URL, SHA1: hex.EncodeToString(digest[:])}
+	require.NoError(t, installer.Install(t.Context(), Eden, release))
+	recorded, err := os.ReadFile(filepath.Join(root, string(Eden), "v0.2.1", ".verified"))
+	require.NoError(t, err)
+	require.Equal(t, "sha1:"+release.SHA1, string(recorded))
+	// A retained package is accepted again only for the same upstream digest.
+	require.NoError(t, installer.Install(t.Context(), Eden, release))
+	release.SHA1 = strings.Repeat("0", 40)
+	require.ErrorContains(t, installer.Install(t.Context(), Eden, release), "differs")
+	release.Version = "v0.2.2"
+	require.ErrorContains(t, installer.Install(t.Context(), Eden, release), "SHA-1 verification failed")
+	require.ErrorContains(t, installer.Install(t.Context(), Eden, Release{Version: "v0.2.3", URL: server.URL}), "invalid release checksum")
+}
+
+func TestSwitchProbesCheckLaunchFlags(t *testing.T) {
+	usage := "Usage: eden-cli [options] <filename>\n-f, --fullscreen      Start in fullscreen mode\n-g, --game            File path of the game to load"
+	for _, tc := range []struct {
+		name      string
+		component Component
+		files     map[string]string
+		err       string
+	}{
+		{"eden", Eden, map[string]string{"AppRun": "[ \"$1 $2\" = 'eden-cli --help' ] && echo '" + usage + "'", "bin/eden": ""}, ""},
+		{"eden without Qt frontend", Eden, map[string]string{"AppRun": "echo '" + usage + "'"}, "Qt frontend"},
+		// Eglantine prints its usage, then fails because no game was given.
+		{"eglantine", Eglantine, map[string]string{"usr/bin/eden-cli": "echo '" + usage + "'; echo 'Failed to load ROM: No ROM specified'; exit 1"}, ""},
+		{"eglantine crash", Eglantine, map[string]string{"usr/bin/eden-cli": "exit 1"}, "executable probe"},
+		{"rpcs3", RPCS3, map[string]string{"AppRun": "[ \"$1 $2\" = '--headless --help' ] && echo '--no-gui --fullscreen --installfw <path>'"}, ""},
+		{"rpcs3 without firmware installer", RPCS3, map[string]string{"AppRun": "echo '--no-gui --fullscreen'"}, "missing --installfw"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for name, body := range tc.files {
+				require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0755))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+body+"\n"), 0755))
+			}
+			err := Probe(t.Context(), tc.component, dir)
+			if tc.err == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.err)
+			}
+		})
 	}
 }

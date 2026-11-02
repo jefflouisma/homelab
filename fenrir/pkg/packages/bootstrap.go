@@ -15,6 +15,7 @@ import (
 const (
 	BundledFrontend = "bundled-3.5.0-8cfe7a2"
 	BundledShadPS4  = "bundled-0.20.0-8cfe7a2"
+	BundledRPCS3    = "bundled-0.0.43-20334-8cfe7a2"
 )
 
 // bundled describes a package copied from the pinned bootstrap image so rollback keeps its original bytes.
@@ -27,6 +28,7 @@ type bundled struct {
 var bundledPackages = map[Component]bundled{
 	EmuDeck: {version: BundledFrontend, legacy: "bundled-3.5.0", executable: "AppRun"},
 	ShadPS4: {version: BundledShadPS4, executable: "usr/bin/shadps4"},
+	RPCS3:   {version: BundledRPCS3, executable: "usr/bin/rpcs3"},
 }
 
 func (i Installer) SeedBundled(ctx context.Context, component Component, source string) (err error) {

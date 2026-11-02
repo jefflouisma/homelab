@@ -25,6 +25,7 @@ def stage_display_helpers(directory: Path) -> Path:
         .replace("/Volumes/4TB_Drive/tmp/fenrir-session/packages.json", str(directory / "selection.json"))
         .replace("/opt/es-de", str(directory.parent / "opt/es-de"))
         .replace("/opt/shadps4", str(directory.parent / "opt/shadps4"))
+        .replace("/opt/rpcs3", str(directory.parent / "opt/rpcs3"))
     )
     package_path.chmod(0o755)
     shortcuts = directory / "generate-ps5-shortcuts"
