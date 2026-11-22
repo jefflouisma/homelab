@@ -159,7 +159,7 @@ func (s Sources) latestGitHub(ctx context.Context, component Component) (Release
 	return Release{}, nil
 }
 
-// latestEglantine selects the newest pre-release built from eglantineBranch; Eglantine publishes no stable releases.
+// latestEglantine selects the newest published build from eglantineBranch.
 func (s Sources) latestEglantine(ctx context.Context) (Release, error) {
 	type build struct {
 		Tag       string    `json:"tag_name"`
@@ -191,9 +191,10 @@ func (s Sources) latestEglantine(ctx context.Context) (Release, error) {
 		if b.Draft || !onBranch[b.Target] {
 			continue
 		}
+		// Older releases include the build commit in the asset name.
+		legacyName := "eglantine-" + b.Target + "-linux-x86_64-pgo.AppImage"
 		for _, asset := range b.Assets {
-			// PGO builds are the same programs with profile-guided optimization.
-			if asset.Name == "eglantine-"+b.Target+"-linux-x86_64-pgo.AppImage" {
+			if asset.Name == "eglantine-linux-x86_64-pgo.AppImage" || asset.Name == legacyName {
 				return Release{Version: b.Tag, URL: asset.URL, SHA256: strings.TrimPrefix(asset.Digest, "sha256:")}, nil
 			}
 		}

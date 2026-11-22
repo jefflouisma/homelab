@@ -70,32 +70,45 @@ func TestRPCS3VersionComesFromItsAppImageName(t *testing.T) {
 
 func TestEglantineFollowsNewestBuildOfItsDefaultBranch(t *testing.T) {
 	onBranch, experimental := strings.Repeat("1", 40), strings.Repeat("2", 40)
-	build := func(tag, target, published string) map[string]any {
-		return map[string]any{"tag_name": tag, "target_commitish": target, "published_at": published, "prerelease": true, "assets": []map[string]string{
-			{"name": "eglantine-" + target + "-linux-x86_64.AppImage", "browser_download_url": "https://github.com/standard-" + tag, "digest": "sha256:" + strings.Repeat("b", 64)},
-			{"name": "eglantine-" + target + "-linux-x86_64-pgo.AppImage", "browser_download_url": "https://github.com/" + tag, "digest": "sha256:" + strings.Repeat("c", 64)},
+	build := func(tag, target, published, assetName string) map[string]any {
+		return map[string]any{"tag_name": tag, "target_commitish": target, "published_at": published, "assets": []map[string]string{
+			{"name": "eglantine-linux-x86_64.AppImage", "browser_download_url": "https://github.com/standard-" + tag, "digest": "sha256:" + strings.Repeat("b", 64)},
+			{"name": assetName, "browser_download_url": "https://github.com/" + tag, "digest": "sha256:" + strings.Repeat("c", 64)},
 		}}
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/repos/Djihads80/Eglantine/releases":
-			// GitHub lists releases out of publication order.
-			json.NewEncoder(w).Encode([]map[string]any{
-				build("build-90", onBranch, "2026-11-01T10:00:00Z"),
-				build("build-116", experimental, "2026-11-02T00:29:46Z"),
-				build("build-110", onBranch, "2026-11-01T23:04:38Z"),
-			})
-		case "/repos/Djihads80/Eglantine/commits":
-			require.Equal(t, "nx2", r.URL.Query().Get("sha"))
-			json.NewEncoder(w).Encode([]map[string]string{{"sha": onBranch}})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-	release, err := Sources{Client: server.Client(), GitHub: server.URL}.Latest(t.Context(), Eglantine)
-	require.NoError(t, err)
-	require.Equal(t, Release{Version: "build-110", URL: "https://github.com/build-110", SHA256: strings.Repeat("c", 64)}, release)
+
+	legacyName := "eglantine-" + onBranch + "-linux-x86_64-pgo.AppImage"
+	const currentName = "eglantine-linux-x86_64-pgo.AppImage"
+	for _, tc := range []struct {
+		label string
+		asset string
+	}{
+		{label: "legacy", asset: legacyName},
+		{label: "current", asset: currentName},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/repos/Djihads80/Eglantine/releases":
+					// GitHub lists releases out of publication order.
+					json.NewEncoder(w).Encode([]map[string]any{
+						build("build-90", onBranch, "2026-11-01T10:00:00Z", legacyName),
+						build("daily-20261122", experimental, "2026-11-22T13:10:01Z", currentName),
+						build("v0.1.0-rc4", onBranch, "2026-11-15T02:27:19Z", tc.asset),
+					})
+				case "/repos/Djihads80/Eglantine/commits":
+					require.Equal(t, "nx2", r.URL.Query().Get("sha"))
+					json.NewEncoder(w).Encode([]map[string]string{{"sha": onBranch}})
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			release, err := Sources{Client: server.Client(), GitHub: server.URL}.Latest(t.Context(), Eglantine)
+			require.NoError(t, err)
+			require.Equal(t, Release{Version: "v0.1.0-rc4", URL: "https://github.com/v0.1.0-rc4", SHA256: strings.Repeat("c", 64)}, release)
+		})
+	}
 }
 
 func TestEdenIsVerifiedWithTheSHA1FromItsZsyncIndex(t *testing.T) {
