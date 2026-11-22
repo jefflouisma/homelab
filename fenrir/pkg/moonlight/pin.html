@@ -1,172 +1,42 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wolf - PIN</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            min-height: 100svh;
-            margin: 0;
-            padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
-            font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: rgb(114, 0, 130);
-            background: linear-gradient(132deg, rgba(114, 0, 130, 1) 0%, rgba(63, 0, 195, 1) 50%, rgba(0, 71, 255, 1) 100%);
-        }
-
-        form {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            color: white;
-            gap: 0.5rem;
-        }
-
-        input {
-            padding: 0.5rem;
-            border: 1px solid white;
-            box-sizing: border-box;
-            width: 3.5rem;
-            height: 4rem;
-            text-align: center;
-            font-size: 3rem;
-        }
-
-        .panel { color: white; width: 100%; max-width: 30rem; padding: 1rem 0; text-align: center; }
-        .panel h1 { font-size: clamp(1.5rem, 6vw, 2rem); line-height: 1.2; }
-        .panel p { line-height: 1.5; }
-        .panel a { color: inherit; display: inline-flex; align-items: center; min-height: 44px; padding: 0.5rem; }
-        button { flex-basis: 100%; min-height: 48px; padding: 0.75rem; margin-top: 0.5rem; font: inherit; cursor: pointer; }
-        :focus-visible { outline: 3px solid white; outline-offset: 3px; }
-        :disabled { cursor: default; opacity: 0.65; }
-
-    </style>
+    <title>Enter PIN · Fenrir</title>
+    <link rel="stylesheet" href="/fenrir.css">
+    <script src="/fenrir-pin.js" defer></script>
 </head>
 <body>
-
-
-<main class="panel">
-    <h1>Enter your Moonlight PIN</h1>
-    <p>Use the four-digit PIN displayed on the device you are pairing.</p>
-    <form class="form" aria-label="Pair device">
-        <input type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" aria-label="PIN digit 1" autocomplete="one-time-code" disabled/>
-        <input type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" aria-label="PIN digit 2" disabled/>
-        <input type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" aria-label="PIN digit 3" disabled/>
-        <input type="text" inputmode="numeric" pattern="[0-9]" maxlength="1" aria-label="PIN digit 4" disabled/>
-        <button type="submit" disabled>Pair device</button>
-    </form>
-    <p id="status" role="status" aria-live="polite">Checking pairing request...</p>
-    <p><a href="/">View current pairing requests</a></p>
-</main>
-
-
+    <header class="topbar">
+        <div class="shell">
+            <a class="brand" href="/dashboard">Fenrir</a>
+            <nav aria-label="Main navigation">
+                <a href="/dashboard" aria-current="true">Pair a device</a>
+                <a href="/updates">Emulator updates</a>
+            </nav>
+        </div>
+    </header>
+    <main class="shell">
+        <header class="page-heading">
+            <h1>Enter your PIN</h1>
+            <p class="muted">Use the four digits displayed in Moonlight.</p>
+        </header>
+        <div class="card stack pin-card">
+            <form class="stack" aria-label="Pair device">
+                <div>
+                    <label for="pin">Moonlight PIN</label>
+                    <input id="pin" name="pin" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="one-time-code" aria-describedby="pin-status" required disabled>
+                </div>
+                <button class="button" type="submit" disabled>Pair device</button>
+            </form>
+            <p id="pin-status" class="caption" role="status">Checking pairing request…</p>
+            <div class="actions">
+                <button id="retry" class="button secondary" type="button" hidden>Retry connection</button>
+                <a href="/dashboard">Back to pairing requests</a>
+            </div>
+            <noscript><p>Enable JavaScript to submit the PIN.</p></noscript>
+        </div>
+    </main>
 </body>
-<script type="application/javascript">
-    const inputs = [...document.querySelectorAll("input")];
-    const form = document.querySelector(".form");
-    const status = document.querySelector("#status");
-    const button = form.querySelector("button");
-    let ready = false;
-    let sending = false;
-
-    function setEnabled(enabled) {
-        inputs.forEach(input => { input.disabled = !enabled; });
-        button.disabled = !enabled;
-    }
-
-    function expired() {
-        ready = false;
-        setEnabled(false);
-        status.textContent = "This pairing request is no longer active. Start pairing again in Moonlight, then open View current pairing requests below.";
-    }
-
-    async function isPending(secret) {
-        const response = await fetch("/pairing/pending", {cache: "no-store"});
-        if (!response.ok) throw new Error("Could not check pairing requests");
-        const data = await response.json();
-        return data.secrets.includes(secret);
-    }
-
-    async function checkRequest() {
-        ready = false;
-        setEnabled(false);
-        const secret = window.location.hash.substring(1);
-        try {
-            if (!secret || !await isPending(secret)) {
-                expired();
-                return;
-            }
-            if (secret !== window.location.hash.substring(1)) return;
-            ready = true;
-            setEnabled(true);
-            status.textContent = "Ready for the PIN shown in Moonlight.";
-            inputs[0].focus();
-        } catch {
-            status.textContent = "Unable to check this request. Open View current pairing requests to try again.";
-        }
-    }
-
-    async function send() {
-        const pin = inputs.map(input => input.value).join("");
-        if (!ready || sending || !/^[0-9]{4}$/.test(pin)) return;
-        sending = true;
-        setEnabled(false);
-        status.textContent = "Sending PIN...";
-        const secret = window.location.hash.substring(1);
-        try {
-            if (!await isPending(secret)) {
-                expired();
-                return;
-            }
-            if (secret !== window.location.hash.substring(1)) return;
-            const response = await fetch("/pin/", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({pin, secret}),
-            });
-            if (response.status === 410 || response.status === 409) {
-                expired();
-                return;
-            }
-            if (!response.ok) throw new Error("PIN submission failed");
-            ready = false;
-            status.textContent = "PIN sent. Finish pairing in Moonlight. If pairing fails, start a new request from Moonlight.";
-        } catch {
-            status.textContent = "Could not send the PIN. Check that Moonlight is still waiting, then try again.";
-            if (ready) setEnabled(true);
-        } finally {
-            sending = false;
-        }
-    }
-
-    form.addEventListener("submit", event => { event.preventDefault(); void send(); });
-    inputs.forEach((input, index) => {
-        input.addEventListener("input", () => {
-            input.value = input.value.replace(/[^0-9]/g, "").slice(-1);
-            if (input.value && index < inputs.length - 1) inputs[index + 1].focus();
-            if (inputs.every(digit => digit.value)) void send();
-        });
-        input.addEventListener("keydown", event => {
-            if (event.key === "Backspace" && !input.value && index > 0) inputs[index - 1].focus();
-        });
-        input.addEventListener("paste", event => {
-            const pin = event.clipboardData.getData("text").trim();
-            if (/^[0-9]{4}$/.test(pin)) {
-                event.preventDefault();
-                inputs.forEach((digit, key) => { digit.value = pin[key]; });
-                void send();
-            }
-        });
-    });
-    window.addEventListener("hashchange", () => {
-        inputs.forEach(input => { input.value = ""; });
-        void checkRequest();
-    });
-    void checkRequest();
-</script>
 </html>

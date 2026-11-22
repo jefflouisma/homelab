@@ -1,0 +1,19 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: fenrir-web
+  namespace: house
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: >-
+        Host(`192.168.1.222`) &&
+        (Path(`/`) || Path(`/dashboard`) || Path(`/updates`) || Path(`/pairing/pending`) ||
+        Path(`/api/updates`) || PathPrefix(`/api/updates/`) || PathPrefix(`/pin/`) ||
+        Path(`/fenrir.css`) || Path(`/fenrir-pairing.js`) ||
+        Path(`/fenrir-pin.js`) || Path(`/fenrir-updates.js`))
+      services:
+        - name: moonlight-proxy
+          port: 47989

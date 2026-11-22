@@ -32,15 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
-
-	_ "embed"
 )
-
-//go:embed pin.html
-var pinHTML string
-
-//go:embed dashboard.html
-var dashboardHTML string
 
 type RESTServerOptions struct {
 	Port       int
@@ -92,12 +84,10 @@ func NewRESTServer(
 
 	// Register routes
 	ps.registerUpdates()
+	ps.registerWeb()
 	ps.router.HandleFunc("/serverinfo", ps.serverInfoHandler)
 	ps.router.HandleFunc("/pair", ps.pairHandler)
 	ps.router.HandleFunc("/unpair", ps.unpairHandler)
-	ps.router.HandleFunc("/pin/", ps.pinHandler)
-	ps.router.HandleFunc("/dashboard", ps.dashboardHandler)
-	ps.router.HandleFunc("/", ps.dashboardHandler) // Root redirects to dashboard
 
 	ps.router.HandleFunc("/readyz", ps.readyzHandler)
 	ps.router.HandleFunc("/livez", ps.livezHandler)
@@ -205,36 +195,6 @@ func (s *RESTServer) pendingPairingsHandler(w http.ResponseWriter, r *http.Reque
 	secrets := s.manager.GetPendingSecrets()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response{Secrets: secrets})
-}
-
-func (s *RESTServer) dashboardHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	secrets := s.manager.GetPendingSecrets()
-
-	var requestsHTML string
-	if len(secrets) == 0 {
-		requestsHTML = `<div class="no-requests">
-			<p>No pending pairing requests.</p>
-			<p>Click on "Direwolf" in Moonlight to start pairing.</p>
-		</div>`
-	} else {
-		for _, secret := range secrets {
-			requestsHTML += fmt.Sprintf(`
-			<div class="pairing-request">
-				<div style="display: flex; align-items: center;">
-					<div class="status-indicator"></div>
-					<span>Waiting for PIN...</span>
-				</div>
-				<a href="/pin/#%s" class="btn">Enter PIN</a>
-			</div>`, secret)
-		}
-	}
-
-	output := strings.Replace(dashboardHTML, "{{PENDING_REQUESTS}}", requestsHTML, 1)
-
-	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(output))
 }
 
 func (s *RESTServer) serverInfoHandler(w http.ResponseWriter, r *http.Request) {
@@ -372,12 +332,8 @@ func (s *RESTServer) unpairHandler(w http.ResponseWriter, r *http.Request) {
 func (s *RESTServer) pinHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	klog.Infof("Handling %v pin request from %s", r.Method, r.RemoteAddr)
-	// Handle GET /pin/<secret>
-	if r.Method == "GET" {
-		// Just post the static pin page
-		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(pinHTML))
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		servePINPage(w, r)
 		return
 	}
 

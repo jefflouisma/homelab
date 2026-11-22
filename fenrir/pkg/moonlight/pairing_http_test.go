@@ -41,12 +41,16 @@ func TestPairingPINRequiresFourASCIIDigits(t *testing.T) {
 	}
 }
 
-func TestPairingPagesPreventCaching(t *testing.T) {
+func TestWebRoutesPreventCaching(t *testing.T) {
 	server, _ := pairingFixture(t)
-	for _, path := range []string{"/", "/dashboard", "/pin/", "/pairing/pending"} {
+	for _, path := range []string{
+		"/", "/dashboard", "/pin/", "/pairing/pending", "/updates",
+		"/fenrir.css", "/fenrir-pairing.js", "/fenrir-pin.js", "/fenrir-updates.js",
+	} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			server.router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			require.Equal(t, http.StatusOK, response.Code)
 			require.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 		})
 	}

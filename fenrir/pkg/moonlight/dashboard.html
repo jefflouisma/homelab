@@ -1,176 +1,72 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wolf - Pairing Dashboard</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(132deg, #720082 0%, #3f00c3 50%, #0047ff 100%);
-            min-height: 100vh;
-            min-height: 100svh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
-            color: white;
-        }
-        h1 { font-size: clamp(1.75rem, 7vw, 2.5rem); margin-bottom: 1rem; }
-        .subtitle { opacity: 0.8; margin-bottom: 2rem; }
-        .card {
-            background: rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 1rem;
-            padding: clamp(1rem, 4vw, 2rem);
-            max-width: 600px;
-            width: 100%;
-            min-width: 0;
-            margin-bottom: 1rem;
-        }
-        .card h2 { margin-bottom: 1rem; font-size: 1.5rem; }
-        .no-requests {
-            text-align: center;
-            padding: 2rem;
-            opacity: 0.7;
-        }
-        .pairing-request {
-            background: rgba(255,255,255,0.15);
-            border-radius: 0.5rem;
-            padding: 1rem;
-            margin-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 1rem;
-        }
-        .pairing-request:last-child { margin-bottom: 0; }
-        .btn {
-            background: #00c853;
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 0.5rem;
-            font-size: 1rem;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-flex;
-            min-height: 48px;
-            align-items: center;
-            justify-content: center;
-        }
-        .btn:hover { background: #00a844; }
-        .btn:focus-visible { outline: 3px solid white; outline-offset: 3px; }
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            background: #00c853;
-            border-radius: 50%;
-            animation: pulse 1.5s infinite;
-            margin-right: 0.5rem;
-            flex-shrink: 0;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        .refresh-note {
-            margin-top: 1rem;
-            font-size: 0.875rem;
-            opacity: 0.6;
-        }
-        .instructions {
-            background: rgba(0,0,0,0.2);
-            border-radius: 0.5rem;
-            padding: 1rem;
-            margin-bottom: 1rem;
-        }
-        .instructions ol { 
-            margin-left: 1.5rem;
-            line-height: 1.6;
-        }
-        @media (max-width: 480px) {
-            .pairing-request { flex-direction: column; align-items: stretch; }
-            .no-requests { padding: 1rem 0; }
-            .card h2 { font-size: 1.25rem; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-            .status-indicator { animation: none; }
-        }
-    </style>
+    <title>Pair a device · Fenrir</title>
+    <link rel="stylesheet" href="/fenrir.css">
+    <script src="/fenrir-pairing.js" defer></script>
 </head>
 <body>
-    <h1>🐺 Wolf Pairing</h1>
-    <p class="subtitle">Moonlight client pairing dashboard</p>
-    <nav aria-label="Fenrir"><a href="/updates" class="btn">Manage emulator updates</a></nav>
-    
-    <div class="card">
-        <h2>📋 How to Pair</h2>
-        <div class="instructions">
-            <ol>
-                <li>Open Moonlight on your Apple TV</li>
-                <li>Click on "Direwolf"</li>
-                <li>Note the PIN shown on your TV</li>
-                <li>Click "Enter PIN" below and type that PIN</li>
-            </ol>
+    <header class="topbar">
+        <div class="shell">
+            <a class="brand" href="/dashboard">Fenrir</a>
+            <nav aria-label="Main navigation">
+                <a href="/dashboard" aria-current="page">Pair a device</a>
+                <a href="/updates">Emulator updates</a>
+            </nav>
         </div>
-    </div>
-
-    <div class="card">
-        <h2>🔗 Pending Pairing Requests</h2>
-        <div id="requests" aria-live="polite">
-            {{PENDING_REQUESTS}}
+    </header>
+    <main class="shell">
+        <header class="page-heading">
+            <h1>Pair a device</h1>
+            <p class="muted">Connect a Moonlight client to stream your games from Direwolf.</p>
+        </header>
+        <div class="pairing-grid">
+            <section class="card stack" aria-labelledby="requests-heading">
+                <h2 id="requests-heading">Pairing requests</h2>
+                <div id="requests" aria-live="polite">
+                    {{if .}}
+                    {{range .}}
+                    <div class="request-row">
+                        <strong>Waiting for PIN</strong>
+                        <a class="button" href="/pin/#{{.}}">Enter PIN</a>
+                    </div>
+                    {{end}}
+                    {{else}}
+                    <div class="empty">
+                        <strong>No pending requests</strong>
+                        <p class="muted">Select Direwolf in Moonlight to start pairing.</p>
+                    </div>
+                    {{end}}
+                </div>
+                <div class="actions">
+                    <button class="button secondary" id="refresh" type="button" hidden>Refresh requests</button>
+                    <p class="caption" id="refresh-status" role="status"></p>
+                </div>
+                <noscript><p class="caption">Reload this page after you start pairing in Moonlight.</p></noscript>
+            </section>
+            <section class="card stack" aria-labelledby="steps-heading">
+                <h2 id="steps-heading">How to pair</h2>
+                <ol class="steps">
+                    <li>Open Moonlight and select <strong>Direwolf</strong>.</li>
+                    <li>Keep the four-digit PIN visible on your device.</li>
+                    <li>Select <strong>Enter PIN</strong> next to the request on this page.</li>
+                </ol>
+            </section>
         </div>
-        <p class="refresh-note" id="refresh-status">Requests update automatically while this page is open.</p>
-    </div>
+        <template id="request-template">
+            <div class="request-row">
+                <strong>Waiting for PIN</strong>
+                <a class="button">Enter PIN</a>
+            </div>
+        </template>
+        <template id="empty-template">
+            <div class="empty">
+                <strong>No pending requests</strong>
+                <p class="muted">Select Direwolf in Moonlight to start pairing.</p>
+            </div>
+        </template>
+    </main>
 </body>
-<script>
-    const requests = document.querySelector("#requests");
-    const refreshStatus = document.querySelector("#refresh-status");
-    let rendered = JSON.stringify([...requests.querySelectorAll("a")].map(link => link.hash.substring(1)).sort());
-    let refreshing = false;
-
-    async function refreshRequests() {
-        if (document.hidden || refreshing) return;
-        refreshing = true;
-        try {
-            const response = await fetch("/pairing/pending", {cache: "no-store"});
-            if (!response.ok) throw new Error("Request refresh failed");
-            const data = await response.json();
-            const secrets = data.secrets.sort();
-            const next = JSON.stringify(secrets);
-            if (next !== rendered) {
-                const rows = secrets.map(secret => {
-                    const row = document.createElement("div");
-                    row.className = "pairing-request";
-                    const label = document.createElement("span");
-                    label.textContent = "Waiting for PIN...";
-                    const link = document.createElement("a");
-                    link.className = "btn";
-                    link.href = "/pin/#" + secret;
-                    link.textContent = "Enter PIN";
-                    row.append(label, link);
-                    return row;
-                });
-                if (rows.length === 0) {
-                    const empty = document.createElement("div");
-                    empty.className = "no-requests";
-                    empty.textContent = "No pending pairing requests. Click on Direwolf in Moonlight to start pairing.";
-                    rows.push(empty);
-                }
-                requests.replaceChildren(...rows);
-                rendered = next;
-            }
-            refreshStatus.textContent = "Requests update automatically while this page is open.";
-        } catch {
-            refreshStatus.textContent = "Unable to refresh requests. Retrying automatically...";
-        } finally {
-            refreshing = false;
-        }
-    }
-    setInterval(refreshRequests, 2000);
-    document.addEventListener("visibilitychange", refreshRequests);
-    void refreshRequests();
-</script>
 </html>
